@@ -6,7 +6,7 @@
 import type { GameState, PlayerId, HexCoord } from '../state';
 import type { Action, OperateBuildingAction } from '../actions';
 import type { CardType } from '../config';
-import { MINE_COSTS, cardCost, PIECE_TEMPLATES, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP } from '../config';
+import { MINE_COSTS, cardCost, PIECE_TEMPLATES, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
 import type { Material } from '../config';
 import { tryPayExact, beltEndpointFacesMine, beltEndpointBlocked } from './flow';
 import { applyOperateBuilding, canLoadMaterial } from './production';
@@ -151,7 +151,7 @@ function computeActions(state: GameState, playerId: PlayerId): Action[] {
     addOverstockPlacements(state, actions);
   }
 
-  if (state.cardsPlayedThisTurn < 2) addCardPlays(state, playerId, actions);
+  if (state.cardsPlayedThisTurn < MAX_CARDS_PLAYED_PER_TURN) addCardPlays(state, playerId, actions);
 
   addBuyCard(state, playerId, actions);
   addBuyBelt(state, playerId, actions);
@@ -226,7 +226,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       if (!hasValidModule) break;
       for (const piece of state.board) {
         if (piece.type === 'blank' || piece.type === 'mine') continue;
-        if (piece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+        if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
         out.push({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId: piece.id });
       }
       break;
@@ -249,7 +249,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
           for (const toPiece of state.board) {
             if (toPiece.type === 'mine' || toPiece.type === 'blank') continue;
             if (toPiece.id === fromPiece.id) continue;
-            if (toPiece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+            if (toPiece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
             out.push({
               type: 'PLAY_CARD', cardType: 'changingPriorities',
               pieceId: fromPiece.id, toPieceId: toPiece.id, controlModule: claim.controlModule,
@@ -311,7 +311,7 @@ function addClaimBuilding(
     if (piece.type === 'blank' || piece.type === 'mine') continue;
     // Only one player may claim a building
     if (piece.claims.length > 0 && piece.claims[0]!.ownerId !== playerId) continue;
-    if (piece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+    if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
     for (const module of validModules) {
       // Claiming never costs materials. Placing module M draws (M − mineCount + 1)
       // upgrade-units from whichever budget funds this claim (mine credits or PI).
@@ -510,7 +510,7 @@ function addRemoveBelt(state: GameState, playerId: PlayerId, out: Action[]) {
 function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[]) {
   const player = state.players[playerId];
   if (!player || player.teleportersRemaining <= 0) return;
-  if (tryPayExact(player.inventory, state.globalTeleporterCount + 1) === null) return;
+  if (tryPayExact(player.inventory, teleporterCost(state.globalTeleporterCount)) === null) return;
 
   for (const piece of state.board) {
     if (!piece.claims.some(c => c.ownerId === playerId)) continue;

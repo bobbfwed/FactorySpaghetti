@@ -23,6 +23,8 @@ import {
   POWER_TOKEN_CAP,
   cardCost,
   PRODUCTION_INCREASE_BUDGET,
+  MAX_CARDS_PLAYED_PER_TURN,
+  MAX_CLAIMS_PER_BUILDING,
 } from '../config';
 import { isCoordsOccupied, isAdjacentToBoard, makeBuffers } from './pieces';
 import { tryPayExact, tryPayFlexible } from './flow';
@@ -130,7 +132,7 @@ export function applyPlayCard(state: GameState, action: PlayCardAction): ActionR
     return err('CARD_NOT_IN_HAND', `You don't have ${cardType} in your hand`);
   }
 
-  if (state.cardsPlayedThisTurn >= 2) {
+  if (state.cardsPlayedThisTurn >= MAX_CARDS_PLAYED_PER_TURN) {
     return err('CARD_LIMIT_REACHED', 'You can only play 2 cards per turn');
   }
 
@@ -386,7 +388,7 @@ function resolveShortSale(
   }
 
   const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
-  if (myClaimsOnPiece.length >= 3) {
+  if (myClaimsOnPiece.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on this building');
   }
 
@@ -511,7 +513,7 @@ function resolveChangingPriorities(
     return err('CLAIM_NOT_FOUND', `You don't have module ${controlModule} on ${fromId}`);
   }
 
-  if (toPiece.claims.filter(c => c.ownerId === activeId).length >= 3) {
+  if (toPiece.claims.filter(c => c.ownerId === activeId).length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on the target building');
   }
 
