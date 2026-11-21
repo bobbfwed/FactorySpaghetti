@@ -2,7 +2,7 @@ import type { GameState, PlayerId } from './state';
 import { TESSERACTS_TO_WIN } from './config';
 import type { Action, RulesError, SkipFactoryRollAction, ExchangeMaterialsAction } from './actions';
 import { applySetupClaim } from './rules/setupClaim';
-import { applyPlacePiece } from './rules/pieces';
+import { applyDrawPiece, applyPlacePiece } from './rules/pieces';
 import {
   applyRollDice,
   applyEndActions,
@@ -38,6 +38,7 @@ export type ApplyResult =
 function dispatch(state: GameState, action: Action): ApplyResult {
   switch (action.type) {
     case 'SETUP_CLAIM':           return applySetupClaim(state, action);
+    case 'DRAW_PIECE':            return applyDrawPiece(state, action);
     case 'PLACE_PIECE':           return applyPlacePiece(state, action);
     case 'ROLL_DICE':             return applyRollDice(state, action);
     case 'END_ACTIONS':           return applyEndActions(state);

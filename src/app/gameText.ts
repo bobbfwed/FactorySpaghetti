@@ -5,9 +5,9 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
-import { legalActions } from '../engine';
+import { legalActions, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
-import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
+import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
@@ -17,7 +17,9 @@ export function phaseWords(game: GameState): string {
   switch (game.phase) {
     case 'setupClaimPF': return 'Setup: claim a Plate Factory';
     case 'setupClaimPP': return 'Setup: claim a Power Plant';
-    case 'placePiece': return game.pendingMineIds.length > 0 ? 'Step 1: place the dropped Mine' : 'Step 1: place a board piece';
+    case 'placePiece':
+      if (game.pendingMineIds.length > 0) return 'Step 1: place the dropped Mine';
+      return revealedStack(game) === null ? 'Step 1: draw a board piece' : 'Step 1: place a board piece';
     case 'roll': return 'Step 2: roll the dice';
     case 'actions': return 'Step 3: actions';
     case 'placeMeeple': return 'Step 4: place your meeple';
@@ -94,6 +96,8 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
   switch (a.type) {
     case 'SETUP_CLAIM':
       return { group: 'setup', label: `Claim the ${piece(a.pieceId)} with Control Module ${game.phase === 'setupClaimPF' ? 3 : 2}` };
+    case 'DRAW_PIECE':
+      return { group: 'place', label: `Draw from the ${STACK_ORDINAL[a.stackIndex]} stack` };
     case 'PLACE_PIECE':
       return { group: 'place', sub: `From stack ${a.stackIndex + 1}`, label: `${whereLabel(game, a.coord)}${turned(a.rotation)}` };
     case 'PLACE_MINE':
@@ -293,6 +297,11 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NOT_ADJACENT: 'It must be placed next to a piece already on the board.',
   STACK_EMPTY: 'That stack is empty.',
   STACK_LOCKED: 'That stack is still covered by its Mine.',
+  INVALID_STACK: 'There is no such stack.',
+  MUST_DRAW: 'More than one stack is open: draw from one of them first.',
+  ALREADY_DRAWN: 'You have already drawn a piece this turn. Place it.',
+  NOT_DRAWN_STACK: 'Place the piece you drew, from the stack you drew it from.',
+  NO_DRAW_NEEDED: 'Only one stack is open, so there is nothing to choose: place its top piece.',
   INVALID_PIECE_INDEX: 'There is no such piece in that stack.',
   PIECE_NOT_FOUND: 'That piece is not on the board.',
   WRONG_PIECE_TYPE: 'That is the wrong kind of piece for this.',
@@ -343,7 +352,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   SAME_POINT: 'A belt needs two different connection points.',
   POINTS_TOO_CLOSE: 'The two ends of a belt must be more than 2 holes apart.',
   POINT_OCCUPIED: 'A belt already uses that connection point.',
-  BELT_BLOCKED: 'A belt may not join another player\'s belt or block another player\'s building input.',
+  BELT_BLOCKED: 'A belt may not join another player\'s belt.',
+  POINT_RESERVED: 'That connection point is reserved for the owner of the building next to it.',
   MINE_BELT_LIMIT: 'Only one belt touching a Mine may be placed per turn.',
   NO_TELEPORTERS: 'You have no teleporters left.',
   TELEPORTER_EXISTS: 'There is already a teleporter there.',

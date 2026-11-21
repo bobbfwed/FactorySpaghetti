@@ -10,7 +10,7 @@ import type {
 } from '../actions';
 import {
   MATERIAL_VALUES,
-  PIECE_TEMPLATES,
+  pieceTemplate,
   BELT_COST,
   INVENTORY_CAP,
   teleporterCost,
@@ -95,13 +95,13 @@ export function adjAt(
 }
 
 export function getRole(piece: BoardPiece, pos: number): PointRole {
-  const ptDef = PIECE_TEMPLATES[piece.type].points.find(p => p.position === pos);
+  const ptDef = pieceTemplate(piece).points.find(p => p.position === pos);
   return ptDef?.role ?? 'disabled';
 }
 
 // Index of this input_buffer position within the piece's input slot array.
 function inputSlotIdx(piece: BoardPiece, pos: number): number {
-  const inputs = PIECE_TEMPLATES[piece.type].points
+  const inputs = pieceTemplate(piece).points
     .filter(p => p.role === 'input_buffer')
     .map(p => p.position)
     .sort((a, b) => a - b);
@@ -110,7 +110,7 @@ function inputSlotIdx(piece: BoardPiece, pos: number): number {
 
 // Index of this output_buffer position within the piece's output slot array.
 function outputSlotIdx(piece: BoardPiece, pos: number): number {
-  const outputs = PIECE_TEMPLATES[piece.type].points
+  const outputs = pieceTemplate(piece).points
     .filter(p => p.role === 'output_buffer')
     .map(p => p.position)
     .sort((a, b) => a - b);
@@ -152,27 +152,44 @@ export function beltEndpointFacesMine(
   return adj != null && adj.piece.type === 'mine';
 }
 
-// True if placing a belt endpoint for player `me` at (piece, pos) is illegal because of
-// what sits across that point's shared edge:
-//   • another player's belt connects there — you may not join another player's belts; or
-//   • another player's claimed building input is there — you may not block their input.
-// Used by belt placement, legalActions, and the router so all three agree.
+// Why player `me` may not end a belt at (piece, pos), judged by what sits across that
+// point's shared edge, or null if nothing there forbids it:
+//   • 'POINT_RESERVED' — the point faces an input or output of a building that has at least
+//     one claim and none of them is mine (the point is reserved for its owners; a co-owner
+//     may use it; anyone may use it while the building is unclaimed);
+//   • 'BELT_BLOCKED'   — another player's belt connects there (you may not join it).
+// Used by belt placement, legalActions, and the router so all three agree. Only NEW belts
+// are checked: a belt already lying at a point stays (and keeps carrying material) when
+// someone later claims the building it faces.
+export type BeltEndpointConflict = 'POINT_RESERVED' | 'BELT_BLOCKED';
+
+export function beltEndpointConflict(
+  state: GameState,
+  piece: BoardPiece,
+  pos: number,
+  me: PlayerId,
+): BeltEndpointConflict | null {
+  const n = adjAt(piece.coord, piece.rotation ?? 0, pos, state.board);
+  if (!n) return null;
+  const role = getRole(n.piece, n.pos);
+  if ((role === 'input_buffer' || role === 'output_buffer') &&
+      n.piece.claims.length > 0 && !n.piece.claims.some(c => c.ownerId === me)) {
+    return 'POINT_RESERVED';
+  }
+  // Can't terminate where another player's belt connects across the seam.
+  const joinsOther = state.belts.some(
+    b => b.ownerId !== me && b.pieceId === n.piece.id && (b.fromPoint === n.pos || b.toPoint === n.pos),
+  );
+  return joinsOther ? 'BELT_BLOCKED' : null;
+}
+
 export function beltEndpointBlocked(
   state: GameState,
   piece: BoardPiece,
   pos: number,
   me: PlayerId,
 ): boolean {
-  const n = adjAt(piece.coord, piece.rotation ?? 0, pos, state.board);
-  if (!n) return false;
-  // Can't block another player's building input.
-  if (getRole(n.piece, n.pos) === 'input_buffer' && n.piece.claims.some(c => c.ownerId !== me)) {
-    return true;
-  }
-  // Can't terminate where another player's belt connects across the seam.
-  return state.belts.some(
-    b => b.ownerId !== me && b.pieceId === n.piece.id && (b.fromPoint === n.pos || b.toPoint === n.pos),
-  );
+  return beltEndpointConflict(state, piece, pos, me) !== null;
 }
 
 // Pay `cost` value-units from inventory, consuming cheapest materials first.
@@ -353,7 +370,7 @@ export function applyPlaceBelt(state: GameState, action: PlaceBeltAction): Actio
   }
 
   // Validate connection points against the piece's template.
-  const template = PIECE_TEMPLATES[piece.type];
+  const template = pieceTemplate(piece);
   const totalPositions = template.hexCount * 12;
   const { fromPoint, toPoint } = action;
 
@@ -398,14 +415,20 @@ export function applyPlaceBelt(state: GameState, action: PlaceBeltAction): Actio
     return err('POINT_OCCUPIED', 'One of the connection points is already used by another belt on this piece');
   }
 
-  // A belt endpoint may not connect across a shared edge to another player's belt, nor
-  // block another player's building input.
-  if (beltEndpointBlocked(state, piece, fromPoint, activeId) ||
-      beltEndpointBlocked(state, piece, toPoint, activeId)) {
+  // A belt endpoint may not face the input or output of a building claimed only by other
+  // players, nor connect across a shared edge to another player's belt.
+  const conflicts = [
+    beltEndpointConflict(state, piece, fromPoint, activeId),
+    beltEndpointConflict(state, piece, toPoint, activeId),
+  ];
+  if (conflicts.includes('POINT_RESERVED')) {
     return err(
-      'BELT_BLOCKED',
-      "A belt endpoint may not join another player's belt or block another player's building input",
+      'POINT_RESERVED',
+      "A belt endpoint may not face the input or output of a building claimed only by other players",
     );
+  }
+  if (conflicts.includes('BELT_BLOCKED')) {
+    return err('BELT_BLOCKED', "A belt endpoint may not join another player's belt");
   }
 
   // One mine-facing belt endpoint per turn: only belt endpoints that directly face a mine hex count.
@@ -523,7 +546,7 @@ export function fillInputsFromAdjacentMines(state: GameState): GameState {
     const piece = board[i]!;
     if (piece.claims.length === 0 || !piece.input) continue;
 
-    const template = PIECE_TEMPLATES[piece.type];
+    const template = pieceTemplate(piece);
     for (const ptDef of template.points) {
       if (ptDef.role !== 'input_buffer' || !ptDef.enabled) continue;
 
@@ -654,7 +677,7 @@ export function resolveDirectAdjacency(state: GameState): GameState {
   // Pass 1: direct adjacency, building output → adjacent claimed input (no belt).
   // (Direct mine ore is already delivered by fillInputsFromAdjacentMines above.)
   for (const piece of state.board) {
-    const template = PIECE_TEMPLATES[piece.type];
+    const template = pieceTemplate(piece);
     for (const ptDef of template.points) {
       if (ptDef.role !== 'output_buffer' || !ptDef.enabled) continue;
 
@@ -728,7 +751,7 @@ export function resolveDirectAdjacency(state: GameState): GameState {
 
   for (const building of state.board) {
     if (building.claims.length === 0) continue; // only claimed buildings receive material
-    const template = PIECE_TEMPLATES[building.type];
+    const template = pieceTemplate(building);
     for (const ptDef of template.points) {
       if (ptDef.role !== 'input_buffer' || !ptDef.enabled) continue;
       const b = cur(building.id);

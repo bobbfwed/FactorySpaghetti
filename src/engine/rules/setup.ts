@@ -306,6 +306,7 @@ export function createGame(seed: number, playerCount: 2 | 3 | 4): GameState {
     mineBeltPlacedThisTurn: false,
     beltsPlacedThisTurn: [],
     pendingMineIds: [],
+    drawnStackIndex: null,
     pendingFactoryOps: [],
     cardsPlayedThisTurn: 0,
     overstockPieces: [],

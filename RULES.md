@@ -11,7 +11,7 @@
 Ore 1 · Plate 3 · Sphere 7 · Tesseract 23. Inventory cap: 6 per material; Power Tokens cap 10.
 
 ## Turn structure
-1. Place a board piece (adjacent to existing; from any *available* stack).
+1. Draw and place a board piece. The stacks are face down. If more than one stack is open (unlocked and not empty), first choose one and draw from it — the choice is final — then place its top piece adjacent to the board, in any orientation. If only one stack is open, there is no choice: place its top piece directly. A dropped Mine waiting to be placed replaces this step (see Mines). *(Draw step: `RULES_CHANGES.md` #33.)*
 2. Roll dice — **one die per mine on the board.**
 3. Actions: buy/place belts, buy cards/mines, place teleporters, exchange with bank.
 4. Place meeple (on an owned building, or a mine point).
@@ -40,7 +40,11 @@ factory to **operate**):
 
 ## Material flow
 - **Direct adjacency:** output of one piece touching the input of another moves material for free.
-- **Belts:** link two connection points *within a single piece* (don't bridge pieces); chain to span distance. Must run mine→input or output→input. Valid placement requires start/end separated by **more than two** connection points. A belt endpoint may **not** connect across a shared edge to **another player's belt**, nor **block another player's building input** (sit on the point feeding it). A placed point is locked to its owner. One belt to a mine per turn. Belts are purchasable (cost 1) and freely removable by their owner (returned to bank). One player's belt cannot feed another player's building.
+- **Belts:** a belt links two connection points (holes) *on one piece* — it never bridges pieces; belts chain across a shared edge, where a point on one piece lines up with the point on the next. Valid placement requires the two ends separated by **more than two** connection points, and each connection point holds one belt.
+  - **Connection points follow the printed pieces** (`RULES_CHANGES.md` #30). A blank piece has all 12. On a building piece every hole that is not an input or output is a belt point, usable by **any** player whoever has claimed the building (a claim never closes the belt points on the building's own piece): Plate Factory and Power Plant #3–#6 and #9–#12; Sphere Factory #4–#6 and #10–#12; Tesseract Factory #4, #5, #10, #11 (#1 = left edge, lower point, counting clockwise). A Mine has no holes, so no belt lies on a Mine, but a belt end on a neighbouring piece may face a Mine's ore exit.
+  - **Material flow:** material moves along a chain of one or more belts from a source (a Mine ore exit, or a building's output) to a **claimed** building's input. Who owns the belts does not matter: a chain carries material into whichever building it reaches. A belt that connects nothing is still a legal placement.
+  - **Placement limits:** a belt end may **not** face, across a shared edge, (a) the input or output of a building that has at least one claim and none of them yours — those points are **reserved for the building's owners** (a co-owner may use them; anyone may while the building is unclaimed; `RULES_CHANGES.md` #31), nor (b) **another player's belt**. These limits apply when a belt is placed: a belt already lying at a point stays, and keeps carrying material, if another player claims the building later. Only one belt with an end facing a Mine may be placed per turn.
+  - Belts are purchasable (cost 1) and freely removable by their owner (returned to the supply).
 - **Teleporters (NEW):** 4 per player, placed on a buffer of a building **you own**. **Permanent — never removable; a fixture of that building.** One teleporter per buffer (both buffers of a building = 2 teleporters).
   - On an **input** buffer: your inventory may feed that building's required inputs **when the building needs them to operate, at any point during anyone's turn.**
   - On an **output** buffer: material in that buffer goes to your inventory (bypasses the meeple-access rule), respecting the 6-per-material cap. This happens the instant it's produced **and** continuously drains the buffer whenever your inventory has room — so material never sits stuck under a teleporter (e.g. produced before you placed it, or overflow from when you were at cap). Only true overflow (inventory at cap) stays in the buffer, until room opens up.
@@ -55,7 +59,7 @@ factory to **operate**):
 - Mine count drives: dice count, card price, claim floor, end-of-round upgrades, and card scaling.
 - A mine may still be **purchased** (2nd = 6, 3rd = 18 — *price tunable*) and placed immediately.
 - **NEW:** the next mine **auto-drops when the current stack is exhausted**, which also unlocks that mine's stack. Either path (buy or auto-drop) advances mine count identically.
-- A mine is a double-hex piece (a rich hex + a lean hex sharing one internal edge). Ore exits at its **ore-output** points: the rich hex has outputs on both points of all 5 external edges; the **lean hex has 3 outputs** — one on every-other external edge (see `RULES_CHANGES.md` #17). Belts never attach to a mine; ore flows from an ore-output to a directly-adjacent (or belt-connected) input.
+- A mine is a double-hex piece (a rich hex + a lean hex sharing one internal edge). Ore exits at its **ore-output** points, where the printed rays and tracks reach the edge: **every** mine's rich hex has exits on both points of all 5 external edges. Only **Mine 1's lean hex** has exits — 3 of them, one on every-other external edge (#4, #8, #12 counting from the shared edge; `RULES_CHANGES.md` #17). **Mines 2 and 3 have no exits on their lean hex** (`RULES_CHANGES.md` #32). Belts never lie on a mine (it has no holes); ore flows from an exit to a directly adjacent input, or into a belt chain whose end faces the exit.
 
 ## Purchases & costs
 - Belt: 1. Teleporter: global count + 1. Mine: 6 / 18 (tunable). **Card: #mines + 1** (formula tunable — see `RULES_CHANGES.md` #14).

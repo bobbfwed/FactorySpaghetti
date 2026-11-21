@@ -1,7 +1,7 @@
-// PLACE_PIECE action handler + hex-grid utilities.
+// DRAW_PIECE and PLACE_PIECE action handlers (the place-a-piece step) + hex-grid utilities.
 
 import type { GameState, BoardPiece, HexCoord, Buffer, PieceStack } from '../state';
-import type { PlacePieceAction, RulesError } from '../actions';
+import type { DrawPieceAction, PlacePieceAction, RulesError } from '../actions';
 import type { PieceType, Material } from '../config';
 
 export type ActionResult =
@@ -71,6 +71,52 @@ export function makeBuffers(type: PieceType): { input: Buffer | null; output: Bu
   }
 }
 
+// ── Drawing from the stacks ───────────────────────────────────────────────────
+
+// Stacks a piece may be drawn from right now: unlocked and not empty (ascending index).
+export function openStacks(state: GameState): Array<0 | 1 | 2> {
+  return ([0, 1, 2] as const).filter(i => state.stacks[i].available && state.stacks[i].pieces.length > 0);
+}
+
+// The stack drawn from in this place-a-piece step, or null (older saves have no field).
+export function drawnStack(state: GameState): 0 | 1 | 2 | null {
+  return state.drawnStackIndex ?? null;
+}
+
+// The stack whose top piece is face-up for everyone right now: in the placePiece phase with
+// no mine waiting to be placed, the stack just drawn from, or else the only open stack if
+// exactly one is open (no draw needed); null otherwise and in every other phase.
+export function revealedStack(state: GameState): 0 | 1 | 2 | null {
+  if (state.phase !== 'placePiece' || state.pendingMineIds.length > 0) return null;
+  const drawn = drawnStack(state);
+  if (drawn !== null) return drawn;
+  const open = openStacks(state);
+  return open.length === 1 ? open[0]! : null;
+}
+
+// ── DRAW_PIECE ────────────────────────────────────────────────────────────────
+
+export function applyDrawPiece(state: GameState, action: DrawPieceAction): ActionResult {
+  if (state.phase !== 'placePiece') {
+    return err('WRONG_PHASE', `Expected placePiece phase, got ${state.phase}`);
+  }
+  if (state.pendingMineIds.length > 0) {
+    return err('PENDING_MINE', 'Place the auto-dropped mine before drawing a board piece');
+  }
+  if (drawnStack(state) !== null) {
+    return err('ALREADY_DRAWN', 'You have already drawn a piece this turn; place it');
+  }
+  const { stackIndex } = action;
+  const stack = state.stacks[stackIndex];
+  if (!stack) return err('INVALID_STACK', `There is no stack ${String(stackIndex)}`);
+  if (!stack.available) return err('STACK_LOCKED', `Stack ${stackIndex} is not yet available`);
+  if (stack.pieces.length === 0) return err('STACK_EMPTY', `Stack ${stackIndex} is empty`);
+  if (openStacks(state).length < 2) {
+    return err('NO_DRAW_NEEDED', 'Only one stack is open; place its top piece directly');
+  }
+  return { ok: true, state: { ...state, drawnStackIndex: stackIndex } };
+}
+
 // ── PLACE_PIECE ───────────────────────────────────────────────────────────────
 
 export function applyPlacePiece(state: GameState, action: PlacePieceAction): ActionResult {
@@ -85,6 +131,7 @@ export function applyPlacePiece(state: GameState, action: PlacePieceAction): Act
 
   const { stackIndex, coord } = action;
   const stack = state.stacks[stackIndex];
+  if (!stack) return err('INVALID_STACK', `There is no stack ${String(stackIndex)}`);
 
   if (!stack.available) {
     return err('STACK_LOCKED', `Stack ${stackIndex} is not yet available`);
@@ -92,6 +139,16 @@ export function applyPlacePiece(state: GameState, action: PlacePieceAction): Act
 
   if (stack.pieces.length === 0) {
     return err('STACK_EMPTY', `Stack ${stackIndex} is empty`);
+  }
+
+  // The draw step: with more than one open stack the player first draws (DRAW_PIECE) and
+  // must then place the piece from the stack they drew from.
+  const drawn = drawnStack(state);
+  if (drawn !== null && drawn !== stackIndex) {
+    return err('NOT_DRAWN_STACK', `You drew from stack ${drawn}; place that piece`);
+  }
+  if (drawn === null && openStacks(state).length > 1) {
+    return err('MUST_DRAW', 'More than one stack is open; draw from one before placing');
   }
 
   if (isCoordsOccupied(coord, state.board)) {
@@ -152,6 +209,7 @@ export function applyPlacePiece(state: GameState, action: PlacePieceAction): Act
     stacks: updatedStacks,
     unplacedMines,
     pendingMineIds,
+    drawnStackIndex: null,
     phase: 'roll',
   };
 

@@ -51,6 +51,7 @@ export function normalizeAction(raw: unknown): Action | null {
   try {
     switch (a.type) {
       case 'SETUP_CLAIM': return { type: 'SETUP_CLAIM', pieceId: str(a.pieceId) };
+      case 'DRAW_PIECE': return { type: 'DRAW_PIECE', stackIndex: stack(a.stackIndex) };
       case 'PLACE_PIECE': return { type: 'PLACE_PIECE', stackIndex: stack(a.stackIndex), coord: coord(a.coord), ...opt(a, { rotation }) };
       case 'ROLL_DICE': return { type: 'ROLL_DICE', rolls: dice(a.rolls) };
       case 'END_ACTIONS': return { type: 'END_ACTIONS' };

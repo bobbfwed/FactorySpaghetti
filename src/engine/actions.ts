@@ -9,6 +9,14 @@ export interface RulesError {
 
 // ── M2 actions ────────────────────────────────────────────────────────────────
 
+// Step 1a: when more than one stack is open, draw from one of them (the face-down stacks:
+// you choose a stack, then see its top piece). The draw cannot be changed; PLACE_PIECE must
+// then use this stack. With only one open stack there is no draw step.
+export interface DrawPieceAction {
+  readonly type: 'DRAW_PIECE';
+  readonly stackIndex: 0 | 1 | 2;
+}
+
 // Step 1: take the top piece from a stack and place it adjacent to the board.
 // Players freely choose orientation (0–5) at placement time.
 export interface PlacePieceAction {
@@ -222,6 +230,7 @@ export interface SetupClaimAction {
 
 export type Action =
   | SetupClaimAction
+  | DrawPieceAction
   | PlacePieceAction
   | RollDiceAction
   | EndActionsAction

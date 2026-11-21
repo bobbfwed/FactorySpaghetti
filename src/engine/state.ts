@@ -151,6 +151,11 @@ export interface GameState {
   // Mines that have been auto-dropped but not yet physically placed on the board.
   // When non-empty, the player must use PLACE_MINE (not PLACE_PIECE) in the placePiece phase.
   readonly pendingMineIds: ReadonlyArray<string>;
+  // The stack the active player drew from in this place-a-piece step (DRAW_PIECE), whose top
+  // piece they must now place; null before the draw. Only set in the placePiece phase, and
+  // only when more than one stack was open. Saves from before the draw step have no field:
+  // read it as `state.drawnStackIndex ?? null` (rules/pieces.ts drawnStack).
+  readonly drawnStackIndex?: 0 | 1 | 2 | null;
   // Factories (any owner) that matched the roll and await their owner's operate/skip choice.
   // Populated on ROLL_DICE; must be emptied (each entry OPERATEd or SKIPped, by its owner)
   // before the active player may END_ACTIONS. Power plants are exempt (they auto-operate).

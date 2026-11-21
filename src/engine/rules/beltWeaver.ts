@@ -12,7 +12,7 @@
 // path (by belt count) whose visited nodes touch a qualifying set of buildings/mines.
 
 import type { GameState, PlayerId } from '../state';
-import { PIECE_TEMPLATES } from '../config';
+import { pieceTemplate } from '../config';
 import { adjAt, getRole } from './flow';
 
 const MAX_DFS_STEPS = 200_000; // safety cap for pathological belt graphs
@@ -67,7 +67,7 @@ export function longestBeltChain(state: GameState, playerId: PlayerId): number {
   for (const piece of state.board) {
     if (piece.type === 'mine' || piece.type === 'blank') continue;
     if (!piece.claims.some(c => c.ownerId === playerId)) continue;
-    const bufPorts = PIECE_TEMPLATES[piece.type].points
+    const bufPorts = pieceTemplate(piece).points
       .filter(pt => (pt.role === 'input_buffer' || pt.role === 'output_buffer') && pt.enabled)
       .map(pt => key(piece.id, pt.position))
       .filter(k => parent.has(k)); // only ports already seamed to a belt

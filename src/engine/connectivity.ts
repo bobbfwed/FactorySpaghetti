@@ -11,14 +11,18 @@
 //   • belts    = belts to lay on already-placed pieces along the route
 //   • newPieces = empty hexes the route needs a (future) blank placed on
 //
-// Approximations (intentional for v1; refine if the feature needs it): every external
-// mine-hex neighbour is treated as ore-bearing (true for the rich hex's 5 edges; the lean
-// hex actually has 3 of 5); relaying is allowed across any non-mine placed piece; the
+// Ore sources: a hex next to a mine is ore-bearing only when one of the mine's ore outputs
+// faces it (every external edge of the rich hex; on the lean hex only mine 1 has any, on 3
+// of its 5 external edges — see config MINE_LEAN_ORE_OUTPUTS).
+//
+// Approximations (intentional for v1; refine if the feature needs it): relaying is
+// allowed across any non-mine placed piece; the
 // belt >2-apart point geometry and opponent-blocked points are ignored; the building is
 // assumed orientable so an input can face the route.
 
 import type { GameState, HexCoord } from './state';
 import { hexNeighbours, mineSecondaryCoord } from './rules/pieces';
+import { adjAt, getRole } from './rules/flow';
 
 export interface ConnectionCost {
   readonly belts: number;     // belts to lay on existing pieces
@@ -93,11 +97,20 @@ export function oreConnectionCost(state: GameState, buildingId: string): Connect
     push({ h, cost, belts, newPieces });
   };
 
-  // Inject: ore is free at every non-mine neighbour of a mine hex.
+  // Inject: ore is free at every non-mine neighbour of a mine hex that an ore output faces.
+  // (Probed from the neighbour's side: any of its 12 points whose aligned mine point is an
+  // ore output. adjAt only needs the coordinate, so the neighbour may be empty.)
+  const oreBearing = (h: HexCoord): boolean => {
+    for (let pos = 0; pos < 12; pos++) {
+      const a = adjAt(h, 0, pos, state.board);
+      if (a && a.piece.type === 'mine' && getRole(a.piece, a.pos) === 'ore_output') return true;
+    }
+    return false;
+  };
   for (const mk of mineHexes) {
     const parts = mk.split(',');
     const h: HexCoord = { q: Number(parts[0]), r: Number(parts[1]) };
-    for (const n of hexNeighbours(h)) relax(n, 0, 0, 0);
+    for (const n of hexNeighbours(h)) if (!mineHexes.has(key(n)) && oreBearing(n)) relax(n, 0, 0, 0);
   }
 
   let expansions = 0;

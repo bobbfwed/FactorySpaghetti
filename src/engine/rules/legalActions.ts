@@ -6,7 +6,7 @@
 import type { GameState, PlayerId, HexCoord } from '../state';
 import type { Action, OperateBuildingAction } from '../actions';
 import type { CardType } from '../config';
-import { MINE_COSTS, cardCost, PIECE_TEMPLATES, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
+import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
 import type { Material } from '../config';
 import { tryPayExact, beltEndpointFacesMine, beltEndpointBlocked } from './flow';
 import { applyOperateBuilding, canLoadMaterial } from './production';
@@ -14,6 +14,8 @@ import {
   hexNeighbours,
   isCoordsOccupied,
   mineSecondaryCoord,
+  openStacks,
+  drawnStack,
 } from './pieces';
 
 const ROTATIONS = [0, 1, 2, 3, 4, 5] as const;
@@ -108,17 +110,18 @@ function computeSetupClaim(state: GameState, type: 'plateFact' | 'powerPlant'): 
 function computePlacePiece(state: GameState): Action[] {
   if (state.pendingMineIds.length > 0) return computePlaceMineActions(state);
 
-  const actions: Action[] = [];
-  const placements = tilePlacements(state);
-
-  for (let si = 0; si <= 2; si++) {
-    const stack = state.stacks[si as 0 | 1 | 2];
-    if (!stack.available || stack.pieces.length === 0) continue;
-    for (const { coord, rotation } of placements) {
-      actions.push({ type: 'PLACE_PIECE', stackIndex: si as 0 | 1 | 2, coord, rotation });
-    }
+  // The draw step: with more than one open stack, the player first draws from one (and only
+  // the draw is legal); after drawing, or when just one stack is open, they place its top piece.
+  const open = openStacks(state);
+  const drawn = drawnStack(state);
+  if (drawn === null && open.length > 1) {
+    return open.map(stackIndex => ({ type: 'DRAW_PIECE' as const, stackIndex }));
   }
-  return actions;
+  const from = drawn ?? open[0];
+  if (from === undefined || !open.includes(from)) return [];
+
+  return tilePlacements(state).map(({ coord, rotation }) =>
+    ({ type: 'PLACE_PIECE' as const, stackIndex: from, coord, rotation }));
 }
 
 function computePlaceMineActions(state: GameState): Action[] {
@@ -476,7 +479,7 @@ function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
 
   for (const piece of state.board) {
     if (piece.type === 'mine') continue;
-    const template = PIECE_TEMPLATES[piece.type];
+    const template = pieceTemplate(piece);
     const totalPos = template.hexCount * 12;
     const beltPts = template.points
       .filter(p => p.enabled && p.role === 'belt')
@@ -485,7 +488,7 @@ function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
     for (let i = 0; i < beltPts.length; i++) {
       const a = beltPts[i]!;
       if (state.belts.some(b => b.pieceId === piece.id && (b.fromPoint === a || b.toPoint === a))) continue;
-      if (beltEndpointBlocked(state, piece, a, playerId)) continue; // joins opponent belt / blocks their input
+      if (beltEndpointBlocked(state, piece, a, playerId)) continue; // joins opponent belt / reserved for a building's owners
       for (let j = i + 1; j < beltPts.length; j++) {
         const b = beltPts[j]!;
         if (state.belts.some(blt => blt.pieceId === piece.id && (blt.fromPoint === b || blt.toPoint === b))) continue;

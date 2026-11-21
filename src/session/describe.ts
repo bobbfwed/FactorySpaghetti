@@ -47,6 +47,9 @@ function pieceName(state: GameState, pieceId: string | undefined): string {
   return alike > 1 ? `the ${BUILDING_NAME[piece.type]} ${whereWords(state, piece.coord)}` : `the ${BUILDING_NAME[piece.type]}`;
 }
 
+/** "the second stack": stacks in rulebook words, by index. */
+export const STACK_ORDINAL: Readonly<Record<0 | 1 | 2, string>> = { 0: 'first', 1: 'second', 2: 'third' };
+
 function article(name: string): string {
   return /^[AEIOU]/i.test(name) ? `an ${name}` : `a ${name}`;
 }
@@ -62,6 +65,8 @@ function describeVerb(s: GameState, a: Action): string {
       const module = s.phase === 'setupClaimPF' ? 3 : 2;
       return `claimed ${pieceName(s, a.pieceId)} with Control Module ${module}`;
     }
+    case 'DRAW_PIECE':
+      return `drew from the ${STACK_ORDINAL[a.stackIndex]} stack`;
     case 'PLACE_PIECE': {
       const top = s.stacks[a.stackIndex]?.pieces[0];
       const what = top ? article(BUILDING_NAME[top.type]) : 'a piece';

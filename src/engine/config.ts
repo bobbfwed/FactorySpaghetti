@@ -289,7 +289,8 @@ export interface MeepleSlot {
   readonly type: 'resource' | 'upgrade';
 }
 
-// Full layout descriptor for one piece type. Rules code reads from PIECE_TEMPLATES;
+// Full layout descriptor for one piece type. Rules code reads a placed piece's layout with
+// pieceTemplate(piece) (PIECE_TEMPLATES by type; each mine by id, MINE_TEMPLATES);
 // nothing in rules/ hardcodes positions or roles.
 export interface PieceTemplate {
   readonly kind: PieceType;
@@ -330,25 +331,32 @@ function mineHex0Points(): PointDef[] {
   ]);
 }
 
-// Mine hex 1: lean side.  Position IDs 12–23.
-// 3 ore_outputs at positions 15, 17, 23 — the second point of edges 1, 2, 5. These render
-// at every-other external edge and, in the designer's numbering (counting from the shared
-// edge), are positions #4, #8, #12. Edge 3 is internal (toward hex 0) and stays disabled.
-// (adjAt uses the matching mine edge convention so flow lines up with the drawn points.)
-function mineHex1Points(): PointDef[] {
-  const config: readonly [PointRole, PointRole][] = [
-    ['disabled', 'disabled'],   // edge 0
-    ['disabled', 'ore_output'], // edge 1 → pos 15
-    ['disabled', 'ore_output'], // edge 2 → pos 17
-    ['disabled', 'disabled'],   // edge 3 — internal (toward hex 0)
-    ['disabled', 'disabled'],   // edge 4
-    ['disabled', 'ore_output'], // edge 5 → pos 23
-  ];
-  return config.flatMap(([r0, r1], edge) => [
-    { position: 12 + edge * 2,     role: r0, enabled: true },
-    { position: 12 + edge * 2 + 1, role: r1, enabled: true },
-  ]);
+// Mine hex 1: lean side.  Position IDs 12–23. Only the listed positions are ore outputs;
+// every other lean-hex position is disabled. Edge 3 (positions 18, 19) is internal (toward
+// hex 0) and is always disabled. (adjAt uses the matching mine edge convention so flow
+// lines up with the drawn points.)
+function mineHex1Points(oreOutputs: ReadonlyArray<number>): PointDef[] {
+  return Array.from({ length: 12 }, (_, i) => {
+    const position = 12 + i;
+    const role: PointRole = oreOutputs.includes(position) ? 'ore_output' : 'disabled';
+    return { position, role, enabled: role !== 'disabled' };
+  });
 }
+
+// Which mine is which: setup gives the three mines these ids (mine 1 starts on the board,
+// mines 2 and 3 cover stacks 2 and 3).
+export type MineId = 'mine-1' | 'mine-2' | 'mine-3';
+
+// Ore outputs on each mine's LEAN (second) hex, per the printed pieces (RULES_CHANGES.md #32).
+// Mine 1's lean hex has the two curved tracks ending at 15, 17, 23 — in the designer's
+// numbering (counting from the shared edge) positions #4, #8, #12, every-other external
+// edge. Mines 2 and 3 have nothing printed on their lean hex, so ore leaves them only from
+// the rich hex. Tunable: list positions 12–23 (never 18 or 19, the shared edge).
+export const MINE_LEAN_ORE_OUTPUTS: Readonly<Record<MineId, ReadonlyArray<number>>> = {
+  'mine-1': [15, 17, 23],
+  'mine-2': [],
+  'mine-3': [],
+};
 
 // ── PIECE_TEMPLATES ───────────────────────────────────────────────────────────
 // Single source of truth for all piece geometry.
@@ -364,36 +372,41 @@ export const PIECE_TEMPLATES: Record<PieceType, PieceTemplate> = {
     points: points12(['belt','belt','belt','belt','belt','belt','belt','belt','belt','belt','belt','belt']),
   },
 
+  // Building pieces: every hole on the printed piece that is not an input or output is a
+  // belt point any player may use, whoever has claimed the building (RULES_CHANGES.md #30).
+  // Hole positions measured from the models (public/models, converted from the designer's
+  // AMS print file); src/engine/__tests__/pieceModels.test.ts fails if they ever disagree.
+
   // ── Plate Factory ───────────────────────────────────────────────────────────
-  // #1=input · #8=output · #4,#5,#10,#11=belt · rest disabled
+  // #1=input · #8=output · #3,#4,#5,#6,#9,#10,#11,#12=belt · #2,#7 no hole
   plateFact: {
     kind: 'plateFact', hexCount: 1,
     points: points12([
       'input_buffer', 'disabled',      // #1, #2  (left edge)
-      'disabled',     'belt',           // #3, #4  (upper-left edge)
-      'belt',         'disabled',       // #5, #6  (upper-right edge)
+      'belt',         'belt',           // #3, #4  (upper-left edge)
+      'belt',         'belt',           // #5, #6  (upper-right edge)
       'disabled',     'output_buffer',  // #7, #8  (right edge)
-      'disabled',     'belt',           // #9, #10 (lower-right edge)
-      'belt',         'disabled',       // #11, #12 (lower-left edge)
+      'belt',         'belt',           // #9, #10 (lower-right edge)
+      'belt',         'belt',           // #11, #12 (lower-left edge)
     ]),
   },
 
   // ── Sphere Factory ──────────────────────────────────────────────────────────
-  // #1,#3=input · #8=output · #4,#5,#10,#11=belt · rest disabled
+  // #1,#3=input · #8=output · #4,#5,#6,#10,#11,#12=belt · #2,#7,#9 no hole
   sphereFact: {
     kind: 'sphereFact', hexCount: 1,
     points: points12([
       'input_buffer', 'disabled',      // #1, #2  (left edge)
       'input_buffer', 'belt',           // #3, #4  (upper-left edge)
-      'belt',         'disabled',       // #5, #6  (upper-right edge)
+      'belt',         'belt',           // #5, #6  (upper-right edge)
       'disabled',     'output_buffer',  // #7, #8  (right edge)
       'disabled',     'belt',           // #9, #10 (lower-right edge)
-      'belt',         'disabled',       // #11, #12 (lower-left edge)
+      'belt',         'belt',           // #11, #12 (lower-left edge)
     ]),
   },
 
   // ── Tesseract Factory ───────────────────────────────────────────────────────
-  // #1,#3,#12=input · #8=output · #4,#5,#10,#11=belt · rest disabled
+  // #1,#3,#12=input · #8=output · #4,#5,#10,#11=belt · #2,#6,#7,#9 no hole
   tesseractFact: {
     kind: 'tesseractFact', hexCount: 1,
     points: points12([
@@ -407,28 +420,49 @@ export const PIECE_TEMPLATES: Record<PieceType, PieceTemplate> = {
   },
 
   // ── Power Plant ─────────────────────────────────────────────────────────────
-  // #1=input · no output buffer (power tokens go to inventory) · #4,#5,#10,#11=belt · rest disabled
+  // #1=input · no output buffer (power tokens go to inventory) · #3,#4,#5,#6,#9,#10,#11,#12=belt
+  // · #2,#7,#8 no hole
   powerPlant: {
     kind: 'powerPlant', hexCount: 1,
     points: points12([
       'input_buffer', 'disabled',      // #1, #2  (left edge)
-      'disabled',     'belt',           // #3, #4  (upper-left edge)
-      'belt',         'disabled',       // #5, #6  (upper-right edge)
+      'belt',         'belt',           // #3, #4  (upper-left edge)
+      'belt',         'belt',           // #5, #6  (upper-right edge)
       'disabled',     'disabled',       // #7, #8  (right edge — no output)
-      'disabled',     'belt',           // #9, #10 (lower-right edge)
-      'belt',         'disabled',       // #11, #12 (lower-left edge)
+      'belt',         'belt',           // #9, #10 (lower-right edge)
+      'belt',         'belt',           // #11, #12 (lower-left edge)
     ]),
   },
 
   // ── Mine ────────────────────────────────────────────────────────────────────
   // Double-hex piece. NO belt connection points — belts never touch a mine directly.
   // Hex 0 (rich, positions 0–11):   internal edge 0 disabled; 5 external × 2 ore_output.
-  // Hex 1 (lean, positions 12–23):  internal edge 3 disabled; 5 external × 1 ore_output.
+  // Hex 1 (lean, positions 12–23):  internal edge 3 disabled; ore outputs per mine
+  //   (MINE_LEAN_ORE_OUTPUTS). This entry is MINE 1's layout; mines 2 and 3 differ only on
+  //   the lean hex — always read a placed piece's layout with pieceTemplate(piece).
   // Which hex is rich vs lean is set by the mine's rotation at placement.
   // Meeple slots: 1 resource point + 1 upgrade point (separate from connection points).
-  mine: {
-    kind: 'mine', hexCount: 2,
-    points: [...mineHex0Points(), ...mineHex1Points()],
-    meepleSlots: [{ type: 'resource' }, { type: 'upgrade' }],
-  },
+  mine: mineTemplate('mine-1'),
 };
+
+function mineTemplate(id: MineId): PieceTemplate {
+  return {
+    kind: 'mine', hexCount: 2,
+    points: [...mineHex0Points(), ...mineHex1Points(MINE_LEAN_ORE_OUTPUTS[id])],
+    meepleSlots: [{ type: 'resource' }, { type: 'upgrade' }],
+  };
+}
+
+// Each mine's own layout (they differ on the lean hex).
+export const MINE_TEMPLATES: Readonly<Record<MineId, PieceTemplate>> = {
+  'mine-1': PIECE_TEMPLATES.mine,
+  'mine-2': mineTemplate('mine-2'),
+  'mine-3': mineTemplate('mine-3'),
+};
+
+// The layout of one piece: by type, except that each mine has its own (by id). A mine with
+// an unknown id (hand-built test boards) uses mine 1's layout.
+export function pieceTemplate(piece: { readonly type: PieceType; readonly id: string }): PieceTemplate {
+  if (piece.type === 'mine') return MINE_TEMPLATES[piece.id as MineId] ?? PIECE_TEMPLATES.mine;
+  return PIECE_TEMPLATES[piece.type];
+}

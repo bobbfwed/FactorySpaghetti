@@ -360,7 +360,7 @@ export function applyEndActions(state: GameState): ActionResult {
     }));
     return {
       ok: true,
-      state: { ...flowed, players: newPlayers, activePlayerIndex: 0, phase: 'placePiece' },
+      state: { ...flowed, players: newPlayers, activePlayerIndex: 0, phase: 'placePiece', drawnStackIndex: null },
     };
   }
   return {
@@ -642,6 +642,19 @@ export function applyCollectOutput(state: GameState, action: CollectOutputAction
 
 // ── END_TURN ──────────────────────────────────────────────────────────────────
 
+// The order for the round-end turns and the next round: the first player moves to the end.
+function rotateTurnOrder(order: ReadonlyArray<PlayerId>): PlayerId[] {
+  return order.length === 0 ? [] : [...order.slice(1), order[0]!];
+}
+
+// The player order the end-of-round turns and the next round will use. The rotation happens
+// as the round's last turn ends (applyEndTurn), so during the roundEnd phase this is the
+// current turnOrder; in every other phase it is turnOrder with the first player moved to
+// the end. For the interface, which must not re-implement the rotation.
+export function upcomingTurnOrder(state: GameState): PlayerId[] {
+  return state.phase === 'roundEnd' ? [...state.turnOrder] : rotateTurnOrder(state.turnOrder);
+}
+
 export function applyEndTurn(state: GameState): ActionResult {
   if (state.phase !== 'placeMeeple') {
     return err('WRONG_PHASE', `Expected placeMeeple phase, got ${state.phase}`);
@@ -657,6 +670,7 @@ export function applyEndTurn(state: GameState): ActionResult {
         ...state,
         activePlayerIndex: state.activePlayerIndex + 1,
         phase: 'placePiece',
+        drawnStackIndex: null,
         lastRoll: null,
         mineBeltPlacedThisTurn: false,
         beltsPlacedThisTurn: [],
@@ -684,10 +698,7 @@ export function applyEndTurn(state: GameState): ActionResult {
   }));
 
   // Rotate turn order: first player moves to end
-  const newTurnOrder = [
-    ...state.turnOrder.slice(1),
-    state.turnOrder[0]!,
-  ];
+  const newTurnOrder = rotateTurnOrder(state.turnOrder);
 
   // Mine ore is instant/unlimited: top up every directly-connected input so each
   // player's roundEnd meeple building shows its ore before they choose to operate.

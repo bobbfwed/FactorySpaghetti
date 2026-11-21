@@ -14,14 +14,15 @@
 // A breadth-first search over belt points therefore yields the minimum belt count.
 //
 // Constraints honoured (rules): belts only on enabled belt points; > 2 apart; a point
-// already used by an existing belt is unavailable; belt points adjacent to *another*
-// player's claimed building buffer are off-limits; you can't feed an opponent's building.
+// already used by an existing belt is unavailable; belt points facing an input or output of
+// a building claimed only by other players are off-limits (reserved), as are points facing
+// another player's belt; so you can't feed a building you hold no claim on once it's claimed.
 //
 // NOTE: adjAt() is only ever evaluated FROM a belt point (always on a non-mine piece) or
 // from the destination building — never from a mine, where its geometry doesn't apply.
 
 import type { GameState, BoardPiece, PlayerId } from './state';
-import { PIECE_TEMPLATES } from './config';
+import { pieceTemplate } from './config';
 import { adjAt, getRole, beltEndpointBlocked } from './rules/flow';
 
 export interface RoutePoint {
@@ -49,7 +50,7 @@ export function routeSources(state: GameState, me: PlayerId): RoutePoint[] {
   for (const piece of state.board) {
     const mine = piece.type === 'mine';
     const owned = piece.claims.some(c => c.ownerId === me);
-    for (const pt of PIECE_TEMPLATES[piece.type].points) {
+    for (const pt of pieceTemplate(piece).points) {
       if (!pt.enabled) continue;
       if (pt.role === 'ore_output' && mine) out.push({ pieceId: piece.id, position: pt.position });
       else if (pt.role === 'output_buffer' && owned) out.push({ pieceId: piece.id, position: pt.position });
@@ -63,7 +64,7 @@ export function routeDests(state: GameState, me: PlayerId): RoutePoint[] {
   const out: RoutePoint[] = [];
   for (const piece of state.board) {
     if (!piece.claims.some(c => c.ownerId === me)) continue;
-    for (const pt of PIECE_TEMPLATES[piece.type].points) {
+    for (const pt of pieceTemplate(piece).points) {
       if (pt.enabled && pt.role === 'input_buffer') out.push({ pieceId: piece.id, position: pt.position });
     }
   }
@@ -72,12 +73,12 @@ export function routeDests(state: GameState, me: PlayerId): RoutePoint[] {
 
 // Every belt connection point `me` could currently place a belt on (the route picker
 // highlights all of these): an enabled belt point that isn't already used by a belt and
-// isn't blocked (joining an opponent's belt / blocking their input). The player picks any
+// isn't blocked (joining an opponent's belt / a point reserved for a building's owners). The player picks any
 // two of these and findBeltPath fills in the belts between them.
 export function usableBeltPoints(state: GameState, me: PlayerId): RoutePoint[] {
   const out: RoutePoint[] = [];
   for (const piece of state.board) {
-    for (const pt of PIECE_TEMPLATES[piece.type].points) {
+    for (const pt of pieceTemplate(piece).points) {
       if (pt.enabled && pt.role === 'belt' && usableBeltPoint(state, piece, pt.position, me)) {
         out.push({ pieceId: piece.id, position: pt.position });
       }
@@ -93,7 +94,7 @@ function pieceById(state: GameState, id: string): BoardPiece | undefined {
 }
 
 function totalPositions(piece: BoardPiece): number {
-  return PIECE_TEMPLATES[piece.type].hexCount * 12;
+  return pieceTemplate(piece).hexCount * 12;
 }
 
 function circularDistance(a: number, b: number, n: number): number {
@@ -102,7 +103,7 @@ function circularDistance(a: number, b: number, n: number): number {
 }
 
 function beltPositions(piece: BoardPiece): number[] {
-  return PIECE_TEMPLATES[piece.type].points
+  return pieceTemplate(piece).points
     .filter(p => p.enabled && p.role === 'belt')
     .map(p => p.position);
 }
@@ -120,9 +121,9 @@ function pointOccupied(state: GameState, pieceId: string, pos: number): boolean 
 // A belt point we may attach a belt to right now. Uses the same placement-legality
 // predicate as the engine (beltEndpointBlocked) so every route the router returns can
 // actually be placed: enabled belt point, not already used, and not joining an opponent's
-// belt or blocking an opponent's building input.
+// belt or using a point reserved for the owners of the building it faces.
 function usableBeltPoint(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): boolean {
-  const def = PIECE_TEMPLATES[piece.type].points.find(p => p.position === pos);
+  const def = pieceTemplate(piece).points.find(p => p.position === pos);
   if (!def || def.role !== 'belt' || !def.enabled) return false;
   if (pointOccupied(state, piece.id, pos)) return false;
   if (beltEndpointBlocked(state, piece, pos, me)) return false;
@@ -173,8 +174,9 @@ export function findRoute(
   const srcRole = getRole(srcPiece, source.position);
   if (srcRole !== 'ore_output' && srcRole !== 'output_buffer') return null;
 
-  // Can't feed another player's building.
-  if (destPiece.claims.some(c => c.ownerId !== me)) return null;
+  // Can't feed a building claimed only by other players (its input points are reserved
+  // for its owners; a co-owner may).
+  if (destPiece.claims.length > 0 && !destPiece.claims.some(c => c.ownerId === me)) return null;
 
   const isSource = (n: { piece: BoardPiece; pos: number }) =>
     n.piece.id === source.pieceId && n.pos === source.position;

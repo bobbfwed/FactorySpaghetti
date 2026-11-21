@@ -284,7 +284,7 @@ describe('belt placement cross-player rules', () => {
     expect(res.error.code).toBe('BELT_BLOCKED');
   });
 
-  it("rejects a belt that would block another player's building input", () => {
+  it("rejects a belt facing the input of a building claimed only by another player (reserved)", () => {
     const opp: BoardPiece = {
       id: 'opp', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0,
       claims: [{ ownerId: 1, controlModule: 3 }],
@@ -294,7 +294,7 @@ describe('belt placement cross-player rules', () => {
     const res = applyAction(state, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 });
     expect(res.ok).toBe(false);
     if (res.ok) return;
-    expect(res.error.code).toBe('BELT_BLOCKED');
+    expect(res.error.code).toBe('POINT_RESERVED');
   });
 
   it('allows a belt that feeds the placing player’s OWN building input', () => {
