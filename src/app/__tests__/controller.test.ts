@@ -220,10 +220,17 @@ describe('hosting and joining', () => {
     await until(w, () => lobbyInfo(a.ctrl.room!, 0).canStart);
     expect(lobbyInfo(a.ctrl.room!, 0).needs).toMatch(/Everyone is ready/);
     expect(lobbyInfo(b.ctrl.room!, 1).canStart).toBe(false); // only the host starts
-    // A setting change clears the ready flags.
+    // A timer change keeps everyone ready; changing the game (player count) asks Bea again,
+    // while the host who made the change stays ready.
     await run(w, a.ctrl.configure({ factoryOpTimeoutMs: 10_000 }));
-    await until(w, () => !lobbyInfo(a.ctrl.room!, 0).canStart);
-    expect(a.ctrl.room!.settings.factoryOpTimeoutMs).toBe(10_000);
+    await until(w, () => a.ctrl.room!.settings.factoryOpTimeoutMs === 10_000);
+    expect(lobbyInfo(a.ctrl.room!, 0).canStart).toBe(true);
+    await run(w, a.ctrl.openSeat(3));
+    await run(w, a.ctrl.configure({ playerCount: 3 }));
+    await until(w, () => a.ctrl.room!.seats.length === 3);
+    expect(a.ctrl.room!.seats[0]!.ready).toBe(true);
+    expect(a.ctrl.room!.seats[1]!.ready).toBe(false);
+    expect(lobbyInfo(a.ctrl.room!, 0).needs).toBe('Waiting for Bea to be ready.');
   });
 });
 

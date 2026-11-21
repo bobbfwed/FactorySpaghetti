@@ -4,7 +4,7 @@
 
 import type { Conn } from '../net/conn';
 import type { Action } from '../engine/actions';
-import type { PlayerId } from '../engine/state';
+import type { GameState, PlayerId } from '../engine/state';
 import { applyAction, createGame, legalActions } from '../engine';
 import { botById } from '../bots/registry';
 import type { LogEntry, Room, RoomSettings, Seat, TableEvent } from './room';
@@ -560,7 +560,11 @@ export class HostSession {
           seats = resizeSeats(r.seats, next.playerCount);
           if (!seats) return err('SEAT_OCCUPIED', 'A player is sitting in a seat that would be removed.');
         }
-        this.room = { ...r, settings: next, seats: seats.map(s => ({ ...s, ready: false })) };
+        // Ready means "I agree to play this game". A change to the game itself (the number of
+        // players) asks the other players again; pacing, timers and the away rule do not. The
+        // host, who made the change, stays ready.
+        const changesGame = next.playerCount !== r.settings.playerCount;
+        this.room = { ...r, settings: next, seats: changesGame ? unreadyOthers(seats, r.hostSeat) : seats };
         this.seatWaiting();
         return done();
       }
@@ -575,7 +579,7 @@ export class HostSession {
           const next: Seat = msg.kind === 'open'
             ? openSeat(seat.index, seat.color)
             : { ...openSeat(seat.index, seat.color), kind: 'bot', botId: bot.id, name: dedupeName(bot.label, namesInUse(r, seat.index)) };
-          this.room = { ...r, seats: r.seats.map(s => (s.index === seat.index ? next : { ...s, ready: false })) };
+          this.room = { ...r, seats: unreadyOthers(r.seats, r.hostSeat).map(s => (s.index === seat.index ? next : s)) };
           this.seatWaiting();
           return done();
         }
@@ -594,13 +598,17 @@ export class HostSession {
         if (r.seats.some(s => s.kind === 'human' && !s.connected)) {
           return err('SEATS_ABSENT', 'A player is not connected. Wait for them, or open their seat or give it to a bot.');
         }
-        if (r.seats.some(s => s.kind === 'human' && !s.ready)) return err('NOT_READY', 'Every player must be ready.');
+        // Bots are always ready, and a host playing alone with bots can always start.
+        if (!onlyHostPlays(r) && r.seats.some(s => s.kind === 'human' && !s.ready)) return err('NOT_READY', 'Every player must be ready.');
         const seed = this.randomSeed() >>> 0;
         const game = createGame(seed, r.settings.playerCount);
         const names = r.seats.map(s => s.name).join(', ');
         this.room = {
           ...r, phase: 'playing', game, seq: 0, diceRng: diceRngFromSeed(seed),
-          recent: [], lastEvents: [], log: [{ seq: 0, seat: null, text: `The game begins: ${names}.` }],
+          recent: [], lastEvents: [], log: [
+            { seq: 0, seat: null, text: `The game begins: ${names}.` },
+            { seq: 0, seat: null, text: firstPlayerText(game, r.seats) },
+          ],
         };
         this.moveJournal = fullJournal(seed, r.settings.playerCount);
         return done();
@@ -1060,6 +1068,24 @@ export class HostSession {
     this.closing.add(conn);
     this.sched.setTimeout(() => { this.closing.delete(conn); conn.close(); }, CLOSE_DELAY_MS);
   }
+}
+
+/** Every seat's ready flag cleared, except the host's own. */
+function unreadyOthers(seats: readonly Seat[], hostSeat: number): Seat[] {
+  return seats.map(s => (s.index === hostSeat ? s : { ...s, ready: false }));
+}
+
+/** The host is the only person at the table (the other seats are bots or open). */
+export function onlyHostPlays(room: Room): boolean {
+  const humans = room.seats.filter(s => s.kind === 'human');
+  return humans.length === 1 && humans[0]!.index === room.hostSeat;
+}
+
+/** The first line of a game's log: who goes first, as the rulebook decides it, by a roll. */
+export function firstPlayerText(game: GameState, seats: readonly Seat[]): string {
+  const first = game.turnOrder[0];
+  const name = first === undefined ? 'A player' : seats[first]?.name || `Seat ${first + 1}`;
+  return `${name} goes first: a roll of the dice decided the order of play.`;
 }
 
 /** Apply a partial settings change, clamped to sensible ranges; null if a value is not usable. */

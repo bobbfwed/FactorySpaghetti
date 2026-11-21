@@ -8,6 +8,7 @@ import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } 
 import { legalActions } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
+import { whereLabel, whereWords } from '../session/where';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
 
@@ -59,14 +60,14 @@ const GROUPS: { id: GroupId; title: string; noun: [string, string] }[] = [
 /** Groups with more options than this start collapsed. */
 export const COLLAPSE_OVER = 6;
 
-const cell = (c: { q: number; r: number }): string => `${c.q},${c.r}`;
+// Positions are described relative to the first Mine (session/where.ts), never as coordinates.
 const turned = (r: number | undefined): string => (r ? ` · turned ${r}` : '');
 
-/** "Plate Factory at 1,-1 (yours, module 3)". */
+/** "Plate Factory 1 space to the right of the first Mine (yours, module 3)". */
 export function pieceLabel(game: GameState, pieceId: string | undefined, names: readonly string[], me: number | null): string {
   const p = pieceId === undefined ? undefined : game.board.find(x => x.id === pieceId);
   if (!p) return 'a piece';
-  return `${BUILDING_NAME[p.type]} at ${cell(p.coord)}${ownerNote(p, names, me)}`;
+  return `${BUILDING_NAME[p.type]} ${whereWords(game, p.coord)}${ownerNote(p, names, me)}`;
 }
 
 function ownerNote(p: BoardPiece, names: readonly string[], me: number | null): string {
@@ -94,12 +95,12 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
     case 'SETUP_CLAIM':
       return { group: 'setup', label: `Claim the ${piece(a.pieceId)} with Control Module ${game.phase === 'setupClaimPF' ? 3 : 2}` };
     case 'PLACE_PIECE':
-      return { group: 'place', sub: `From stack ${a.stackIndex + 1}`, label: `Cell ${cell(a.coord)}${turned(a.rotation)}` };
+      return { group: 'place', sub: `From stack ${a.stackIndex + 1}`, label: `${whereLabel(game, a.coord)}${turned(a.rotation)}` };
     case 'PLACE_MINE':
-      return { group: 'place', sub: 'The dropped Mine', label: `Cell ${cell(a.coord)}${turned(a.rotation)}` };
+      return { group: 'place', sub: 'The dropped Mine', label: `${whereLabel(game, a.coord)}${turned(a.rotation)}` };
     case 'PLACE_OVERSTOCK_PIECE': {
       const next = game.overstockPieces[0];
-      return { group: 'place', sub: `Overstock piece${next ? `: ${BUILDING_NAME[next.type]}` : ''}`, label: `Cell ${cell(a.coord)}${turned(a.rotation)}` };
+      return { group: 'place', sub: `Overstock piece${next ? `: ${BUILDING_NAME[next.type]}` : ''}`, label: `${whereLabel(game, a.coord)}${turned(a.rotation)}` };
     }
     case 'ROLL_DICE':
       return { group: 'roll', label: `Roll ${game.mineCount} ${game.mineCount === 1 ? 'die' : 'dice'}` };
@@ -111,7 +112,7 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
       const p = game.board.find(x => x.id === a.pieceId);
       if (p?.type === 'mine') {
         const slot = a.slotIndex === 1 ? 'upgrade point' : 'resource point';
-        return { group: 'meeple', label: `Mine at ${cell(p.coord)}: ${slot}` };
+        return { group: 'meeple', label: `${p.id === 'mine-1' ? 'The first Mine' : `The Mine ${whereWords(game, p.coord)}`}: ${slot}` };
       }
       return { group: 'meeple', label: piece(a.pieceId) };
     }
@@ -146,7 +147,7 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
       return { group: 'buildings', label: `Skip the ${piece(a.pieceId)}` };
     case 'BUY_MINE': {
       const cost = MINE_COSTS[game.mineCount - 1] ?? MINE_COSTS[1];
-      return { group: 'buy', sub: `Buy a Mine (${cost} ore value)`, label: `Cell ${cell(a.coord)}${turned(a.rotation)}` };
+      return { group: 'buy', sub: `Buy a Mine (${cost} ore value)`, label: `${whereLabel(game, a.coord)}${turned(a.rotation)}` };
     }
     case 'BUY_CARD':
       return { group: 'buy', label: `Buy a Leverage card (${cardCost(game.mineCount)} ore value)` };
@@ -163,7 +164,7 @@ function cardDetail(game: GameState, a: Extract<Action, { type: 'PLAY_CARD' }>, 
     case 'scoutingDrone': {
       const st = a.stackIndex ?? 0;
       const drawn = game.stacks[st]?.pieces[a.pieceIndex ?? 0];
-      return `Stack ${st + 1}, piece ${(a.pieceIndex ?? 0) + 1}${drawn ? ` (${BUILDING_NAME[drawn.type]})` : ''} to cell ${a.coord ? cell(a.coord) : '?'}${turned(a.rotation)}`;
+      return `Stack ${st + 1}, piece ${(a.pieceIndex ?? 0) + 1}${drawn ? ` (${BUILDING_NAME[drawn.type]})` : ''} ${a.coord ? whereWords(game, a.coord) : 'somewhere'}${turned(a.rotation)}`;
     }
     case 'shortSale': return `Claim the ${piece(a.pieceId)} with module ${a.controlModule ?? '?'}`;
     case 'sinkHole': return `Remove the ${piece(a.pieceId)}`;

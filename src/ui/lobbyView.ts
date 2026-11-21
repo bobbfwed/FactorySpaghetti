@@ -29,6 +29,7 @@ function render(ctrl: AppController, room: Room): Child[] {
   const info = lobbyInfo(room, me);
   const resuming = info.resuming;
   const solo = ctrl.state.solo;
+  if (solo && !resuming) return soloSetup(ctrl, room, info);
   const title = resuming ? `Saved game · round ${room.game?.round ?? 0}` : solo ? 'Solo game' : 'Room lobby';
   return [
     topBar(ctrl, title),
@@ -128,10 +129,15 @@ function seatCard(ctrl: AppController, room: Room, s: Seat, isHost: boolean, res
   return card;
 }
 
-function stepControl(label: string, value: number, steps: readonly number[], editable: boolean, set: (v: number) => unknown): HTMLElement {
+/** "No limit" for a timer that is switched off (0). */
+const timerWords = (ms: number): string => (ms <= 0 ? 'No limit' : durationWords(ms));
+/** When the stand-in bot comes: "at once" (0) or "after 90 s". */
+const graceWords = (ms: number): string => (ms <= 0 ? 'At once' : `After ${durationWords(ms)}`);
+
+function stepControl(label: string, value: number, steps: readonly number[], editable: boolean, set: (v: number) => unknown, words: (ms: number) => string = timerWords): HTMLElement {
   return h('span', { class: 'step2', attrs: { role: 'group', 'aria-label': label } },
     editable ? actionButton('−', 'stepbtn', () => set(stepValue(steps, value, -1)), { disabled: value <= steps[0]!, title: `Less (${label})` }) : null,
-    h('span', { class: 'val', text: durationWords(value) }),
+    h('span', { class: 'val', text: words(value) }),
     editable ? actionButton('+', 'stepbtn', () => set(stepValue(steps, value, 1)), { disabled: value >= steps[steps.length - 1]!, title: `More (${label})` }) : null);
 }
 
@@ -167,13 +173,56 @@ function settingsBlock(ctrl: AppController, st: RoomSettings, isHost: boolean): 
     h('div', { class: 'set wide' },
       h('div', { class: 'k' }, 'If a player drops', h('small', {
         text: st.awayPolicy === 'bot'
-          ? `Their seat keeps its pieces; ${st.awayGraceMs > 0 ? `after ${durationWords(st.awayGraceMs)} ` : ''}a bot plays until they reconnect`
-          : 'The game waits for them to come back',
+          ? (st.awayGraceMs > 0
+            ? `Their seat keeps its pieces; after ${durationWords(st.awayGraceMs)} a bot plays it until they come back`
+            : 'Their seat keeps its pieces; a bot plays it at once until they come back')
+          : 'Nobody plays their seat: the game waits until they come back',
       })),
       h('div', { class: 'v' },
-        seg([{ v: 'bot' as const, label: 'Bot takes over' }, { v: 'wait' as const, label: 'Wait' }], st.awayPolicy, v => cfg({ awayPolicy: v }), 'If a player drops'),
-        st.awayPolicy === 'bot' ? stepControl('Grace time', st.awayGraceMs, GRACE_STEPS, isHost, v => cfg({ awayGraceMs: v })) : null)),
+        seg([{ v: 'bot' as const, label: 'A bot takes over' }, { v: 'wait' as const, label: 'Wait for the player' }], st.awayPolicy, v => cfg({ awayPolicy: v }), 'If a player drops'),
+        st.awayPolicy === 'bot' ? stepControl('When the bot takes over', st.awayGraceMs, GRACE_STEPS, isHost, v => cfg({ awayGraceMs: v }), graceWords) : null)),
     isHost ? null : h('p', { class: 'hint wide', text: 'Only the host can change these settings.' }));
+}
+
+/**
+ * A solo game's set-up: nothing about rooms, codes or ready flags (nobody else joins). Players,
+ * bot speed, your colour, and Start.
+ */
+function soloSetup(ctrl: AppController, room: Room, info: ReturnType<typeof lobbyInfo>): Child[] {
+  const st = room.settings;
+  const me = ctrl.mySeat;
+  const seg = <T extends string | number>(items: { v: T; label: string }[], cur: T, set: (v: T) => unknown, name: string): HTMLElement =>
+    h('span', { class: 'seg', attrs: { role: 'group', 'aria-label': name } }, items.map(it =>
+      actionButton(it.label, it.v === cur ? 'on' : '', () => (it.v === cur ? undefined : set(it.v)), { title: `${name}: ${it.label}` })));
+  const swatches = me === null ? [] : colorChoices(room, me).map(c => h('button', {
+    class: `swatch${c.mine ? ' on' : ''}`, style: `--sw:${COLORS[c.color]}`, disabled: !c.free,
+    title: c.mine ? `${COLOR_NAME[c.color]} (yours)` : `Play ${COLOR_NAME[c.color].toLowerCase()}`,
+    attrs: { 'aria-label': `Colour ${COLOR_NAME[c.color]}`, 'aria-pressed': String(c.mine) },
+    onclick: () => { if (!c.mine) void ctrl.setColor(c.color); },
+  }));
+  const bots = room.seats.filter(s => s.kind === 'bot');
+  return [
+    topBar(ctrl, 'Solo game'),
+    h('section', { class: 'tray panel solo-setup' },
+      h('h1', { text: 'Game set-up' }),
+      messageStrip(ctrl),
+      h('div', { class: 'settings' },
+        h('div', { class: 'set' },
+          h('div', { class: 'k' }, 'Players', h('small', { text: 'You and the bots' })),
+          h('div', { class: 'v' }, seg([2, 3, 4].map(n => ({ v: n as 2 | 3 | 4, label: String(n) })), st.playerCount, v => ctrl.configure({ playerCount: v }), 'Players'))),
+        h('div', { class: 'set' },
+          h('div', { class: 'k' }, 'Bot speed', h('small', { text: BOT_SPEED_HINT[botSpeedOf(st)] })),
+          h('div', { class: 'v' }, seg([
+            { v: 'instant' as const, label: 'Instant' }, { v: 'fast' as const, label: 'Fast' }, { v: 'normal' as const, label: 'Normal' },
+          ], botSpeedOf(st), v => ctrl.setBotSpeed(v), 'Bot speed'))),
+        h('div', { class: 'set wide' },
+          h('div', { class: 'k' }, 'Your colour'),
+          h('div', { class: 'v swatches' }, swatches))),
+      bots.length ? h('p', { class: 'hint' }, 'Against: ', bots.map((b, i) => [i ? ', ' : '', h('b', { text: b.name, style: `color:${COLORS[b.color]}` })])) : null,
+      h('div', { class: 'row end' },
+        h('button', { class: 'btn btn-quiet btn-lg', onclick: () => ctrl.leave() }, 'Back'),
+        actionButton([icon('play'), 'Start'], 'btn btn-gold btn-xl', () => ctrl.start(), { disabled: !info.canStart }))),
+  ];
 }
 
 function waitingList(ctrl: AppController, room: Room, isHost: boolean): HTMLElement | null {

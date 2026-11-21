@@ -70,7 +70,8 @@ describe('a replay file', () => {
     // Stepping back one move at a time from the end goes through every position.
     for (let p = cursor.length; p > cursor.length - 40; p--) expect(cursor.stateAt(p - 1)).toEqual(replayTo(finished.journal, p - 1));
     expect(cursor.lineAt(0)).toBe('The game begins.');
-    expect(cursor.lineAt(1)).toMatch(/^(Ann|Bea|Cy) claimed the Plate Factory with Control Module 3$/);
+    expect(cursor.lineAt(1)).toMatch(/^(Ann|Bea|Cy) claimed the Plate Factory .* of the first Mine with Control Module 3$/);
+    expect(cursor.lineAt(1)).not.toMatch(/-?\d+,-?\d+/);
   });
 
   it('jumps to the next roll and to the next turn', async () => {

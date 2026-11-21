@@ -20,13 +20,13 @@ import { NAME_MAX, cleanName } from '../session/room';
 import type { SaveEnvelope, SaveErrorKind } from '../session/save';
 import { SaveError, packLink, parseSaveFile, sameRules, saveFromHash, saveSummary, serializeSaveFile, toSave, unpackLink } from '../session/save';
 import type { SaveListing, SaveStore } from '../session/store';
-import { findJournals, journalKey, listSaves, readJournal } from '../session/store';
+import { findJournals, journalKey, listSaves, readJournal, saveKey } from '../session/store';
 import type { Scheduler } from '../session/scheduler';
 import { realScheduler } from '../session/scheduler';
 import type { BotSpeed } from '../session/pacing';
 import { botPauseMs, lastMoveOf } from '../session/pacing';
 import type { JournalData } from '../session/journal';
-import { journalMatches, partialJournal } from '../session/journal';
+import { journalFrom, journalMatches, partialJournal } from '../session/journal';
 import type { RefusedMove } from '../session/clientSession';
 import type { ReplayCursor, ReplayFile } from '../session/replay';
 import { ReplayError, makeReplay, replayFileName, serializeReplay, verifyReplay } from '../session/replay';
@@ -274,6 +274,38 @@ export function rollbackText(r: { at: number; lost: number }): string {
   const moves = r.lost === 1 ? 'move' : `${r.lost} moves`;
   return `The new host had not received ${r.lost === 1 ? 'a move' : `${r.lost} moves`} seen on this device after move ${r.at}, `
     + `so the game went on without ${r.lost === 1 ? 'it' : 'them'}. Make your ${moves} again if still allowed.`;
+}
+
+/** The page's own address: origin and path only (no query such as ?debug, no fragment). */
+export function pageAddress(base: string): string {
+  try {
+    const url = new URL(base);
+    return url.origin + url.pathname;
+  } catch {
+    return base.replace(/[?#].*$/, '');
+  }
+}
+
+/**
+ * An invite link: the page plus ?join=CODE. A room on the same-browser transport (tabs of one
+ * browser, for testing) keeps t=local, since its invite only works that way.
+ */
+export function inviteUrl(base: string, code: string, sameBrowser: boolean): string {
+  const link = inviteLink(pageAddress(base), code);
+  return sameBrowser ? `${link}&t=local` : link;
+}
+
+/** A save link: the page plus #save=…, and nothing else (a save opens on any device and transport). */
+export function saveUrl(base: string, packed: string): string {
+  return `${pageAddress(base)}#save=${packed}`;
+}
+
+/** Whether anyone has rolled the dice yet in this game (from the journal when it starts at the beginning). */
+export function hasRolled(room: Room, journal: JournalData | null): boolean {
+  const g = room.game;
+  if (!g) return false;
+  if (journal && journalFrom(journal) === 0) return journal.moves.some(m => m.type === 'ROLL_DICE');
+  return true; // a resumed game, or no journal: assume it has, and keep it
 }
 
 /** A saved game with a single person and bots in every other seat (it needs no network). */
@@ -544,8 +576,12 @@ export class AppController {
   leave(): void {
     const online = this.state.online;
     const solo = this.state.solo;
+    // A solo game left before its first roll is not worth keeping: nothing has happened yet.
+    const room = online?.client.room ?? null;
+    const untouched = solo && !!room?.game && !room.game.gameOver && !hasRolled(room, online?.client.journal ?? null);
     this.detach();
     online?.leave(solo ? { endRoom: true } : {});
+    if (untouched && room) this.forget(saveKey(room.code), room.code);
     this.set({
       online: null, solo: false, error: null, moveError: null, linkBox: null, report: null, saves: listSaves(this.deps.saves), focus: null,
     });
@@ -591,16 +627,14 @@ export class AppController {
   copyInvite(): Promise<void> {
     const online = this.state.online;
     if (!online) return Promise.resolve();
-    let link = inviteLink(this.deps.location.base, online.code);
-    if (this.state.transportKind === 'local') link += '&t=local';
+    const link = inviteUrl(this.deps.location.base, online.code, this.state.transportKind === 'local' && !this.state.solo);
     return this.copy(link, 'Invite link copied. Send it to the other players.', 'Invite link');
   }
 
   inviteText(): string {
     const online = this.state.online;
     if (!online) return '';
-    const link = inviteLink(this.deps.location.base, online.code);
-    return this.state.transportKind === 'local' ? `${link}&t=local` : link;
+    return inviteUrl(this.deps.location.base, online.code, this.state.transportKind === 'local' && !this.state.solo);
   }
 
   private async copy(text: string, done: string, title: string): Promise<void> {
@@ -689,9 +723,7 @@ export class AppController {
   async saveLink(): Promise<string | null> {
     const save = this.currentSave(true);
     if (!save) return null;
-    const text = await packLink(save);
-    const query = this.state.transportKind === 'local' ? '?t=local' : '';
-    return `${this.deps.location.base}${query}#save=${text}`;
+    return saveUrl(this.deps.location.base, await packLink(save));
   }
 
   async copySaveLink(): Promise<void> {
@@ -865,6 +897,30 @@ export class AppController {
 
   refreshSaves(): void {
     this.set({ saves: listSaves(this.deps.saves) });
+  }
+
+  /** "Watch replay" for a finished game on this device: its save and its stored moves. */
+  watchSaved(key: string): Promise<void> {
+    const text = this.deps.saves.get(key);
+    if (text === null) { this.refreshSaves(); return Promise.resolve(); }
+    try {
+      const save = this.withJournal(parseSaveFile(text), readJournal(this.deps.saves, parseSaveFile(text).room.code));
+      if (!save.journal || !save.room.game) {
+        this.set({ error: 'The moves of this game are not kept on this device, so it cannot be replayed.' });
+        return Promise.resolve();
+      }
+      const replay = makeReplay(save.room, save.journal, { savedAt: save.savedAt, app: save.app });
+      return this.openReplay({ kind: 'save', replay, report: null });
+    } catch (e) {
+      this.set({ error: saveErrorMessage(e, 'device') });
+      return Promise.resolve();
+    }
+  }
+
+  /** Remove a save and its stored moves, without a word (an untouched solo game). */
+  private forget(key: string, code: string): void {
+    this.deps.saves.remove(key);
+    this.deps.saves.remove(journalKey(code));
   }
 
   deleteSave(key: string): void {

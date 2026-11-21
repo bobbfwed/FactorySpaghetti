@@ -21,10 +21,15 @@
   --heavy: "Arial Black", "Segoe UI Black", system-ui, sans-serif;
 }
 
+/* One continuous background however long the page: the glow and the fade sit in the first screen
+   (phones ignore "fixed" backgrounds), and below it the page simply stays the end colour. */
+html { background: #0e0b09; }
 body {
-  background:
-    radial-gradient(ellipse 120% 70% at 50% 0%, rgba(232, 183, 48, 0.07), transparent 60%),
-    linear-gradient(180deg, #17110d 0%, #0e0b09 100%) fixed;
+  background-color: #0e0b09;
+  background-image:
+    radial-gradient(ellipse 120% 70vh at 50% 0%, rgba(232, 183, 48, 0.07), transparent 60%),
+    linear-gradient(180deg, #17110d 0, #0e0b09 100vh);
+  background-repeat: no-repeat;
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
@@ -357,6 +362,17 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .standings { margin: 0 0 14px; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; }
 .standings li { line-height: 1.4; }
 .standings .sw { margin-right: 8px; }
+
+/* ---- solo game set-up ---- */
+.solo-setup { max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.solo-setup h1 { margin: 0; font-size: 22px; }
+.solo-setup .settings { margin-top: 0; }
+.solo-setup .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+.solo-setup .row.end { margin-top: 4px; }
+.saves .show-all { align-self: flex-start; min-height: 44px; }
+.save.finished .t { color: var(--text-2); }
+.count.pts { gap: 3px; }
+.count.pts .muted { font-size: 12px; }
 
 /* ---- replay viewer (N11) ---- */
 html.rv-active, html.rv-active body { height: 100%; overflow: hidden; overscroll-behavior: none; }

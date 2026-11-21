@@ -16,6 +16,9 @@ export interface View {
   unmounted?(): void;
 }
 
+/** How many saved (and finished) games the start menu shows before "Show all". */
+const SAVES_SHOWN = 3;
+
 export function menuView(ctrl: AppController, version: string): View {
   // ── Name ──
   const nameInput = h('input', {
@@ -151,6 +154,8 @@ export function menuView(ctrl: AppController, version: string): View {
         h('a', { text: 'Network check', attrs: { href: './net-check.html' } }))));
 
   let lastSaves: unknown = null;
+  let showAll = false;
+  let lastShowAll = false;
   let lastInstall: string | null = null;
 
   const update = (): void => {
@@ -167,24 +172,43 @@ export function menuView(ctrl: AppController, version: string): View {
     if (codeInput.value !== s.joinCode && document.activeElement !== codeInput) { codeInput.value = s.joinCode; drawBoxes(); }
     if (s.error && s.focus === 'name' && nameInput.value.trim() === '') nameInput.focus();
 
-    if (s.saves !== lastSaves) {
+    if (s.saves !== lastSaves || showAll !== lastShowAll) {
       lastSaves = s.saves;
+      lastShowAll = showAll;
       savesBox.replaceChildren();
-      if (s.saves.length > 0) {
-        const now = Date.now();
-        savesBox.append(h('div', { class: 'label', text: s.saves.length === 1 ? 'Saved game' : 'Saved games' }));
-        for (const sv of s.saves.slice(0, 8)) {
-          const ended = sv.phase === 'finished';
-          savesBox.append(h('div', { class: 'save tray' },
-            h('div', { class: 'info' },
-              h('div', { class: 't' }, `Room ${sv.code} · ${ended ? 'finished' : `Round ${sv.round}`}`),
-              h('div', { class: 'muted names', text: `${sv.names.filter(Boolean).join(', ')} · ${savedWhen(sv.savedAt, now)}` })),
-            h('button', { class: 'btn btn-gold', onclick: () => ctrl.resumeStored(sv.key) }, 'Resume'),
-            h('button', {
-              class: 'btn btn-quiet icon-only', title: `Delete the save of room ${sv.code}`, attrs: { 'aria-label': `Delete the save of room ${sv.code}` },
-              onclick: () => { if (window.confirm(`Delete the save of room ${sv.code}?`)) ctrl.deleteSave(sv.key); },
-            }, icon('trash'))));
-        }
+      const now = Date.now();
+      // Games still to play first (Resume), then finished ones (a replay, never Resume).
+      const open = s.saves.filter(sv => sv.phase !== 'finished');
+      const done = s.saves.filter(sv => sv.phase === 'finished');
+      const limit = showAll ? Infinity : SAVES_SHOWN;
+      const row = (sv: (typeof s.saves)[number]): HTMLElement => {
+        const ended = sv.phase === 'finished';
+        const what = ended ? 'finished game' : 'saved game';
+        return h('div', { class: `save tray${ended ? ' finished' : ''}` },
+          h('div', { class: 'info' },
+            h('div', { class: 't' }, `Room ${sv.code} · ${ended ? 'finished' : `Round ${sv.round}`}`),
+            h('div', { class: 'muted names', text: `${sv.names.filter(Boolean).join(', ')} · ${savedWhen(sv.savedAt, now)}` })),
+          ended
+            ? (sv.hasMoves ? h('button', { class: 'btn btn-dark', attrs: { 'data-watch': sv.code }, onclick: () => { void ctrl.watchSaved(sv.key); } }, 'Watch replay') : null)
+            : h('button', { class: 'btn btn-gold', attrs: { 'data-resume': sv.code }, onclick: () => ctrl.resumeStored(sv.key) }, 'Resume'),
+          h('button', {
+            class: 'btn btn-quiet icon-only', title: `Delete the ${what} of room ${sv.code}`, attrs: { 'aria-label': `Delete the ${what} of room ${sv.code}` },
+            onclick: () => { if (window.confirm(`Delete the ${what} of room ${sv.code}?`)) ctrl.deleteSave(sv.key); },
+          }, icon('trash')));
+      };
+      if (open.length > 0) {
+        savesBox.append(h('div', { class: 'label', text: open.length === 1 ? 'Saved game' : 'Saved games' }));
+        for (const sv of open.slice(0, limit)) savesBox.append(row(sv));
+      }
+      if (done.length > 0) {
+        savesBox.append(h('div', { class: 'label', text: done.length === 1 ? 'Finished game' : 'Finished games' }));
+        for (const sv of done.slice(0, limit)) savesBox.append(row(sv));
+      }
+      if (open.length > SAVES_SHOWN || done.length > SAVES_SHOWN) {
+        savesBox.append(h('button', {
+          class: 'btn btn-quiet show-all', attrs: { 'aria-expanded': String(showAll) },
+          onclick: () => { showAll = !showAll; update(); },
+        }, showAll ? 'Show fewer' : `Show all (${s.saves.length})`));
       }
     }
 

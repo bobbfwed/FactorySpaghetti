@@ -44,7 +44,9 @@ describe('game text', () => {
     const active = g0.turnOrder[g0.activePlayerIndex]!;
     const setup = optionGroups(room0, active);
     expect(setup.map(x => x.id)).toEqual(['setup']);
-    expect(setup[0]!.options[0]!.label).toMatch(/^Claim the Plate Factory at -?\d+,-?\d+ \(unclaimed\) with Control Module 3$/);
+    expect(setup[0]!.options[0]!.label).toMatch(/^Claim the Plate Factory .* of the first Mine \(unclaimed\) with Control Module 3$/);
+    // No board coordinates in anything a player reads.
+    for (const g of setup) for (const o of g.options) expect(o.label).not.toMatch(/-?\d+,-?\d+/);
     expect(optionGroups(room0, 1 - active)).toEqual([]);
 
     const g1 = advance(g0, g => g.phase === 'placePiece');
@@ -55,7 +57,8 @@ describe('game text', () => {
     expect(place[0]!.options.length).toBeGreaterThan(COLLAPSE_OVER);
     expect(place[0]!.collapsed).toBe(true);
     expect(place[0]!.options[0]!.sub).toBe('From stack 1');
-    expect(place[0]!.options[0]!.label).toMatch(/^Cell -?\d+,-?\d+/);
+    expect(place[0]!.options[0]!.label).toMatch(/of the first Mine/);
+    for (const o of place[0]!.options) expect(o.label).not.toMatch(/-?\d+,-?\d+/);
 
     const g2 = advance(g1, g => g.phase === 'roll');
     const roll = optionGroups(playingRoom(g2), g2.turnOrder[g2.activePlayerIndex]!);

@@ -11,7 +11,7 @@ import type { AppController, ReplayScreen } from '../app/controller';
 import { finalStandings, gameOverWords, phaseWords, pieceLabel } from '../app/gameText';
 import type { Action } from '../engine/actions';
 import type { GameState, PlayerId } from '../engine/state';
-import { tesseractCount } from '../engine/rules/scoring';
+import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { CARD_NAME } from '../play/words';
 import type { ReplayCursor, ReplayFile, ReplayPlayer } from '../session/replay';
 import { actorOf } from '../session/replay';
@@ -349,7 +349,9 @@ export function replayView(ctrl: AppController): View {
             count('plate', inv.plate, 'Plates'),
             count('sphere', inv.sphere, 'Spheres'),
             count('power', pl.powerTokens, 'Power Tokens'),
-            count('card', pl.hand.length, 'Leverage cards in hand')),
+            count('card', pl.hand.length, 'Leverage cards in hand'),
+            h('span', { class: 'count pts', title: 'Points', attrs: { 'aria-label': `Points: ${resourcePoints(pl)}` } },
+              h('span', { class: 'num', text: String(resourcePoints(pl)) }), h('span', { class: 'muted', text: 'pts' }))),
           !phone || local.hands
             ? h('div', { class: 'rv-hand muted', text: pl.hand.length ? pl.hand.map(card => CARD_NAME[card]).join(', ') : 'No cards' })
             : null);

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { lobbyInfo } from '../../app/lobby';
 import { PROTOCOL } from '../protocol';
 import type { HostMsg } from '../protocol';
 import { memoryPair } from '../memoryConn';
@@ -38,7 +39,7 @@ describe('lobby', () => {
     expect(host.room.seats.map(s => s.color)).toEqual(['blue', 'green', 'orange', 'red']);
   });
 
-  it('tracks ready flags, and a settings change clears them', async () => {
+  it('tracks ready flags: a change to the game asks the others again, pacing and timers do not', async () => {
     const { host, me } = await newLobby();
     const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
     await settle();
@@ -46,9 +47,35 @@ describe('lobby', () => {
     expect((await me.setReady(true)).ok).toBe(true);
     expect(host.room.seats.slice(0, 2).every(s => s.ready)).toBe(true);
 
-    expect((await me.configure({ factoryOpTimeoutMs: 5000 })).ok).toBe(true);
+    // Timers, the away rule and bot speed do not change the game the players agreed to.
+    expect((await me.configure({ factoryOpTimeoutMs: 5000, awayGraceMs: 0, awayPolicy: 'wait' })).ok).toBe(true);
+    expect((await me.configure({ botSpeed: 'fast' })).ok).toBe(true);
     expect(host.room.settings.factoryOpTimeoutMs).toBe(5000);
-    expect(host.room.seats.some(s => s.ready)).toBe(false);
+    expect(host.room.seats.slice(0, 2).every(s => s.ready)).toBe(true);
+
+    // The number of players does: Bea is asked again; the host, who changed it, stays ready.
+    expect((await me.configure({ playerCount: 3 })).ok).toBe(true);
+    expect(host.room.seats[0]!.ready).toBe(true);
+    expect(host.room.seats[1]!.ready).toBe(false);
+    // Changing the seats (a bot instead of an open seat) asks Bea again too.
+    expect((await bea.setReady(true)).ok).toBe(true);
+    expect((await me.setSeat(2, 'bot')).ok).toBe(true);
+    expect(host.room.seats[0]!.ready).toBe(true);
+    expect(host.room.seats[1]!.ready).toBe(false);
+  });
+
+  it('a host alone with bots can always start, ready or not; bots are always ready', async () => {
+    const { host, me } = await newLobby({ settings: { playerCount: 3, botDelayMs: 0 } });
+    expect((await me.setSeat(1, 'bot')).ok).toBe(true);
+    expect((await me.setSeat(2, 'bot')).ok).toBe(true);
+    expect(host.room.seats[0]!.ready).toBe(false);
+    expect(lobbyInfo(host.room, 0).canStart).toBe(true);
+    expect((await me.start()).ok).toBe(true);
+    expect(host.room.phase).toBe('playing');
+    // The log says who goes first, and that a roll decided it.
+    const first = host.room.game!.turnOrder[0]!;
+    expect(host.room.log[1]!.text).toBe(`${host.room.seats[first]!.name} goes first: a roll of the dice decided the order of play.`);
+    host.dispose();
   });
 
   it('starts only when no seat is open and every connected human is ready', async () => {

@@ -43,7 +43,9 @@ export function lobbyInfo(room: Room, mySeat: number | null): LobbyInfo {
 
   const open = room.seats.filter(s => s.kind === 'open').length;
   const away = humans.filter(s => !s.connected).map(s => s.name);
-  const notReady = humans.filter(s => s.connected && !s.ready).map(s => s.name);
+  // A host playing alone with bots can always start: there is nobody else to agree.
+  const alone = humans.length === 1 && humans[0]!.index === room.hostSeat;
+  const notReady = alone ? [] : humans.filter(s => s.connected && !s.ready).map(s => s.name);
   const parts: string[] = [];
   if (open > 0) parts.push(open === 1 ? '1 seat open — add a bot or wait for a player' : `${open} seats open — add bots or wait for players`);
   if (away.length > 0) parts.push(`${listNames(away)} ${away.length === 1 ? 'is' : 'are'} not connected`);

@@ -4,6 +4,7 @@ import type { Action } from '../engine/actions';
 import type { GameState } from '../engine/state';
 import type { CardType, Material, PieceType } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
+import { whereWords } from './where';
 
 export const BUILDING_NAME: Record<PieceType, string> = {
   mine: 'Mine',
@@ -37,9 +38,13 @@ export const CARD_NAME: Record<CardType, string> = {
   solarFlare: 'Solar Flare',
 };
 
+/** "the Plate Factory", with where it is when there are several of that kind on the board. */
 function pieceName(state: GameState, pieceId: string | undefined): string {
   const piece = pieceId === undefined ? undefined : state.board.find(p => p.id === pieceId);
-  return piece ? `the ${BUILDING_NAME[piece.type]}` : 'a piece';
+  if (!piece) return 'a piece';
+  if (piece.id === 'mine-1') return 'the first Mine';
+  const alike = state.board.filter(p => p.type === piece.type).length;
+  return alike > 1 ? `the ${BUILDING_NAME[piece.type]} ${whereWords(state, piece.coord)}` : `the ${BUILDING_NAME[piece.type]}`;
 }
 
 function article(name: string): string {
@@ -60,7 +65,7 @@ function describeVerb(s: GameState, a: Action): string {
     case 'PLACE_PIECE': {
       const top = s.stacks[a.stackIndex]?.pieces[0];
       const what = top ? article(BUILDING_NAME[top.type]) : 'a piece';
-      return `placed ${what} from stack ${a.stackIndex + 1}`;
+      return `placed ${what} from stack ${a.stackIndex + 1}, ${whereWords(s, a.coord)}`;
     }
     case 'ROLL_DICE': {
       const total = a.rolls.reduce((x, y) => x + y, 0);
@@ -71,7 +76,7 @@ function describeVerb(s: GameState, a: Action): string {
     case 'PLACE_MEEPLE': {
       const piece = s.board.find(p => p.id === a.pieceId);
       if (piece?.type === 'mine') {
-        return `placed their meeple on the Mine (${a.slotIndex === 1 ? 'upgrade point' : 'resource point'})`;
+        return `placed their meeple on ${pieceName(s, a.pieceId)} (${a.slotIndex === 1 ? 'upgrade point' : 'resource point'})`;
       }
       return `placed their meeple on ${pieceName(s, a.pieceId)}`;
     }
@@ -83,8 +88,8 @@ function describeVerb(s: GameState, a: Action): string {
     case 'CLAIM_BUILDING': return `claimed ${pieceName(s, a.pieceId)} with Control Module ${a.controlModule}`;
     case 'UPGRADE_BUILDING':
       return `upgraded the Control Module on ${pieceName(s, a.pieceId)} from ${a.oldModule} to ${a.newModule}`;
-    case 'BUY_MINE': return 'bought a Mine and placed it';
-    case 'PLACE_MINE': return 'placed the dropped Mine';
+    case 'BUY_MINE': return `bought a Mine and placed it ${whereWords(s, a.coord)}`;
+    case 'PLACE_MINE': return `placed the dropped Mine ${whereWords(s, a.coord)}`;
     case 'BUY_CARD': {
       const card = s.cardDeck[0];
       return card && PLAY_ON_DRAW_CARDS.has(card)

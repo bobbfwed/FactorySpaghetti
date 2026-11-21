@@ -187,7 +187,8 @@ export function findJournals(store: SaveStore, seed: number): JournalData[] {
   return out;
 }
 
-export type SaveListing = ReturnType<typeof saveSummary> & { key: string };
+/** A saved game as the start menu lists it; `hasMoves` when its move journal is kept too (for a replay). */
+export type SaveListing = ReturnType<typeof saveSummary> & { key: string; hasMoves: boolean };
 
 /** Every readable save in the store, newest first. Damaged entries are skipped. */
 export function listSaves(store: SaveStore): SaveListing[] {
@@ -197,7 +198,8 @@ export function listSaves(store: SaveStore): SaveListing[] {
     const text = store.get(key);
     if (text === null) continue;
     try {
-      out.push({ ...saveSummary(parseSaveFile(text)), key });
+      const summary = saveSummary(parseSaveFile(text));
+      out.push({ ...summary, key, hasMoves: store.get(journalKey(summary.code)) !== null });
     } catch {
       // skip unreadable saves
     }
