@@ -24,5 +24,8 @@ export function gameOverCard(ctx: Ctx): HTMLElement | null {
       h('span', { class: 'muted', text: `${r.tesseracts} Tesseract${r.tesseracts === 1 ? '' : 's'} · ${r.points} points` })))),
     h('div', { class: 'tg-btnrow' },
       h('button', { class: 'btn btn-dark btn-lg', onclick: () => { ctx.ui.overHidden = true; ctx.redraw(); } }, 'Look at the table'),
-      h('button', { class: 'btn btn-gold btn-lg', attrs: { 'data-back': '1' }, onclick: () => ctx.ctrl.backToMenu() }, 'Back to menu')));
+      h('button', { class: 'btn btn-gold btn-lg', attrs: { 'data-back': '1' }, onclick: () => ctx.ctrl.backToMenu() }, 'Back to menu')),
+    h('div', { class: 'tg-btnrow', style: 'margin-top:8px' },
+      h('button', { class: 'btn btn-dark btn-lg', attrs: { 'data-watch-again': '1' }, onclick: () => { void ctx.ctrl.watchThisGame(); } }, icon('replay'), 'Watch this game again'),
+      h('button', { class: 'btn btn-quiet btn-lg', attrs: { 'data-save-replay': '1' }, onclick: () => ctx.ctrl.downloadReplay() }, icon('download'), 'Save replay')));
 }

@@ -7,12 +7,18 @@
 // HTML anchored to pieces (building menu, prompts, confirm bar) is positioned from
 // table.screenPosition() after each redraw and after each table frame (camera moves).
 // The 3D library is loaded only when this screen opens (dynamic import).
+//
+// N8: room updates pass through the stage (./stage.ts, the playback queue). The table and the
+// panels show the *displayed* room, which lags the newest while moves are animated; lit targets,
+// the primary button, menus, prompts and the confirm bar come from the newest state and are only
+// offered once the picture has caught up (any input before that just catches it up).
 
 import './game.css';
 import type { AppController, AppState } from '../../app/controller';
 import type { Action } from '../../engine/actions';
-import type { PlayerId } from '../../engine/state';
+import type { GameState, PlayerId } from '../../engine/state';
 import { PlayController } from '../../play';
+import type { PlayView } from '../../play';
 import type { Room } from '../../session/room';
 import type { PlayerColor, Table, Target, ViewInsets } from '../../table/types';
 import { connectionBanner } from '../common';
@@ -21,10 +27,16 @@ import { h, morph } from '../dom';
 import type { View } from '../menuView';
 import { tableFailed } from '../viewPref';
 import { bankPanel } from './bank';
-import type { Ctx } from './context';
-import { clock, initialUi, seatColor, seatName } from './context';
+import type { Ctx, FeelCtl, PlayInput } from './context';
+import { activePlayer, clock, initialUi, seatColor, seatHex, seatName } from './context';
 import type { Flash } from './feedback';
-import { errorStrip, flashMarkers, rollChip } from './feedback';
+import { errorStrip, flashMarkers, rollChip, skipButton } from './feedback';
+import type { Feel, Haptic } from './feel';
+import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
+import { FxLayer } from './fx';
+import { Sound } from './sound';
+import { Stage, type Shown, type StageHost } from './stage';
+import { DUR } from '../../table/transition';
 import { cameraButtons, gameMenu, menuButton } from './gameMenu';
 import { gameOverCard } from './gameOver';
 import { ringDash } from './pieces';
@@ -59,7 +71,18 @@ interface Rect { left: number; top: number; right: number; bottom: number }
 export interface GameDebug {
   readonly table: Table | null;
   readonly play: PlayController;
+  /** What the interface offers now (nothing lit while the picture is catching up). */
   readonly view: PlayController['view'];
+  /** The picture shows the newest state (no animation playing or waiting). */
+  readonly drained: boolean;
+  /** Milliseconds until the newest state is fully shown. */
+  readonly lag: number;
+  /** seq of the room on screen. */
+  readonly shownSeq: number;
+  /** Inputs that arrived while the picture lagged (each only caught the picture up). */
+  readonly blocked: number;
+  readonly stage: Stage;
+  readonly feel: FeelCtl;
   readonly ui: ReturnType<typeof initialUi>;
   /** Page (client) coordinates of a table target, or null when it is not on screen. */
   point(t: Target): { x: number; y: number } | null;
@@ -73,7 +96,27 @@ export function tableGameView(ctrl: AppController): View {
   const hud = h('div', { class: 'tg-hud' });
   const toast = h('div', { class: 'tg-toast', attrs: { role: 'status', 'aria-live': 'polite' }, hidden: true });
   const loading = h('div', { class: 'tg-loading' }, h('span', { class: 'spinner' }), 'Setting up the table…');
-  root.append(canvas, hud, toast, loading);
+  const fx = new FxLayer();
+  root.append(canvas, hud, fx.el, toast, loading);
+
+  // ── Feel: animation speed, sound, vibration ─────────────────────────────────
+  let feelState: Feel = loadFeel(deviceStorage(), prefersReducedMotion());
+  const sound = new Sound();
+  sound.enabled = feelState.sound;
+  const feel: FeelCtl = {
+    get settings() { return feelState; },
+    set(patch) {
+      const before = feelState;
+      feelState = { ...feelState, ...patch };
+      saveFeel(deviceStorage(), feelState);
+      sound.enabled = feelState.sound;
+      if (feelState.speed !== before.speed) stage.setSpeed(feelState.speed);
+      if (patch.vibrate) haptic('confirm');
+    },
+    canVibrate: canVibrate(),
+  };
+  const haptic = (kind: Haptic): void => vibrate(kind, feelState);
+  const unlockAudio = (): void => sound.unlock();
 
   const ui = initialUi();
   let table: Table | null = null;
@@ -87,7 +130,6 @@ export function tableGameView(ctrl: AppController): View {
   let ghostKey = '';
   let lastTap: Target | null = null;
   let flash: Flash | null = null;
-  let lastSeq = -1;
   let phone = isPhoneLayout();
   let portrait = window.innerHeight > window.innerWidth;
   let queued = 0;
@@ -97,6 +139,14 @@ export function tableGameView(ctrl: AppController): View {
   let lastHintView: unknown = null;
   let autoOpened = false;
   let boardSize = 0;
+  /** The room on screen (from the stage) and the controller that describes it while it lags. */
+  let shownRoom: Room | null = null;
+  const displayPlay = new PlayController({ send: (): void => undefined, names: (id): string => seatName(room ?? ctrl.room!, id) });
+  let displayGame: GameState | null = null;
+  let displaySeat: number | null = null;
+  let blocked = 0;
+  let promptIds = new Set<string>();
+  let flashTimer: ReturnType<typeof setTimeout> | null = null;
   /** The player has dragged or zoomed the table (until they press Re-centre). */
   let userCamera = false;
   const offs: (() => void)[] = [];
@@ -113,9 +163,14 @@ export function tableGameView(ctrl: AppController): View {
     const client = ctrl.state.online?.client;
     if (!client) { play.refused('Not connected to the game.'); return; }
     client.act(action).then(
-      (res) => { if (!res.ok && !disposed) play.refused(res.error.message); },
-      (err: unknown) => { if (!disposed) play.refused(err instanceof Error ? err.message : 'The move could not be sent.'); },
+      (res) => { if (!res.ok && !disposed) refuse(res.error.message); },
+      (err: unknown) => { if (!disposed) refuse(err instanceof Error ? err.message : 'The move could not be sent.'); },
     );
+  };
+  const refuse = (message: string): void => {
+    play.refused(message);
+    sound.play('refuse');
+    haptic('refuse');
   };
   const play = new PlayController({ send, names: (id): string => seatName(room ?? ctrl.room!, id) });
   offs.push(play.subscribe(() => { onPlayChange(); schedule(); }));
@@ -125,6 +180,8 @@ export function tableGameView(ctrl: AppController): View {
     if (v.hint && v !== lastHintView) showToast(v.hint);
     lastHintView = v;
     if (!v.confirmBar) lastTap = null;
+    // Panels follow the newest state only once the picture has caught up with it.
+    if (!stage.drained) return;
     // Phone: the module tray lives in the sheet, so open it when a module must be chosen there.
     const lit = v.tray.some(t => t.state === 'lit') && (v.step === 'actions' || v.step === 'roundEnd');
     if (phone && lit && !ui.sheetOpen) { ui.sheetOpen = true; ui.sheetTab = 'tray'; autoOpened = true; }
@@ -143,7 +200,7 @@ export function tableGameView(ctrl: AppController): View {
     toastTimer = setTimeout(() => { toast.hidden = true; toast.classList.remove('show'); }, TOAST_MS);
   }
 
-  // ── Room → table + play ─────────────────────────────────────────────────────
+  // ── Room → stage (table + panels) and play ─────────────────────────────────
   function syncRoom(r: Room): void {
     const prev = room;
     room = r;
@@ -154,25 +211,100 @@ export function tableGameView(ctrl: AppController): View {
     const colors = r.seats.map(s => s.color as PlayerColor);
     const ck = colors.join(',');
     if (ck !== colorsKey && table) { colorsKey = ck; table.setPlayerColors(colors); }
-    if (gameChanged && table) {
-      const grew = g.board.length !== boardSize;
-      boardSize = g.board.length;
-      table.setGame(g);
-      // Until the player moves the camera, keep the whole (growing) board in view.
-      if (grew && !userCamera) table.recenter();
-    }
+    stage.receive(r);
     const s = ctrl.mySeat;
     if (gameChanged || s !== seat) { seat = s; play.update(g, s as PlayerId | null); }
-    if (r.seq !== lastSeq) {
-      if (lastSeq !== -1 && r.lastEvents.some(e => e.kind === 'roll')) {
-        const items = r.lastEvents.flatMap(e => (e.kind === 'activated' ? [{ pieceId: e.pieceId, seat: e.seat, outcome: e.outcome }] : []));
-        const f: Flash = { seq: r.seq, items };
-        flash = f;
-        setTimeout(() => { if (flash === f) { flash = null; schedule(); } }, FLASH_MS);
+  }
+
+  /** The stage put a new room on screen (a snap, or the start of its transition). */
+  function onShown(info: Shown): void {
+    const prev = shownRoom;
+    shownRoom = info.room;
+    const g = info.room.game!;
+    if (table) {
+      const grew = g.board.length !== boardSize;
+      boardSize = g.board.length;
+      // Until the player moves the camera, keep the whole (growing) board in view.
+      if (grew && !userCamera && prev) table.recenter();
+    }
+    if (prev && info.room.seq !== prev.seq) {
+      if (info.room.lastEvents.some(e => e.kind === 'roll')) {
+        // The activation markers appear as the dice land.
+        const wait = info.plan?.roll ? DUR.dice * info.scale : 0;
+        ui.diceRolling = wait > 0;
+        const items = info.room.lastEvents.flatMap(e => (e.kind === 'activated' ? [{ pieceId: e.pieceId, seat: e.seat, outcome: e.outcome }] : []));
+        const f: Flash = { seq: info.room.seq, items };
+        if (flashTimer) clearTimeout(flashTimer);
+        flashTimer = setTimeout(() => {
+          ui.diceRolling = false;
+          flash = f;
+          setTimeout(() => { if (flash === f) { flash = null; schedule(); } }, FLASH_MS);
+          schedule();
+        }, wait);
       }
-      lastSeq = r.seq;
+      cues(prev, info.room);
+    }
+    schedule();
+  }
+
+  /** Your turn, game over: sound, vibration and the banner, when the picture reaches them. */
+  function cues(prev: Room, next: Room): void {
+    const a = prev.game, b = next.game;
+    const me = ctrl.mySeat;
+    if (!a || !b) return;
+    if (!a.gameOver && b.gameOver) { sound.play('over'); return; }
+    if (me === null || b.gameOver) return;
+    if (activePlayer(a) !== me && activePlayer(b) === me) {
+      fx.yourTurn(seatHex(next, me), 'Your turn', feelState.speed === 'off');
+      sound.play('turn');
+      haptic('turn');
     }
   }
+
+  const stageHost: StageHost = {
+    table: () => table,
+    me: () => ctrl.mySeat,
+    feel: () => feelState,
+    sound,
+    fx,
+    point: (t) => (t ? debug.point(t) : null),
+    seatPoint: (player) => {
+      const mine = player === ctrl.mySeat;
+      const el = hud.querySelector<HTMLElement>(mine ? (phone ? '.tg-sheet' : '.tg-yours') : `[data-seat="${player}"]`);
+      const r = el?.getBoundingClientRect();
+      if (!r || r.width === 0) return { x: window.innerWidth / 2, y: mine ? window.innerHeight - 40 : 40 };
+      return mine ? { x: r.left + Math.min(r.width / 2, 160), y: r.top + 28 } : { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    },
+    seatColor: (player) => seatHex(room ?? ctrl.room!, player),
+    centre: () => ({ x: (free.left + free.right) / 2, y: (free.top + free.bottom) / 2 }),
+    shown: onShown,
+    drained: () => { onPlayChange(); schedule(); },
+  };
+  const stage = new Stage(stageHost);
+
+  /** While the picture lags: nothing lit, nothing to press (the view describes the displayed state). */
+  function busyView(v: PlayView): PlayView {
+    return {
+      ...v,
+      primary: v.primary ? { label: v.primary.label, enabled: false } : null,
+      targets: [], ghost: null, confirmBar: null, selection: null, menu: null, choices: null, prompts: [], hint: null,
+      tray: v.tray.map(t => (t.state === 'lit' ? { module: t.module, state: 'inTray' as const } : t)),
+      bank: v.bank.map(({ reason: _r, ...b }) => ({ ...b, enabled: false })),
+      hand: v.hand.map(({ reason: _r, ...c }) => ({ ...c, enabled: false })),
+    };
+  }
+
+  /** Any input while the picture lags only catches the picture up. */
+  const catchUp = (): void => { blocked++; stage.skip(); };
+  const busyInput: PlayInput = { tap: catchUp, choose: catchUp, primary: catchUp, confirm: catchUp, cancel: catchUp, rotate: catchUp };
+  const liveInput: PlayInput = {
+    tap: (t) => play.tap(t),
+    choose: (id) => play.choose(id),
+    primary: () => { if (play.view.primary?.enabled) haptic('confirm'); play.primary(); },
+    confirm: () => { haptic('confirm'); play.confirm(); },
+    cancel: () => play.cancel(),
+    rotate: (n) => play.rotate(n),
+  };
 
   // ── Drawing ─────────────────────────────────────────────────────────────────
   function schedule(): void {
@@ -183,10 +315,28 @@ export function tableGameView(ctrl: AppController): View {
   const slot = (name: string, ...c: Child[]): HTMLElement => h('div', { class: `tg-slot ${name}` }, ...c);
 
   function context(): Ctx | null {
-    const r = room;
-    if (!r || !r.game) return null;
+    const newest = room;
+    const shown = shownRoom ?? newest;
+    if (!newest || !shown || !shown.game) return null;
+    const busy = !stage.drained;
+    const me = ctrl.mySeat;
+    // The displayed room, with the newest seats, settings and deadlines.
+    const r: Room = shown === newest ? shown : {
+      ...shown, seats: newest.seats, hostSeat: newest.hostSeat, waiting: newest.waiting, settings: newest.settings,
+      opDeadline: newest.opDeadline, roundEndDeadline: newest.roundEndDeadline, hold: newest.hold,
+    };
+    let view = play.view;
+    if (busy) {
+      if (displayGame !== shown.game || displaySeat !== me) {
+        displayGame = shown.game;
+        displaySeat = me;
+        displayPlay.update(shown.game, me as PlayerId | null);
+      }
+      view = busyView(displayPlay.view);
+    }
     return {
-      ctrl, room: r, game: r.game, me: ctrl.mySeat, view: play.view, play, ui, phone, landscape: phone && isLandscapePhone(),
+      ctrl, room: r, game: shown.game, me, view, play: busy ? busyInput : liveInput, ui, phone, landscape: phone && isLandscapePhone(),
+      feel, busy, skip: () => stage.skip(),
       redraw: schedule,
       camera: {
         rotate: () => table?.rotateBy(1),
@@ -215,7 +365,7 @@ export function tableGameView(ctrl: AppController): View {
         slot('banner', connectionBanner(ctrl)), slot('err', errorStrip(ctx)),
         slot('top', h('div', { class: 'tg-toprow' }, menuButton(ctx), seatChips(ctx))),
         slot('menu', gameMenu(ctx)), slot('seatpop', seatDetails(ctx)),
-        slot('cam', cameraButtons(ctx)), slot('roll', rollChip(ctx)),
+        slot('cam', cameraButtons(ctx)), slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)),
         slot('flash', flashMarkers(ctx, flash)), slot('prompts', ctx.ui.sheetOpen && !ctx.landscape ? null : promptCards(ctx)),
         slot('bmenu', buildingMenu(ctx)), slot('confirm', confirmBar(ctx, confirmAnchor(ctx))),
         slot('choices', choicesPanel(ctx)), slot('sheet', phoneSheet(ctx)),
@@ -227,13 +377,13 @@ export function tableGameView(ctrl: AppController): View {
         slot('seats', seatPlates(ctx)), slot('seatpop', seatDetails(ctx)),
         slot('cam', cameraButtons(ctx)), slot('bank', bankPanel(ctx)),
         slot('tabs', edgeTabs(ctx)), slot('side', sidePanel(ctx)),
-        slot('roll', rollChip(ctx)), slot('flash', flashMarkers(ctx, flash)),
+        slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)), slot('flash', flashMarkers(ctx, flash)),
         slot('prompts', promptCards(ctx)), slot('bmenu', buildingMenu(ctx)),
         slot('confirm', confirmBar(ctx, confirmAnchor(ctx))), slot('choices', choicesPanel(ctx)),
         slot('turnbar', turnBar(ctx)), slot('yours', yourPanel(ctx)),
         slot('over', gameOverCard(ctx)), slot('modal', cardModal(ctx)),
       ];
-    const fresh = h('div', { class: `tg-hud ${phone ? 'phone' : 'desk'}${ctx.ui.sheetOpen ? ' sheet-open' : ''}${ctx.view.myTurn ? ' my-turn' : ''}` }, ...parts);
+    const fresh = h('div', { class: `tg-hud ${phone ? 'phone' : 'desk'}${ctx.ui.sheetOpen ? ' sheet-open' : ''}${ctx.view.myTurn ? ' my-turn' : ''}${ctx.busy ? ' busy' : ''}` }, ...parts);
     morph(hud, fresh);
     root.classList.toggle('phone', phone);
     root.classList.toggle('landscape', ctx.landscape);
@@ -241,6 +391,17 @@ export function tableGameView(ctrl: AppController): View {
     placeAnchors();
     syncTable(ctx);
     tick();
+    promptCue(ctx);
+  }
+
+  /** A new off-turn decision for me, once it is shown: alert sound and vibration. */
+  function promptCue(ctx: Ctx): void {
+    const ids = new Set(ctx.view.prompts.map(p => p.id));
+    if (!ctx.busy && !ctx.view.myTurn && [...ids].some(id => !promptIds.has(id))) {
+      sound.play('alert');
+      haptic('prompt');
+    }
+    if (!ctx.busy) promptIds = ids;
   }
 
   function syncTable(ctx: Ctx): void {
@@ -432,6 +593,8 @@ export function tableGameView(ctrl: AppController): View {
 
   // ── Input ───────────────────────────────────────────────────────────────────
   function onPick(hit: Target | null): void {
+    // A tap while the picture lags jumps to the newest state; it is never taken as a move.
+    if (!stage.drained) { stage.skip(); return; }
     if (ui.menuOpen || ui.seat !== null) {
       ui.menuOpen = false; ui.seat = null; schedule();
       if (!hit) return;
@@ -443,10 +606,15 @@ export function tableGameView(ctrl: AppController): View {
     }
     lastTap = hit;
     play.tap(hit);
+    if (play.view.hint) { sound.play('refuse'); haptic('refuse'); }
   }
 
   function onKey(e: KeyboardEvent): void {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (!stage.drained) {
+      if (e.key === 'Escape') stage.skip();
+      return;
+    }
     if (e.key === 'Escape') {
       if (ui.card !== null) ui.card = null;
       else if (ui.menuOpen || ui.seat !== null) { ui.menuOpen = false; ui.seat = null; }
@@ -495,6 +663,8 @@ export function tableGameView(ctrl: AppController): View {
   }
 
   let ticker: ReturnType<typeof setInterval> | null = null;
+  /** A hidden page shows the newest state when it comes back (nothing animates unseen). */
+  const onVisibility = (): void => { if (document.hidden) stage.skip(); };
 
   async function startTable(): Promise<void> {
     try {
@@ -512,7 +682,9 @@ export function tableGameView(ctrl: AppController): View {
         const colors = room.seats.map(s => s.color as PlayerColor);
         colorsKey = colors.join(',');
         t.setPlayerColors(colors);
-        if (room.game) { t.setGame(room.game); boardSize = room.game.board.length; }
+        stage.tableReady();
+        const g = (shownRoom ?? room).game;
+        if (g) boardSize = g.board.length;
       }
       render();
     } catch (err) {
@@ -527,7 +699,13 @@ export function tableGameView(ctrl: AppController): View {
   const debug: GameDebug = {
     get table() { return table; },
     play,
-    get view() { return play.view; },
+    get view() { return context()?.view ?? play.view; },
+    get drained() { return stage.drained; },
+    get lag() { return stage.lagMs(); },
+    get shownSeq() { return shownRoom?.seq ?? -1; },
+    get blocked() { return blocked; },
+    stage,
+    feel,
     ui,
     point(t) {
       const p = table?.screenPosition(t);
@@ -544,6 +722,9 @@ export function tableGameView(ctrl: AppController): View {
     update(): void {
       const r = ctrl.room;
       if (!r || !r.game) return;
+      // A dropped connection or a new host: the next state is shown at once, not animated.
+      const status = ctrl.state.online?.status;
+      if (status && status !== 'online') stage.markResync();
       let changed = false;
       if (r !== room) { syncRoom(r); changed = true; }
       if (ctrl.state !== lastState) { lastState = ctrl.state; changed = true; }
@@ -553,6 +734,9 @@ export function tableGameView(ctrl: AppController): View {
       document.documentElement.classList.add('tg-active');
       window.addEventListener('resize', onResize);
       window.addEventListener('keydown', onKey);
+      window.addEventListener('pointerdown', unlockAudio, true);
+      window.addEventListener('keydown', unlockAudio, true);
+      document.addEventListener('visibilitychange', onVisibility);
       ticker = setInterval(tick, 1000);
       (window as unknown as { __game?: GameDebug }).__game = debug;
       render();
@@ -563,6 +747,13 @@ export function tableGameView(ctrl: AppController): View {
       document.documentElement.classList.remove('tg-active');
       window.removeEventListener('resize', onResize);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', unlockAudio, true);
+      window.removeEventListener('keydown', unlockAudio, true);
+      document.removeEventListener('visibilitychange', onVisibility);
+      stage.dispose();
+      fx.dispose();
+      sound.dispose();
+      if (flashTimer) clearTimeout(flashTimer);
       if (ticker) clearInterval(ticker);
       if (toastTimer) clearTimeout(toastTimer);
       if (queued) cancelAnimationFrame(queued);

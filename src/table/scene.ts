@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { BoardPiece, GameState, Material, PlayerId } from '../engine/state';
 import { partsOf, type ModelLib, type ModelPart } from './models';
+import type { SceneFx } from './animator';
 import {
   APOTHEM, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, TILE_MODEL, TILE_TOP,
   beltCurve, boardBounds, bufferAnchorWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout,
@@ -182,6 +183,10 @@ export class TableScene {
 
   private far = false;
   private readonly beltFar: THREE.BufferGeometry;
+  /** A transition being played (N8): asked while drawing where things are in between two states. */
+  fx: SceneFx | null = null;
+  /** Belts dropping into place, drawn on their own until they lie (then merged with the rest). */
+  private readonly dropBelts = new Map<string, THREE.Mesh>();
 
   /** `farLib`: the same models with lighter geometry, used when zoomed out (see models.ts farDetail). */
   constructor(private readonly lib: ModelLib, private readonly farLib: ModelLib = lib) {
@@ -308,7 +313,12 @@ export class TableScene {
   }
 
   /** True while pieces are still settling. */
-  get animating(): boolean { return this.appear.size > 0; }
+  get animating(): boolean { return this.appear.size > 0 || !!this.fx?.active; }
+
+  /** Pieces an animated transition places itself: no plain drop-in for them. */
+  clearAppear(ids: Iterable<string>): void {
+    for (const id of ids) this.appear.delete(id);
+  }
 
   private drop(id: string, now: number): number {
     const t0 = this.appear.get(id);
@@ -332,6 +342,10 @@ export class TableScene {
       for (const piece of game.board) this.addPiece(piece, now, az);
       this.addMeeples(game, az);
     }
+    // Material that exists only in between two states (travelling, being used up).
+    for (const e of this.fx?.extras() ?? []) {
+      if (e.s > 0.01) this.materialParts.get(e.material)!.push(mat4(e.x, e.y, e.z, e.yaw, e.s));
+    }
     for (const parts of this.tileParts.values()) for (const p of parts) p.end();
     this.modules.end(); this.numerals.end(); this.meeples.end(); this.teleporters.end();
     for (const p of this.materialParts.values()) p.end();
@@ -344,6 +358,20 @@ export class TableScene {
   }
 
   private addPiece(piece: BoardPiece, now: number, az: number): void {
+    const fx = this.fx;
+    const pose = fx ? fx.piece(piece.id) : null;
+    if (pose === 'hide') return;
+    if (pose) {
+      // Travelling from its stack: only the tile itself (what sits on it shows once it lands).
+      if (piece.type === 'mine') {
+        const g = this.mineGroups.get(mineModel(piece.id));
+        if (g) { g.visible = true; g.position.set(pose.x, pose.y, pose.z); g.rotation.set(0, pose.yaw, 0); }
+      } else {
+        const m = mat4(pose.x, pose.y, pose.z, pose.yaw);
+        for (const part of this.tileParts.get(TILE_MODEL[piece.type])!) part.push(m);
+      }
+      return;
+    }
     const pl = piecePlacement(piece);
     const y = this.drop(piece.id, now);
     for (const cell of pieceCells(piece)) {
@@ -367,8 +395,11 @@ export class TableScene {
       piece.claims.forEach((claim, i) => {
         const off = lay.offsets[i] ?? { x: 0, z: 0 };
         const w = modelToWorld({ x: pl.x, z: pl.z, yaw: az }, off.x, off.z);
-        this.modules.push(mat4(w.x, TILE_TOP + y, w.z, az, lay.scale), this.colorOf(claim.ownerId));
-        this.numerals.push(mat4(w.x, TILE_TOP + y + 2 * lay.scale + 0.04, w.z, az, lay.scale), claim.controlModule);
+        const a = fx ? fx.claim(piece.id, i) : null;
+        if (a === 'hide') return;
+        const dy = a ? a.y : 0, sc = lay.scale * (a ? a.s : 1);
+        this.modules.push(mat4(w.x, TILE_TOP + y + dy, w.z, az, sc), this.colorOf(claim.ownerId));
+        this.numerals.push(mat4(w.x, TILE_TOP + y + dy + 2 * sc + 0.04, w.z, az, sc), claim.controlModule);
       });
     }
     // Material in buffers, turned with the tile.
@@ -377,12 +408,16 @@ export class TableScene {
       if (!buf) continue;
       buf.slots.forEach((m, i) => {
         if (!m) return;
+        const k = fx ? fx.slot(piece.id, which, i) : null;
+        if (k !== null && k <= 0) return;
         const p = bufferSlotWorld(piece, which, i);
-        this.materialParts.get(m)!.push(mat4(p.x, TILE_TOP + y + 0.05, p.z, pl.yaw, BUFFER_MATERIAL_SCALE));
+        this.materialParts.get(m)!.push(mat4(p.x, TILE_TOP + y + 0.05, p.z, pl.yaw, BUFFER_MATERIAL_SCALE * (k ?? 1)));
       });
       if (buf.teleporterOwner !== null) {
+        const k = fx ? fx.teleporter(piece.id, which) : null;
+        if (k !== null && k <= 0) continue;
         const a = bufferAnchorWorld(piece, which);
-        this.teleporters.push(mat4(a.x, TILE_TOP + y + 0.6, a.z, 0), this.colorOf(buf.teleporterOwner));
+        this.teleporters.push(mat4(a.x, TILE_TOP + y + 0.6, a.z, 0, k ?? 1), this.colorOf(buf.teleporterOwner));
       }
     }
   }
@@ -398,7 +433,9 @@ export class TableScene {
       used.set(key, k + 1);
       let p = piece.type === 'mine' ? mineSlotWorld(piece, pl.meepleSlotIndex ?? 0) : buildingMeepleWorld(piece);
       if (k > 0) p = { x: p.x + 9 * k, z: p.z };
-      this.meeples.push(mat4(p.x, TILE_TOP + 0.05, p.z, az), this.colorOf(pl.id));
+      const a = this.fx ? this.fx.meeple(pl.id) : null;
+      if (a === 'hide') continue;
+      this.meeples.push(a ? mat4(a.x, a.y, a.z, az) : mat4(p.x, TILE_TOP + 0.05, p.z, az), this.colorOf(pl.id));
     }
   }
 
@@ -508,14 +545,33 @@ export class TableScene {
       const v = game?.lastRoll?.[i] ?? 1;
       d.geometry = this.dieGeometry(Math.min(6, Math.max(1, v)));
       const at = this.side.dice[i] ?? { x: 0, z: 0 };
+      const rest = { x: at.x, z: at.z, yaw: 0.35 + i * 0.6 };
+      const pose = this.fx ? this.fx.die(i, rest) : null;
+      if (pose) {
+        d.position.set(pose.x, pose.y, pose.z);
+        d.rotation.set(pose.rx, pose.ry, pose.rz);
+        d.scale.setScalar(pose.s);
+        return;
+      }
       d.position.set(at.x, DIE_SIZE / 2, at.z);
-      d.rotation.set(0, 0.35 + i * 0.6, 0);
+      d.rotation.set(0, rest.yaw, 0);
+      d.scale.setScalar(1);
     });
   }
 
   /** Bend the whole-belt model along each belt's curve and merge them all into one mesh. */
   private buildBelts(game: GameState | null): void {
-    const belts = game?.belts ?? [];
+    // During a transition, belts not laid yet are left out and belts dropping in are drawn alone.
+    const fx = this.fx;
+    const dropping = new Map<string, number>();
+    const all = game?.belts ?? [];
+    const belts = fx?.active ? all.filter(b => {
+      const a = fx.belt(b.id);
+      if (a === null) return true;
+      if (a !== 'hide') dropping.set(b.id, a);
+      return false;
+    }) : all;
+    this.updateDropBelts(game, dropping);
     const key = belts.map(b => `${b.id}/${b.ownerId}`).join('|') + '#' + this.colors.map(c => c.getHexString()).join(',');
     if (key === this.beltKey) return;
     this.beltKey = key;
@@ -525,13 +581,37 @@ export class TableScene {
       this.beltMesh = null;
     }
     if (!game || belts.length === 0) return;
-    this.beltMesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, game, b => this.colorOf(b)), this.beltMaterial);
+    this.beltMesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, { board: game.board, belts }, b => this.colorOf(b)), this.beltMaterial);
     this.beltMesh.castShadow = true;
     this.beltMesh.receiveShadow = true;
     this.root.add(this.beltMesh);
   }
 
+  private updateDropBelts(game: GameState | null, dropping: ReadonlyMap<string, number>): void {
+    for (const [id, mesh] of this.dropBelts) {
+      if (dropping.has(id)) continue;
+      this.root.remove(mesh);
+      mesh.geometry.dispose();
+      this.dropBelts.delete(id);
+    }
+    if (!game) return;
+    for (const [id, y] of dropping) {
+      let mesh = this.dropBelts.get(id);
+      if (!mesh) {
+        const belt = game.belts.find(b => b.id === id);
+        if (!belt) continue;
+        mesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, { board: game.board, belts: [belt] }, b => this.colorOf(b)), this.beltMaterial);
+        mesh.castShadow = true;
+        this.root.add(mesh);
+        this.dropBelts.set(id, mesh);
+      }
+      mesh.position.y = y;
+    }
+  }
+
   dispose(): void {
+    for (const mesh of this.dropBelts.values()) mesh.geometry.dispose();
+    this.dropBelts.clear();
     for (const parts of this.tileParts.values()) for (const p of parts) p.dispose();
     for (const t of this.textures) t.dispose();
     for (const g of this.diceGeos.values()) g.dispose();

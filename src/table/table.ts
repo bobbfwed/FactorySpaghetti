@@ -7,6 +7,7 @@ import type { GameState } from '../engine/state';
 import { farDetail, loadModels } from './models';
 import { CameraRig } from './camera';
 import { TableScene } from './scene';
+import { Animator } from './animator';
 import { Overlay } from './overlay';
 import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds } from './layout';
@@ -65,6 +66,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   scene.add(table.root);
   const overlay = new Overlay(lib);
   scene.add(overlay.root);
+  const animator = new Animator(table.root, (id) => table.colorOf(id));
+  const animEndListeners = new Set<() => void>();
 
   let colors: readonly PlayerColor[] = DEFAULT_COLORS;
   table.setColors(colors.map(c => PLAYER_COLOR_HEX[c]));
@@ -98,7 +101,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   function draw(now: number): boolean {
     const camMoving = rig.update(now);
     table.setFar(rig.scale > FAR_SCALE);
-    const settling = table.animating;
+    const wasAnimating = animator.active;
+    animator.update(now);
+    table.fx = animator.active ? animator : null;
+    // The frame after a transition ends draws everything where the state says, once more.
+    const settling = table.animating || wasAnimating;
     // Pieces only need rebuilding while they settle or while the view turns (modules face the viewer).
     if (settling || rig.azimuth !== lastAz) {
       table.rebuild(now, rig.azimuth);
@@ -113,6 +120,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       frames: stats.frames + 1,
     };
     for (const fn of [...frameListeners]) fn();
+    if (wasAnimating && !animator.active) for (const fn of [...animEndListeners]) fn();
     return camMoving || table.animating;
   }
 
@@ -254,20 +262,55 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   table.rebuild(performance.now(), rig.azimuth);
   recenter(false);
 
+  function showGame(next: GameState | null): void {
+    game = next;
+    table.setGame(next, performance.now());
+    table.rebuild(performance.now(), rig.azimuth);
+    overlay.updateDebug(game);
+    refreshTargets();
+    overlay.setGhost(ghost, game);
+    fitShadow();
+    const size = next?.board.length ?? 0;
+    // Frame the board the first time it appears; afterwards leave the camera where the user put it.
+    if (next && (!framedOnce || (size < lastBoardSize))) { recenter(framedOnce); framedOnce = true; }
+    lastBoardSize = size;
+    invalidate();
+  }
+
+  function stopAnimation(): void {
+    if (!animator.active) return;
+    animator.finish();
+    table.fx = null;
+    for (const fn of [...animEndListeners]) fn();
+  }
+
   const api: Table = {
     setGame(next) {
-      game = next;
-      table.setGame(next, performance.now());
-      table.rebuild(performance.now(), rig.azimuth);
-      overlay.updateDebug(game);
-      refreshTargets();
-      overlay.setGhost(ghost, game);
-      fitShadow();
-      const size = next?.board.length ?? 0;
-      // Frame the board the first time it appears; afterwards leave the camera where the user put it.
-      if (next && (!framedOnce || (size < lastBoardSize))) { recenter(framedOnce); framedOnce = true; }
-      lastBoardSize = size;
+      stopAnimation();
+      showGame(next);
+    },
+    animateTo(next, steps, scale = 1) {
+      stopAnimation();
+      const prev = game;
+      const now = performance.now();
+      const placed = steps.filter(s => s.kind === 'place').map(s => (s as { pieceId: string }).pieceId);
+      showGame(next);
+      table.clearAppear(placed);
+      animator.start(prev, next, steps, scale, now, table.side);
+      table.fx = animator.active ? animator : null;
+      if (animator.active) table.rebuild(now, rig.azimuth);
       invalidate();
+    },
+    finishAnimation() {
+      if (!animator.active) return;
+      stopAnimation();
+      table.rebuild(performance.now(), rig.azimuth);
+      invalidate();
+    },
+    isAnimating() { return animator.active; },
+    onAnimationEnd(fn) {
+      animEndListeners.add(fn);
+      return () => { animEndListeners.delete(fn); };
     },
     setPlayerColors(next) {
       colors = next.length > 0 ? next : DEFAULT_COLORS;
@@ -325,6 +368,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('wheel', onWheel);
       pickers.clear();
+      animEndListeners.clear();
+      animator.dispose();
       table.dispose();
       overlay.dispose();
       wood.dispose();

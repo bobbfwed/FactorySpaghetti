@@ -1,5 +1,6 @@
 // Feedback over the table: the "Rolled N" chip with the dice, markers that briefly flash on the
-// buildings a roll activated, and the error strip for failed menu commands.
+// buildings a roll activated, the error strip for failed menu commands, and the Skip button shown
+// while the table is still playing what happened.
 
 import type { ActivationOutcome } from '../../session/room';
 import { h } from '../dom';
@@ -14,7 +15,7 @@ export interface Flash { seq: number; items: { pieceId: string; seat: number; ou
 export function rollChip(ctx: Ctx): HTMLElement | null {
   const g = ctx.game;
   const roll = g.lastRoll;
-  if (!roll || roll.length === 0 || g.gameOver) return null;
+  if (!roll || roll.length === 0 || g.gameOver || ctx.ui.diceRolling) return null;
   if (g.phase !== 'actions' && g.phase !== 'placeMeeple' && g.pendingFactoryOps.length === 0) return null;
   const total = roll.reduce((a, b) => a + b, 0);
   const a = activePlayer(g);
@@ -44,4 +45,14 @@ export function errorStrip(ctx: Ctx): HTMLElement | null {
   return h('div', { class: 'tg-error error', attrs: { role: 'alert' } },
     h('span', { text: err }),
     h('button', { class: 'x round small', title: 'Dismiss', attrs: { 'aria-label': 'Dismiss' }, onclick: () => ctx.ctrl.dismissError() }, icon('cross')));
+}
+
+/** "Skip" while the table is still playing earlier moves: jumps to the newest state. */
+export function skipButton(ctx: Ctx): HTMLElement | null {
+  if (!ctx.busy) return null;
+  return h('button', {
+    class: 'btn btn-dark tg-skip', title: 'Show the newest state now',
+    attrs: { 'aria-label': 'Skip the animation and show the newest state', 'data-skip': '1' },
+    onclick: () => ctx.skip(),
+  }, 'Skip', h('span', { class: 'chev', text: '»' }));
 }

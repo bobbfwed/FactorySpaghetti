@@ -8,6 +8,7 @@ import type { GameState, PlayerId } from '../../engine/state';
 import type { PlayController, PlayView } from '../../play';
 import type { Room, SeatColor } from '../../session/room';
 import { COLORS } from '../icons';
+import type { Feel } from './feel';
 
 export type SheetTab = 'tray' | 'cards' | 'log' | 'rules';
 export type SideTab = 'log' | 'rules' | 'bonuses';
@@ -26,10 +27,22 @@ export interface UiState {
   /** The game-over card is put away to look at the table. */
   overHidden: boolean;
   topDown: boolean;
+  /** Dice are still tumbling on the table: the "Rolled N" chip waits for them to land. */
+  diceRolling: boolean;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false };
+}
+
+/** What the interface may ask of the play controller (the moves a player makes). */
+export type PlayInput = Pick<PlayController, 'tap' | 'choose' | 'primary' | 'confirm' | 'cancel' | 'rotate'>;
+
+/** Animation speed, sound and vibration settings, and whether this device can vibrate. */
+export interface FeelCtl {
+  readonly settings: Feel;
+  set(patch: Partial<Feel>): void;
+  readonly canVibrate: boolean;
 }
 
 export interface Ctx {
@@ -38,8 +51,15 @@ export interface Ctx {
   game: GameState;
   /** My seat (= engine player id), or null when watching. */
   me: number | null;
+  /** The play controller's view of the displayed state; nothing is lit while the picture lags the newest state. */
   view: PlayView;
-  play: PlayController;
+  /** Moves. While the picture lags the newest state, any of these just catches the picture up. */
+  play: PlayInput;
+  feel: FeelCtl;
+  /** The picture is still catching up with the newest state (animations playing or waiting). */
+  busy: boolean;
+  /** Jump straight to the newest state. */
+  skip(): void;
   ui: UiState;
   phone: boolean;
   /** Phone layout on a window wider than tall: the sheet becomes a panel on the right. */

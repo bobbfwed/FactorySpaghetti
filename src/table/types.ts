@@ -1,6 +1,7 @@
 // Public types of the 3D table (re-exported by src/table/index.ts).
 
 import type { GameState, PieceType } from '../engine/state';
+import type { AnimStep } from './transition';
 
 export type PlayerColor = 'blue' | 'red' | 'orange' | 'green';
 
@@ -37,7 +38,24 @@ export interface TableStats {
 }
 
 export interface Table {
-  setGame(game: GameState | null): void;            // full state every time; the table works out what changed
+  setGame(game: GameState | null): void;            // full state every time; snaps to it (ends any animated transition)
+  // ── Animated transitions (N8) ──
+  /**
+   * Show `game` like setGame, but play the change from the state shown now: the table steps of
+   * `steps` (from planTransition(shown, game, events) in ./transition) at their times multiplied
+   * by `scale` (1 = Normal speed, 0.5 = Fast; the playback queue also compresses). Steps the table
+   * does not draw (toPlayer / fromPlayer, drawn by the interface) are ignored. The canvas renders
+   * every frame until the transition ends, then stops again (rendering stays on demand).
+   * A later setGame, animateTo or finishAnimation ends the transition at once.
+   */
+  animateTo(game: GameState, steps: readonly AnimStep[], scale?: number): void;
+  /** Jump the transition playing (if any) to its end. */
+  finishAnimation(): void;
+  /** True while an animated transition is playing. */
+  isAnimating(): boolean;
+  /** Called when a transition ends (played out, finished early, or replaced). */
+  onAnimationEnd(fn: () => void): () => void;
+  // ── ──
   setPlayerColors(colors: readonly PlayerColor[]): void;   // index = engine player id
   setTargets(targets: readonly Target[], color: PlayerColor): void;  // soft glow on everything the player may touch
   setGhost(ghost: Ghost | null): void;              // translucent preview of a tile about to be placed

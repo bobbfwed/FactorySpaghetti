@@ -482,3 +482,40 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg.landscape .tg-hud.phone .tg-confirm.docked { left: calc((100% - var(--side-w)) / 2); }
 .tg.landscape .tg-hud.phone .tg-over { left: calc((100% - var(--side-w)) / 2); width: calc(100% - var(--side-w) - 24px); top: 56px; max-height: calc(100% - 64px); overflow-y: auto; }
 .tg.landscape.phone .tg-toast { left: calc((100% - var(--side-w)) / 2); top: auto; bottom: 16px; }
+/* ---- N8: animation and feel ---- */
+/* Effects over the table: flights between the table and the players, the "Your turn" cue. */
+.tg-fx { position: absolute; inset: 0; pointer-events: none; z-index: 45; overflow: hidden; }
+.tg-fly { position: absolute; left: 0; top: 0; width: 30px; height: 30px; display: grid; place-items: center; opacity: 0; will-change: transform, opacity; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6)); }
+.tg-fly .ic { width: 28px; height: 28px; }
+.tg-fly.card { width: 34px; height: 46px; border-radius: 5px; background: #f3ecd9; box-shadow: 0 0 0 3px var(--seat, var(--gold)), 0 4px 10px rgba(0, 0, 0, 0.55); filter: none; }
+.tg-fly.card .ic { width: 24px; height: 24px; color: #222; }
+.tg-fly b { position: absolute; top: -14px; right: -18px; font-size: 12px; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: rgba(20, 20, 22, 0.92); color: var(--text); }
+.tg-yourturn {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); opacity: 0;
+  display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-radius: 40px;
+  font-size: 28px; font-weight: 900; letter-spacing: 0.01em; color: #fff; white-space: nowrap;
+  background: rgba(16, 16, 18, 0.88); box-shadow: 0 0 0 3px var(--seat), 0 0 34px var(--seat), 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.tg-yourturn .sw { width: 18px; height: 18px; border-radius: 50%; background: var(--seat); box-shadow: 0 0 12px var(--seat); }
+.tg.phone .tg-yourturn { font-size: 22px; top: 32%; padding: 12px 22px; }
+
+/* Skip: shown while the table still plays earlier moves (fades in, so short animations do not flash it). */
+.tg-skip {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--bottom-h) + 18px); z-index: 13;
+  min-height: 44px; min-width: 96px; padding: 0 18px; border-radius: 22px; gap: 6px; font-weight: 800;
+  opacity: 0; animation: tg-skip-in 0.2s ease 0.35s forwards; pointer-events: auto;
+}
+.tg-skip .chev { font-size: 20px; line-height: 1; }
+@keyframes tg-skip-in { to { opacity: 0.94; } }
+.tg-hud.phone .tg-skip { bottom: calc(var(--bottom-h) + 14px); }
+
+/* Settings in the game menu: animation speed as three buttons, then switches. */
+.tg-menu .tg-feel { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 6px 4px 12px; font-size: 14.5px; font-weight: 600; }
+.tg-menu .tg-feel .lbl { flex: none; }
+.tg-seg { margin-left: auto; display: flex; background: #1c1c20; border-radius: 12px; padding: 3px; gap: 2px; }
+.tg-seg .seg { min-height: 44px; min-width: 52px; padding: 0 8px; border-radius: 9px; font-size: 13.5px; font-weight: 700; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; }
+.tg-seg .seg.on { background: var(--gold); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .tg-skip { animation: none; opacity: 0.94; } }
+
+/* The game menu has grown (feel and playtest entries): keep it inside short windows. */
+.tg-menu { max-height: calc(100% - 84px); overflow-y: auto; }

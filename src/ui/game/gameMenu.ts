@@ -5,6 +5,8 @@ import { actionButton, h } from '../dom';
 import { icon } from '../icons';
 import { setPreferredView } from '../viewPref';
 import type { Ctx } from './context';
+import { feelItems } from './feelMenu';
+import { playtestItems } from '../playtestMenu';
 
 export function menuButton(ctx: Ctx): HTMLElement {
   return h('button', {
@@ -24,6 +26,8 @@ export function gameMenu(ctx: Ctx): HTMLElement | null {
     h('button', { class: 'item', onclick: () => { c.downloadSave(); close(); } }, icon('download'), 'Download save file'),
     c.canShare ? actionButton([icon('share'), 'Share save…'], 'item', async () => { await c.shareSave(); close(); }) : null,
     h('hr'),
+    ...playtestItems(c, close),
+    h('hr'),
     ctx.me !== null && !ctx.game.gameOver
       ? h('button', {
         class: `item switch-item${c.state.autoplay ? ' on' : ''}`, attrs: { role: 'switch', 'aria-checked': String(c.state.autoplay), 'data-autoplay': '1' },
@@ -32,6 +36,8 @@ export function gameMenu(ctx: Ctx): HTMLElement | null {
       : null,
     seat?.autopilot ? actionButton([icon('bot'), 'Take my seat back'], 'item', async () => { await c.takeSeatBack(); close(); }) : null,
     h('button', { class: 'item', attrs: { 'data-textview': '1' }, onclick: () => { close(); setPreferredView('text'); } }, icon('list'), 'Switch to the text view'),
+    h('hr'),
+    ...feelItems(ctx),
     h('hr'),
     h('button', {
       class: 'item danger',
