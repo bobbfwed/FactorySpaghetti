@@ -88,12 +88,28 @@ function stable(x: unknown): unknown {
   return x;
 }
 
+/**
+ * The revision of the rules that live in code rather than in engine/config.ts. RAISE IT BY ONE
+ * WHENEVER A RULE CHANGES IN CODE (a new step, a new legality check, a changed effect), so saves,
+ * links and replays made before the change read as "different rules" instead of failing later.
+ * Changes to config data are picked up by the fingerprint on their own.
+ *   1: the rules before the revision existed (saves without it in their fingerprint).
+ *   2: the draw step (DRAW_PIECE, one of several open stacks) and reserved belt points (POINT_RESERVED).
+ */
+export const RULES_REVISION = 2;
+
 let fingerprint: string | null = null;
 
-/** A short hash of the engine config values that define the rules (not timers or bot weights). */
+/** A short hash of every rules input: the config values that define the rules (not timers or bot weights) and RULES_REVISION. */
 export function rulesFingerprint(): string {
   if (fingerprint) return fingerprint;
   const rules = {
+    revision: RULES_REVISION,
+    mines: config.MINE_COUNT,
+    cardsPerTurn: config.MAX_CARDS_PLAYED_PER_TURN,
+    claimsPerBuilding: config.MAX_CLAIMS_PER_BUILDING,
+    tesseractsToWin: config.TESSERACTS_TO_WIN,
+    teleporterCost: [0, 1, 2, 3].map(n => config.teleporterCost(n)),
     pieceCounts: config.PIECE_COUNTS,
     stacks: config.STACK_COMPOSITION,
     values: config.MATERIAL_VALUES,
@@ -118,6 +134,8 @@ export function rulesFingerprint(): string {
     bonuses: config.bonusesEnabled,
     bonusThresholds: config.BONUS_THRESHOLDS,
     templates: config.PIECE_TEMPLATES,
+    mineTemplates: config.MINE_TEMPLATES,
+    mineLeanOre: config.MINE_LEAN_ORE_OUTPUTS,
   };
   const text = JSON.stringify(stable(rules));
   let h = 0x811c9dc5; // FNV-1a, 32 bit
@@ -464,6 +482,8 @@ export function isTableEvent(e: unknown, playerCount: number): boolean {
       return seat(e.seat) && id(e.pieceId) && building(e.building) && OUTCOMES.has(e.outcome as string) && smallInt(e.amount);
     case 'piecePlaced': case 'skipped':
       return seat(e.seat) && id(e.pieceId) && building(e.building);
+    case 'pieceDrawn':
+      return seat(e.seat) && (e.stack === 0 || e.stack === 1 || e.stack === 2) && id(e.pieceId) && building(e.building);
     case 'operated':
       return seat(e.seat) && id(e.pieceId) && building(e.building) && (e.product === null || MATERIALS.has(e.product as string))
         && smallInt(e.powerChange) && typeof e.teleported === 'boolean';

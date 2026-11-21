@@ -27,6 +27,10 @@ export function moveEvents(before: GameState, after: GameState, action: Action, 
       }
       return out;
     }
+    case 'DRAW_PIECE': {
+      const top = before.stacks[action.stackIndex]?.pieces[0];
+      return top ? [{ kind: 'pieceDrawn', seat, stack: action.stackIndex, pieceId: top.id, building: top.type }] : [];
+    }
     case 'BUY_CARD': {
       const card = before.cardDeck[0] ?? null;
       return [{ kind: 'cardBought', seat, card, playedOnDraw: card !== null && PLAY_ON_DRAW_CARDS.has(card) }];

@@ -22,7 +22,7 @@ export { describeAction, BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from './descr
 export { diceRngFromSeed, rollDice } from './dice';
 export type { SaveEnvelope, SaveErrorKind } from './save';
 export {
-  MAX_LINK_CHARS, MAX_SAVE_BYTES, SaveError, packLink, parseSaveFile, rulesFingerprint, sameRules, saveFromHash, saveSummary,
+  MAX_LINK_CHARS, MAX_SAVE_BYTES, RULES_REVISION, SaveError, packLink, parseSaveFile, rulesFingerprint, sameRules, saveFromHash, saveSummary,
   serializeSaveFile, toSave, unpackLink, validateSave,
 } from './save';
 export type { SaveListing, SaveStore } from './store';

@@ -56,6 +56,9 @@ export type TableEvent =
   | { kind: 'roll'; seat: number; dice: number[]; total: number }
   | { kind: 'activated'; seat: number; pieceId: string; building: PieceType; outcome: ActivationOutcome; amount: number }
   | { kind: 'piecePlaced'; seat: number; pieceId: string; building: PieceType }
+  // A draw from one of several open stacks (DRAW_PIECE): the top piece of `stack` is now face up
+  // for everyone, and it is the piece this player places next.
+  | { kind: 'pieceDrawn'; seat: number; stack: 0 | 1 | 2; pieceId: string; building: PieceType }
   | { kind: 'operated'; seat: number; pieceId: string; building: PieceType; product: Material | null; powerChange: number; teleported: boolean }
   | { kind: 'skipped'; seat: number; pieceId: string; building: PieceType }
   | { kind: 'collected'; seat: number; pieceId: string; materials: Material[] }
