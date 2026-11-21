@@ -1,0 +1,1416 @@
+// The play controller: turns "what the rules allow right now" (legalActions) into "what the
+// player can touch, and what each touch does". Pure logic — no DOM, no Three.js. The table and
+// the HTML interface render `view` and forward taps here; every action this sends comes from
+// legalActions for the current state (the dice roll excepted, which the host fills in).
+
+import type {
+  Action,
+  ClaimBuildingAction,
+  PlaceBeltAction,
+  PlaceMeepleAction,
+  PlayCardAction,
+  UpgradeBuildingAction,
+} from '../engine/actions';
+import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
+import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MINE_COSTS, cardCost } from '../engine/config';
+import { applyAction } from '../engine/reducer';
+import { tryPayExact } from '../engine/rules/flow';
+import { findBeltPath, type RoutePoint } from '../engine/routing';
+import type { Ghost, Target } from '../table/types';
+import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
+import {
+  EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, inventoryValue, isBuilding,
+  legalFor, nextMinePrice, pieceById, routeReach, runBlock, runPreview,
+} from './info';
+import {
+  CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, materialList, pieceName, playerName, selectionLabel,
+} from './words';
+
+// ── Modes (what is "picked up") ───────────────────────────────────────────────
+
+type PlaceSrc =
+  | { kind: 'stack'; stack: 0 | 1 | 2 }
+  | { kind: 'mine' }
+  | { kind: 'buyMine' }
+  | { kind: 'overstock' }
+  | { kind: 'drone'; stack: 0 | 1 | 2; index: number };
+
+type UpSrc = 'pi' | 'endOfRound' | 'mineCredit';
+type ClaimSrc = 'pi' | 'free';
+type Buf = 'input' | 'output';
+
+type Mode =
+  | { k: 'idle' }
+  | { k: 'setupClaim'; pieceId: string }
+  | { k: 'place'; src: PlaceSrc; coord: HexCoord | null; rotation: number; auto: boolean }
+  | { k: 'menu'; pieceId: string }
+  | { k: 'beltMenu'; beltId: string }
+  | { k: 'opMenu'; pieceId: string }
+  | { k: 'claim'; src: ClaimSrc; pieceId: string }
+  | { k: 'upgradeOld'; src: UpSrc; pieceId: string }
+  | { k: 'upgrade'; src: UpSrc; pieceId: string; old: number }
+  | { k: 'belt'; start: RoutePoint | null }
+  | { k: 'routeBuy'; actions: Action[]; need: number; cost: number; have: number }
+  | { k: 'teleporter'; pick: { pieceId: string; buffer: Buf } | null; whichOn: string | null }
+  | { k: 'exchange' }
+  | { k: 'card'; card: CardType; a: string | null; b: string | null; module: number | null; buffer: Buf | null; whichOn: string | null }
+  | { k: 'drone' }
+  | { k: 'meeple'; pieceId: string; slot: 0 | 1 | null }
+  | { k: 'meepleSlot'; pieceId: string }
+  | { k: 'pi' };
+
+const IDLE: Mode = { k: 'idle' };
+
+/** Rotation order for the rotate button: single tiles turn 0→5; a mine's second hex walks clockwise. */
+const TILE_ROT_ORDER = [0, 1, 2, 3, 4, 5] as const;
+const MINE_ROT_ORDER = [0, 2, 5, 1, 3, 4] as const;
+
+const NO_TARGET_CARDS: ReadonlySet<CardType> = new Set<CardType>([
+  'embezzlement', 'netSurplusSellOff', 'productionIncrease', 'personalJetPack', 'assetForfeiture',
+]);
+
+// ── Small helpers ─────────────────────────────────────────────────────────────
+
+type Of<T extends Action['type']> = Extract<Action, { type: T }>;
+
+function ofType<T extends Action['type']>(legal: readonly Action[], t: T): Of<T>[] {
+  return legal.filter((a): a is Of<T> => a.type === t);
+}
+
+export function targetKey(t: Target): string {
+  switch (t.kind) {
+    case 'cell': return `cell:${t.q},${t.r}`;
+    case 'piece': return `piece:${t.pieceId}`;
+    case 'point': return `point:${t.pieceId}:${t.point}`;
+    case 'buffer': return `buffer:${t.pieceId}:${t.buffer}`;
+    case 'mineSlot': return `mineSlot:${t.pieceId}:${t.slot}`;
+    case 'belt': return `belt:${t.beltId}`;
+    case 'stack': return `stack:${t.index}`;
+    case 'deck': return 'deck';
+  }
+}
+
+const sameCoord = (a: HexCoord, b: HexCoord): boolean => a.q === b.q && a.r === b.r;
+
+function claimSrc(a: ClaimBuildingAction): ClaimSrc | null {
+  if (a.fromProductionIncrease) return 'pi';
+  if (a.fromFreeClaim) return 'free';
+  return null;
+}
+
+function upSrc(a: UpgradeBuildingAction): UpSrc | null {
+  if (a.fromProductionIncrease) return 'pi';
+  if (a.fromMineCredit) return 'mineCredit';
+  if (a.freeCredits !== undefined) return 'endOfRound';
+  return null;
+}
+
+type PlaceLike = Of<'PLACE_PIECE'> | Of<'PLACE_MINE'> | Of<'BUY_MINE'> | Of<'PLACE_OVERSTOCK_PIECE'> | PlayCardAction;
+
+function coordOf(a: PlaceLike): HexCoord | null {
+  return a.coord ?? null;
+}
+
+// ── View builder ──────────────────────────────────────────────────────────────
+
+class Builder {
+  readonly view: PlayView;
+  readonly taps = new Map<string, () => void>();
+  readonly fns = new Map<string, () => void>();
+  readonly reasons = new Map<string, string>();
+  onPrimary: (() => void) | null = null;
+  onConfirm: (() => void) | null = null;
+  onRotate: ((steps: number) => void) | null = null;
+
+  constructor(view: PlayView) { this.view = view; }
+
+  lit(t: Target, fn: () => void): void {
+    const k = targetKey(t);
+    if (!this.taps.has(k)) this.view.targets.push(t);
+    this.taps.set(k, fn);
+  }
+
+  clearTargets(): void {
+    this.view.targets = [];
+    this.taps.clear();
+  }
+
+  item(it: Item, fn?: () => void): Item {
+    if (it.enabled && fn) this.fns.set(it.id, fn);
+    else if (it.reason) this.reasons.set(it.id, it.reason);
+    return it;
+  }
+}
+
+function emptyView(): PlayView {
+  return {
+    step: 'waiting', stepIndex: null, myTurn: false, activePlayer: null, instruction: '',
+    primary: null, targets: [], ghost: null, confirmBar: null, selection: null, menu: null,
+    tray: [], bank: [], hand: [], prompts: [], choices: null, hint: null,
+  };
+}
+
+// ── Controller ────────────────────────────────────────────────────────────────
+
+export interface PlayControllerOptions {
+  /** Hands an action to the session layer (which sends it to the host). */
+  send: (action: Action) => void;
+  /** Display name of a seat, for "Red is placing a piece". Default "Player N". */
+  names?: (id: PlayerId) => string;
+}
+
+export class PlayController {
+  private game: GameState | null = null;
+  private me: PlayerId | null = null;
+  private mode: Mode = IDLE;
+  private piActive = false;
+  private queue: Action[] = [];
+  private queueSent: Action | null = null;
+  private hintText: string | null = null;
+  private readonly listeners = new Set<() => void>();
+  private readonly sendFn: (action: Action) => void;
+  private readonly nameOf: (id: PlayerId) => string;
+  private current: Builder = new Builder(emptyView());
+
+  constructor(opts: PlayControllerOptions) {
+    this.sendFn = opts.send;
+    this.nameOf = opts.names ?? ((id: PlayerId): string => playerName(id));
+    this.render(false);
+  }
+
+  get view(): PlayView { return this.current.view; }
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => { this.listeners.delete(fn); };
+  }
+
+  /** A new state arrived (or my seat changed). Recompute; keep the selection only if it is still possible. */
+  update(game: GameState | null, me: PlayerId | null): void {
+    const prev = this.game;
+    const seatChanged = me !== this.me;
+    this.game = game;
+    this.me = me;
+    this.hintText = null;
+    if (seatChanged || !game || me === null || game.gameOver) {
+      this.mode = IDLE; this.queue = []; this.queueSent = null; this.piActive = false;
+    } else {
+      if (this.piActive && (game.productionIncreaseBudget <= 0 || !this.piActions(game, me).length)) {
+        this.piActive = false;
+        if (this.mode.k === 'pi') this.mode = IDLE;
+      }
+      if (prev !== game) this.pumpQueue(prev);
+    }
+    this.render(true);
+  }
+
+  /** The host refused the last move: drop any selection and route in progress, and say why. */
+  refused(message: string): void {
+    this.queue = []; this.queueSent = null;
+    this.mode = IDLE;
+    this.render(false);
+    this.hintText = message;
+    this.current.view.hint = message;
+    this.notify();
+  }
+
+  tap(target: Target): void {
+    const fn = this.current.taps.get(targetKey(target))
+      ?? (target.kind === 'buffer' || target.kind === 'point' || target.kind === 'mineSlot'
+        ? this.current.taps.get(targetKey({ kind: 'piece', pieceId: target.pieceId }))
+        : undefined);
+    if (fn) { this.hintText = null; fn(); this.render(false); return; }
+    this.hintText = this.whyNot(target);
+    this.render(false);
+  }
+
+  choose(id: string): void {
+    const fn = this.current.fns.get(id);
+    if (fn) { this.hintText = null; fn(); this.render(false); return; }
+    this.hintText = this.current.reasons.get(id) ?? W.notLit;
+    this.render(false);
+  }
+
+  primary(): void {
+    const fn = this.current.onPrimary;
+    const p = this.current.view.primary;
+    if (fn && p?.enabled) { this.hintText = null; fn(); this.render(false); return; }
+    if (p && !p.enabled) { this.hintText = p.hint ?? null; this.render(false); }
+  }
+
+  confirm(): void {
+    const fn = this.current.onConfirm;
+    if (!fn) return;
+    this.hintText = null;
+    fn();
+    this.render(false);
+  }
+
+  cancel(): void {
+    if (this.mode.k === 'pi') this.piActive = false;
+    this.mode = IDLE;
+    this.queue = []; this.queueSent = null;
+    this.hintText = null;
+    this.render(false);
+  }
+
+  rotate(steps = 1): void {
+    const fn = this.current.onRotate;
+    if (!fn) return;
+    fn(steps);
+    this.render(false);
+  }
+
+  // ── Plumbing ────────────────────────────────────────────────────────────────
+
+  private notify(): void {
+    for (const fn of [...this.listeners]) fn();
+  }
+
+  private send(action: Action, next: Mode = IDLE): void {
+    this.mode = next;
+    this.sendFn(action);
+  }
+
+  private setMode(m: Mode): void { this.mode = m; }
+
+  private render(fromUpdate: boolean): void {
+    let b = this.newBuilder();
+    if (!this.build(b)) {
+      if (fromUpdate && !this.isSoft(this.mode)) this.hintText = W.selectionGone;
+      this.mode = IDLE;
+      b = this.newBuilder();
+      this.build(b);
+    }
+    b.view.hint = this.hintText;
+    this.current = b;
+    this.notify();
+  }
+
+  private newBuilder(): Builder {
+    return new Builder(emptyView());
+  }
+
+  /** Selections that disappear quietly when the state moves on (nothing the player chose is lost). */
+  private isSoft(m: Mode): boolean {
+    return (m.k === 'place' && m.auto) || (m.k === 'belt' && m.start === null) || m.k === 'pi' || m.k === 'idle';
+  }
+
+  // ── Route queue (multi-belt route helper) ───────────────────────────────────
+
+  private startQueue(actions: Action[]): void {
+    this.queue = [...actions];
+    this.queueSent = null;
+    this.pumpQueue(null);
+  }
+
+  /** Send the next queued route step once the previous one has shown up in the state. */
+  private pumpQueue(prev: GameState | null): void {
+    const g = this.game, me = this.me;
+    if (!g || me === null) return;
+    if (this.queueSent && prev && !this.progressed(prev, g, this.queueSent)) return;
+    this.queueSent = null;
+    if (this.queue.length === 0) return;
+    const next = this.queue[0]!;
+    const legal = legalFor(g, me);
+    const match = next.type === 'PLACE_BELT'
+      ? ofType(legal, 'PLACE_BELT').find(a => a.pieceId === next.pieceId
+        && ((a.fromPoint === next.fromPoint && a.toPoint === next.toPoint)
+          || (a.fromPoint === next.toPoint && a.toPoint === next.fromPoint)))
+      : legal.find(a => actionKey(a) === actionKey(next));
+    if (!match) {
+      this.queue = [];
+      this.hintText = W.routeStopped;
+      return;
+    }
+    this.queue.shift();
+    this.queueSent = match;
+    this.sendFn(match);
+  }
+
+  private progressed(prev: GameState, next: GameState, a: Action): boolean {
+    const me = this.me;
+    if (me === null) return true;
+    if (a.type === 'BUY_BELT') {
+      return (next.players[me]?.beltsRemaining ?? 0) > (prev.players[me]?.beltsRemaining ?? 0);
+    }
+    if (a.type === 'PLACE_BELT') {
+      return next.belts.some(b => b.pieceId === a.pieceId && b.ownerId === me
+        && ((b.fromPoint === a.fromPoint && b.toPoint === a.toPoint) || (b.fromPoint === a.toPoint && b.toPoint === a.fromPoint)));
+    }
+    return true;
+  }
+
+  // ── The view ────────────────────────────────────────────────────────────────
+
+  /** Builds the view for the current mode; false if the mode is no longer possible. */
+  private build(b: Builder): boolean {
+    const g = this.game, me = this.me;
+    const v = b.view;
+    if (!g || me === null) {
+      v.instruction = g ? W.spectating : W.noGame;
+      return true;
+    }
+    const player = g.players[me];
+    if (!player) { v.instruction = W.spectating; return true; }
+    const active = activeId(g);
+    v.activePlayer = active;
+    v.stepIndex = stepIndexOf(g);
+    if (g.gameOver) {
+      v.step = 'over';
+      v.stepIndex = null;
+      v.tray = baseTray(player);
+      v.instruction = g.winner !== null ? W.gameOverWinner(this.nameOf(g.winner))
+        : g.tiedWinners.length ? W.gameOverTie(g.tiedWinners.map(id => this.nameOf(id)).join(', '))
+          : W.gameOverNone;
+      return true;
+    }
+
+    const legal = legalFor(g, me);
+    const myTurn = active === me;
+    v.myTurn = myTurn;
+    v.tray = baseTray(player);
+    const myPending = g.pendingFactoryOps.filter(e => e.ownerId === me);
+    v.bank = this.bankItems(b, g, player, legal, myTurn, myPending.length > 0);
+    v.hand = this.handItems(b, g, player, legal, myTurn, myPending.length > 0);
+    v.prompts = this.promptsFor(b, g, me, player, legal);
+
+    if (myPending.length > 0) return this.buildPending(b, g, myTurn, myPending.length);
+    if (!myTurn) return this.buildWaiting(b, g, active);
+
+    if (this.mode.k === 'idle') this.mode = this.defaultMode(g, me, legal);
+
+    switch (g.phase) {
+      case 'setupClaimPF':
+      case 'setupClaimPP': return this.buildSetup(b, g, legal);
+      case 'placePiece': return this.buildPlace(b, g, legal);
+      case 'roll': return this.buildRoll(b, g);
+      case 'actions': return this.buildActions(b, g, me, player, legal);
+      case 'placeMeeple': return this.buildMeeple(b, g, legal);
+      case 'roundEnd': return this.buildRoundEnd(b, g, me, player, legal);
+    }
+  }
+
+  /** The idle state of the current step: a forced placement takes over when one is owed. */
+  private defaultMode(g: GameState, me: PlayerId, legal: readonly Action[]): Mode {
+    if (g.turnOrder[g.activePlayerIndex] !== me) return IDLE;
+    if (g.phase === 'placePiece') {
+      if (ofType(legal, 'PLACE_MINE').length > 0) return { k: 'place', src: { kind: 'mine' }, coord: null, rotation: 0, auto: true };
+      const stacks = [...new Set(ofType(legal, 'PLACE_PIECE').map(a => a.stackIndex))];
+      if (stacks.length === 1) return { k: 'place', src: { kind: 'stack', stack: stacks[0]! }, coord: null, rotation: 0, auto: true };
+    }
+    if (g.phase === 'actions') {
+      if (ofType(legal, 'PLACE_OVERSTOCK_PIECE').length > 0) {
+        return { k: 'place', src: { kind: 'overstock' }, coord: null, rotation: 0, auto: true };
+      }
+      if (this.piActive && g.productionIncreaseBudget > 0 && this.piActions(g, me).length > 0) return { k: 'pi' };
+    }
+    return IDLE;
+  }
+
+  // ── Pending factory activations (any turn) ──────────────────────────────────
+
+  private promptsFor(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): Prompt[] {
+    const total = g.lastRoll ? g.lastRoll.reduce((x, y) => x + y, 0) : 0;
+    const out: Prompt[] = [];
+    for (const e of g.pendingFactoryOps) {
+      if (e.ownerId !== me) continue;
+      const piece = pieceById(g, e.pieceId);
+      if (!piece) continue;
+      const run = legal.find(a => a.type === 'OPERATE_BUILDING' && a.pieceId === e.pieceId && a.ownerId === me);
+      const skip = legal.find(a => a.type === 'SKIP_FACTORY_ROLL' && a.pieceId === e.pieceId && a.ownerId === me);
+      const mine = piece.claims.filter(c => c.ownerId === me).map(c => c.controlModule);
+      const module = mine.find(m => m === total) ?? mine[0] ?? 0;
+      const pv = runPreview(piece, player);
+      // legalActions keeps offering "run" even when the building can no longer run (e.g. a
+      // co-owner ran it first and filled its output); the engine then refuses. Say so.
+      const outFull = (piece.output?.slots ?? []).some(x => x !== null);
+      const detail = outFull ? W.promptCannotRun
+        : pv && pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product)
+          : W.promptRunUnknown;
+      const anchor: Target = { kind: 'piece', pieceId: piece.id };
+      out.push({
+        id: `op:${piece.id}`,
+        anchor,
+        title: W.promptTitle(pieceName(piece.type), module, total),
+        detail,
+        options: this.opOptions(b, piece.id, run, skip, detail),
+      });
+    }
+    return out;
+  }
+
+  private opOptions(b: Builder, pieceId: string, run: Action | undefined, skip: Action | undefined, detail: string): Item[] {
+    return [
+      b.item({ id: `op:${pieceId}:run`, label: W.promptRun, detail, enabled: !!run }, run ? (): void => this.send(run) : undefined),
+      b.item({ id: `op:${pieceId}:skip`, label: W.promptSkip, detail: W.promptSkipDetail, enabled: !!skip }, skip ? (): void => this.send(skip) : undefined),
+    ];
+  }
+
+  private buildPending(b: Builder, g: GameState, myTurn: boolean, n: number): boolean {
+    const v = b.view;
+    v.step = myTurn ? 'actions' : 'waiting';
+    v.instruction = n > 1 ? W.pendingMineMany(n) : W.pendingMine;
+    if (myTurn) v.primary = { label: W.actionsDone, enabled: false, hint: W.decideFirst };
+    for (const p of v.prompts) {
+      const pieceId = (p.anchor as { pieceId: string }).pieceId;
+      b.lit(p.anchor, () => this.setMode({ k: 'opMenu', pieceId }));
+    }
+    if (this.mode.k === 'opMenu') {
+      const pieceId = this.mode.pieceId;
+      const p = v.prompts.find(x => x.id === `op:${pieceId}`);
+      if (!p) return false;
+      const piece = pieceById(g, pieceId)!;
+      v.menu = { anchor: p.anchor, title: pieceName(piece.type), subtitle: p.title, items: p.options };
+      v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+      v.confirmBar = { confirm: false, rotate: false, cancel: true };
+      return true;
+    }
+    return this.mode.k === 'idle';
+  }
+
+  // ── Not my turn ─────────────────────────────────────────────────────────────
+
+  private buildWaiting(b: Builder, g: GameState, active: PlayerId | null): boolean {
+    const v = b.view;
+    v.step = 'waiting';
+    const name = active === null ? '' : this.nameOf(active);
+    switch (g.phase) {
+      case 'setupClaimPF': case 'setupClaimPP': v.instruction = W.waitingSetup(name); break;
+      case 'placePiece': v.instruction = W.waitingPlace(name); break;
+      case 'roll': v.instruction = W.waitingRoll(name); break;
+      case 'actions': v.instruction = W.waitingActions(name); break;
+      case 'placeMeeple': v.instruction = W.waitingMeeple(name); break;
+      case 'roundEnd': v.instruction = W.waitingRoundEnd(name); break;
+    }
+    return this.mode.k === 'idle';
+  }
+
+  // ── Setup claims ────────────────────────────────────────────────────────────
+
+  private buildSetup(b: Builder, g: GameState, legal: readonly Action[]): boolean {
+    const v = b.view;
+    v.step = 'setup';
+    const pf = g.phase === 'setupClaimPF';
+    v.instruction = pf ? W.setupPF : W.setupPP;
+    const claims = ofType(legal, 'SETUP_CLAIM');
+    for (const c of claims) {
+      b.lit({ kind: 'piece', pieceId: c.pieceId }, () => this.setMode({ k: 'setupClaim', pieceId: c.pieceId }));
+    }
+    const m = this.mode;
+    if (m.k === 'idle') return true;
+    if (m.k !== 'setupClaim') return false;
+    const c = claims.find(x => x.pieceId === m.pieceId);
+    const piece = pieceById(g, m.pieceId);
+    if (!c || !piece) return false;
+    const module = pf ? 3 : 2;
+    v.instruction = W.setupConfirm(pieceName(piece.type), module);
+    v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+    v.confirmBar = { confirm: true, rotate: false, cancel: true };
+    v.tray = v.tray.map(t => (t.module === module ? { module, state: 'lit', cost: W.free } : t));
+    b.onConfirm = (): void => this.send(c);
+    return true;
+  }
+
+  // ── Step 1: place a piece (or a dropped mine) ───────────────────────────────
+
+  private buildPlace(b: Builder, g: GameState, legal: readonly Action[]): boolean {
+    const v = b.view;
+    v.step = 'place';
+    const mines = ofType(legal, 'PLACE_MINE');
+    const m = this.mode;
+    if (mines.length > 0) {
+      v.instruction = W.mineDropped;
+      if (m.k !== 'place' || m.src.kind !== 'mine') return false;
+      return this.placement(b, m, mines, 'mine', selectionLabel.mine, 'mine', W.minePlaceConfirm);
+    }
+    const pieces = ofType(legal, 'PLACE_PIECE');
+    const stacks = [...new Set(pieces.map(a => a.stackIndex))].sort();
+    v.instruction = W.placePickStack;
+    for (const s of stacks) {
+      b.lit({ kind: 'stack', index: s }, () => this.setMode({
+        k: 'place', src: { kind: 'stack', stack: s }, coord: null,
+        rotation: this.mode.k === 'place' ? this.mode.rotation : 0, auto: false,
+      }));
+    }
+    if (m.k === 'idle') return true;
+    if (m.k !== 'place' || m.src.kind !== 'stack') return false;
+    const si = m.src.stack;
+    const top = g.stacks[si].pieces[0];
+    if (!top) return false;
+    const what = pieceName(top.type);
+    v.instruction = W.placePickCell(what);
+    return this.placement(b, m, pieces.filter(a => a.stackIndex === si), top.type,
+      selectionLabel.tile(what, si), 'tile', W.placeTurnConfirm(what));
+  }
+
+  /**
+   * Generic "put a tile down" flow: lit cells → ghost on a cell with only the rotations that
+   * are legal there → confirm sends the matching legal action.
+   */
+  private placement(
+    b: Builder,
+    m: Extract<Mode, { k: 'place' }>,
+    cands: readonly PlaceLike[],
+    pieceType: PieceType,
+    label: string,
+    kind: Selection['kind'],
+    confirmText: string,
+  ): boolean {
+    if (cands.length === 0) return false;
+    const v = b.view;
+    const seen = new Set<string>();
+    for (const a of cands) {
+      const c = coordOf(a);
+      if (!c) continue;
+      const k = `${c.q},${c.r}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      b.lit({ kind: 'cell', q: c.q, r: c.r }, () => this.pickCell(m, c, cands, pieceType));
+    }
+    v.selection = { kind, label };
+    if (!m.coord) {
+      v.confirmBar = m.auto ? null : { confirm: false, rotate: false, cancel: true };
+      return true;
+    }
+    const at = m.coord;
+    const order = pieceType === 'mine' ? MINE_ROT_ORDER : TILE_ROT_ORDER;
+    const here = cands.filter(a => { const c = coordOf(a); return c !== null && sameCoord(c, at); });
+    const rots: number[] = order.filter(r => here.some(a => (a.rotation ?? 0) === r));
+    if (rots.length === 0) return false;
+    const rotation = rots.includes(m.rotation) ? m.rotation : rots[0]!;
+    const chosen = here.find(a => (a.rotation ?? 0) === rotation)!;
+    const ghost: Ghost = { pieceType, q: at.q, r: at.r, rotation, valid: true };
+    v.ghost = ghost;
+    v.instruction = confirmText;
+    v.confirmBar = { confirm: true, rotate: rots.length > 1, cancel: true };
+    b.onConfirm = (): void => this.send(chosen);
+    b.onRotate = (steps: number): void => {
+      const i = rots.indexOf(rotation);
+      const n = rots.length;
+      const j = (((i + Math.trunc(steps)) % n) + n) % n;
+      this.mode = { ...m, rotation: rots[j]! };
+    };
+    return true;
+  }
+
+  private pickCell(m: Extract<Mode, { k: 'place' }>, c: HexCoord, cands: readonly PlaceLike[], pieceType: PieceType): void {
+    const order = pieceType === 'mine' ? MINE_ROT_ORDER : TILE_ROT_ORDER;
+    const rots: number[] = order.filter(r => cands.some(a => { const ac = coordOf(a); return ac !== null && sameCoord(ac, c) && (a.rotation ?? 0) === r; }));
+    const rotation = rots.includes(m.rotation) ? m.rotation : (rots[0] ?? 0);
+    this.mode = { ...m, coord: { q: c.q, r: c.r }, rotation, auto: false };
+  }
+
+  // ── Step 2: roll ────────────────────────────────────────────────────────────
+
+  private buildRoll(b: Builder, g: GameState): boolean {
+    const v = b.view;
+    v.step = 'roll';
+    v.instruction = W.rollNow;
+    v.primary = { label: W.rollLabel(g.mineCount), enabled: true };
+    b.onPrimary = (): void => this.send({ type: 'ROLL_DICE', rolls: [] });
+    return this.mode.k === 'idle';
+  }
+
+  // ── Step 3: actions ─────────────────────────────────────────────────────────
+
+  private buildActions(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
+    const v = b.view;
+    v.step = 'actions';
+    v.instruction = W.actionsIdle;
+    const end = legal.find(a => a.type === 'END_ACTIONS');
+    let hint: string | undefined;
+    if (!end) {
+      if (g.overstockPieces.length > 0) hint = W.overstockFirst;
+      else if (g.pendingFactoryOps.length > 0) {
+        const names = [...new Set(g.pendingFactoryOps.map(e => e.ownerId))].map(id => this.nameOf(id)).join(', ');
+        hint = W.othersDeciding(names);
+      }
+    } else if (g.productionIncreaseBudget > 0) {
+      hint = W.unspentPI(g.productionIncreaseBudget);
+    }
+    v.primary = { label: W.actionsDone, enabled: !!end, ...(hint ? { hint } : {}) };
+    if (end) b.onPrimary = (): void => this.send(end);
+
+    this.actionsIdleTargets(b, legal);
+    const m = this.mode;
+    switch (m.k) {
+      case 'idle': return true;
+      case 'place': {
+        if (m.src.kind === 'overstock') {
+          const cands = ofType(legal, 'PLACE_OVERSTOCK_PIECE');
+          const next = g.overstockPieces[0];
+          if (!next) return false;
+          const what = pieceName(next.type);
+          const total = g.overstockPieces.length;
+          v.instruction = W.overstockPlace(1, total, what);
+          return this.placement(b, m, cands, next.type, selectionLabel.overstock(what), 'overstock', W.placeTurnConfirm(what));
+        }
+        b.clearTargets();
+        if (m.src.kind === 'buyMine') {
+          v.instruction = W.placePickCell(pieceName('mine'));
+          return this.placement(b, m, ofType(legal, 'BUY_MINE'), 'mine', selectionLabel.mine, 'mine', W.minePlaceConfirm);
+        }
+        if (m.src.kind === 'drone') {
+          const src = m.src;
+          const piece = g.stacks[src.stack].pieces[src.index];
+          if (!piece) return false;
+          const what = pieceName(piece.type);
+          const cands = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone'
+            && a.stackIndex === src.stack && a.pieceIndex === src.index);
+          v.instruction = W.placePickCell(what);
+          return this.placement(b, m, cands, piece.type, selectionLabel.drone(what), 'drone', W.placeTurnConfirm(what));
+        }
+        return false;
+      }
+      case 'menu': return this.buildMenu(b, g, me, player, legal, m.pieceId);
+      case 'beltMenu': {
+        const rm = ofType(legal, 'REMOVE_BELT').find(a => a.beltId === m.beltId);
+        if (!rm) return false;
+        v.menu = {
+          anchor: { kind: 'belt', beltId: m.beltId }, title: W.yourBelt,
+          items: [b.item({ id: 'menu:removeBelt', label: W.removeBelt, detail: W.removeBeltDetail, enabled: true }, () => this.send(rm))],
+        };
+        v.selection = { kind: 'belt', label: selectionLabel.belt };
+        v.confirmBar = { confirm: false, rotate: false, cancel: true };
+        return true;
+      }
+      case 'claim': return this.buildClaim(b, g, legal, m);
+      case 'upgradeOld': return this.buildUpgradeOld(b, g, legal, m);
+      case 'upgrade': return this.buildUpgrade(b, g, legal, m);
+      case 'belt': return this.buildBelt(b, g, me, legal, m);
+      case 'routeBuy': {
+        b.clearTargets();
+        v.instruction = W.routeNeedsBuy(m.cost, m.have);
+        v.choices = {
+          title: W.routeNeedsBuy(m.cost, m.have),
+          items: [
+            b.item({ id: 'route:buy', label: W.routeBuy(m.need), detail: W.routeBuyDetail(m.need * BELT_COST), enabled: true }, () => {
+              this.mode = { k: 'belt', start: null };
+              this.startQueue(m.actions);
+            }),
+            b.item({ id: 'route:cancel', label: W.routeCancel, enabled: true }, () => this.setMode({ k: 'belt', start: null })),
+          ],
+        };
+        v.selection = { kind: 'belt', label: selectionLabel.belt };
+        v.confirmBar = { confirm: false, rotate: false, cancel: true };
+        return true;
+      }
+      case 'teleporter': return this.buildTeleporter(b, g, legal, m);
+      case 'exchange': {
+        const items = this.exchangeItems(b, player, legal);
+        if (!items.some(i => i.enabled)) return false;
+        v.choices = { title: W.exchangeTitle, items };
+        v.confirmBar = { confirm: false, rotate: false, cancel: true };
+        return true;
+      }
+      case 'card': return this.buildCard(b, g, player, legal, m);
+      case 'drone': {
+        const plays = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone');
+        if (plays.length === 0) return false;
+        b.clearTargets();
+        const seen = new Set<string>();
+        const items: Item[] = [];
+        for (const a of plays) {
+          const si = a.stackIndex, pi = a.pieceIndex;
+          if (si === undefined || pi === undefined) continue;
+          const k = `${si}:${pi}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const piece = g.stacks[si].pieces[pi];
+          if (!piece) continue;
+          items.push(b.item({ id: `drone:${si}:${pi}`, label: W.droneItem(si + 1, pi + 1, pieceName(piece.type)), enabled: true },
+            () => this.setMode({ k: 'place', src: { kind: 'drone', stack: si, index: pi }, coord: null, rotation: 0, auto: false })));
+        }
+        v.instruction = W.droneInstruction;
+        v.choices = { title: W.dronePile, items };
+        v.selection = { kind: 'card', label: selectionLabel.card(CARD_NAME.scoutingDrone) };
+        v.confirmBar = { confirm: false, rotate: false, cancel: true };
+        return true;
+      }
+      case 'pi': {
+        b.clearTargets();
+        const pis = this.piActions(g, me);
+        for (const id of new Set(pis.map(a => a.pieceId))) {
+          b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+        }
+        v.instruction = W.piInstruction(g.productionIncreaseBudget);
+        v.choices = {
+          title: CARD_NAME.productionIncrease,
+          items: [b.item({ id: 'pi:done', label: W.piDone, detail: W.piDoneDetail, enabled: true }, () => {
+            this.piActive = false;
+            this.mode = IDLE;
+          })],
+        };
+        v.selection = { kind: 'card', label: selectionLabel.card(CARD_NAME.productionIncrease) };
+        return true;
+      }
+      default: return false;
+    }
+  }
+
+  private piActions(g: GameState, me: PlayerId): (ClaimBuildingAction | UpgradeBuildingAction)[] {
+    const legal = legalFor(g, me);
+    return [
+      ...ofType(legal, 'CLAIM_BUILDING').filter(a => a.fromProductionIncrease),
+      ...ofType(legal, 'UPGRADE_BUILDING').filter(a => a.fromProductionIncrease),
+    ];
+  }
+
+  /** In the actions step: my buildings with something to do, my belts, belt start points, the deck. */
+  private actionsIdleTargets(b: Builder, legal: readonly Action[]): void {
+    const pieces = new Set<string>();
+    for (const a of legal) {
+      if (a.type === 'PLACE_TELEPORTER' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
+    }
+    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    for (const a of ofType(legal, 'REMOVE_BELT')) {
+      b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'beltMenu', beltId: a.beltId }));
+    }
+    for (const a of ofType(legal, 'PLACE_BELT')) {
+      for (const p of [a.fromPoint, a.toPoint]) {
+        b.lit({ kind: 'point', pieceId: a.pieceId, point: p }, () => this.setMode({ k: 'belt', start: { pieceId: a.pieceId, position: p } }));
+      }
+    }
+    const buy = legal.find(a => a.type === 'BUY_CARD');
+    if (buy) b.lit({ kind: 'deck' }, () => this.send(buy));
+  }
+
+  // ── Building menu ───────────────────────────────────────────────────────────
+
+  private buildMenu(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[], pieceId: string): boolean {
+    const piece = pieceById(g, pieceId);
+    if (!piece) return false;
+    const items = this.menuItems(b, g, player, legal, piece);
+    if (items.length === 0) return false;
+    const v = b.view;
+    v.menu = { anchor: { kind: 'piece', pieceId }, title: pieceName(piece.type), subtitle: this.pieceSummary(piece), items };
+    v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    return true;
+  }
+
+  private menuItems(b: Builder, g: GameState, player: Player, legal: readonly Action[], piece: BoardPiece): Item[] {
+    const items: Item[] = [];
+    const id = piece.id;
+    const claims = ofType(legal, 'CLAIM_BUILDING').filter(a => a.pieceId === id);
+    const ups = ofType(legal, 'UPGRADE_BUILDING').filter(a => a.pieceId === id);
+
+    // Round end: the meeple building first.
+    if (g.phase === 'roundEnd' && player.meepleOnPieceId === id && player.meepleSlotIndex === null && isBuilding(piece)) {
+      for (const mat of MATERIALS) {
+        const load = legal.find(a => a.type === 'LOAD_BUILDING_INPUT' && a.pieceId === id && a.material === mat);
+        if (load) items.push(b.item({ id: `menu:load:${mat}`, label: W.menuLoad(mat), enabled: true }, () => this.send(load)));
+      }
+      const run = legal.find(a => a.type === 'OPERATE_BUILDING' && a.pieceId === id && a.ownerId === undefined);
+      const pv = runPreview(piece, player);
+      const detail = pv ? (pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product)
+        : W.runPowerPlant(pv.gain, materialList(pv.consumed))) : undefined;
+      if (run) {
+        items.push(b.item({ id: 'menu:run', label: W.menuRun, ...(detail ? { detail } : {}), enabled: true }, () => this.send(run)));
+      } else {
+        const blk = runBlock(piece, player);
+        const reason = blk ? runBlockText(blk.why, blk.need ?? 0, player.powerTokens) : W.nothingHere;
+        items.push(b.item({ id: 'menu:run', label: W.menuRun, enabled: false, reason }));
+      }
+      const collect = legal.find(a => a.type === 'COLLECT_OUTPUT' && a.pieceId === id);
+      const inOut = (piece.output?.slots ?? []).filter((s): s is Material => s !== null);
+      if (collect) {
+        items.push(b.item({ id: 'menu:collect', label: W.menuCollect, detail: W.collectDetail(materialList(collectable(piece, player))), enabled: true }, () => this.send(collect)));
+      } else if (inOut.length > 0) {
+        items.push(b.item({ id: 'menu:collect', label: W.menuCollect, enabled: false, reason: W.inventoryFull(materialList([...new Set(inOut)])) }));
+      }
+    }
+
+    // Claims, one item per currency.
+    for (const src of ['pi', 'free'] as const) {
+      if (!claims.some(a => claimSrc(a) === src)) continue;
+      items.push(b.item({
+        id: `menu:claim:${src}`,
+        label: src === 'pi' ? W.menuClaim : W.menuClaimFree,
+        detail: src === 'pi' ? W.payPI(g.productionIncreaseBudget) : W.payFreeClaim(player.freeActionCredits),
+        enabled: true,
+      }, () => this.setMode({ k: 'claim', src, pieceId: id })));
+    }
+    // Upgrades, one item per currency.
+    for (const src of ['pi', 'endOfRound', 'mineCredit'] as const) {
+      const mine = ups.filter(a => upSrc(a) === src);
+      if (mine.length === 0) continue;
+      const olds = [...new Set(mine.map(a => a.oldModule))];
+      items.push(b.item({
+        id: `menu:upgrade:${src}`,
+        label: src === 'pi' ? W.menuUpgrade : src === 'endOfRound' ? W.menuUpgradeEndOfRound : W.menuUpgradeMineCredit,
+        detail: src === 'pi' ? W.payPI(g.productionIncreaseBudget)
+          : src === 'endOfRound' ? W.payEndOfRound(player.freeUpgradesRemaining) : W.payMineCredit(player.freeActionCredits),
+        enabled: true,
+      }, () => this.setMode(olds.length === 1
+        ? { k: 'upgrade', src, pieceId: id, old: olds[0]! }
+        : { k: 'upgradeOld', src, pieceId: id })));
+    }
+    // Teleporters.
+    for (const buf of ['input', 'output'] as const) {
+      const tp = legal.find(a => a.type === 'PLACE_TELEPORTER' && a.pieceId === id && a.bufferType === buf);
+      if (tp) {
+        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(g.globalTeleporterCount + 1), enabled: true, danger: true },
+          () => this.send(tp)));
+      }
+    }
+    return items;
+  }
+
+  private pieceSummary(piece: BoardPiece): string {
+    const parts: string[] = [];
+    if (piece.claims.length === 0) parts.push(W.menuSubtitleNone);
+    else {
+      const byOwner = new Map<PlayerId, number[]>();
+      for (const c of piece.claims) byOwner.set(c.ownerId, [...(byOwner.get(c.ownerId) ?? []), c.controlModule]);
+      parts.push(W.menuSubtitleModules([...byOwner].map(([o, ms]) => W.modulesOf(this.nameOf(o), ms.join(', '))).join('; ')));
+    }
+    const buf = (slots: ReadonlyArray<Material | null>): string => slots.map(s => (s ? MATERIAL_NAME[s] : W.empty)).join(', ');
+    if (piece.input) parts.push(W.menuInput(buf(piece.input.slots)) + (piece.input.teleporterOwner !== null ? W.teleporterMark : ''));
+    if (piece.output) parts.push(W.menuOutput(buf(piece.output.slots)) + (piece.output.teleporterOwner !== null ? W.teleporterMark : ''));
+    return parts.join(' · ');
+  }
+
+  // ── Claim / upgrade with the module tray ────────────────────────────────────
+
+  private claimCands(legal: readonly Action[], src: ClaimSrc, pieceId: string): ClaimBuildingAction[] {
+    return ofType(legal, 'CLAIM_BUILDING').filter(a => a.pieceId === pieceId && claimSrc(a) === src);
+  }
+
+  private upCands(legal: readonly Action[], src: UpSrc, pieceId: string): UpgradeBuildingAction[] {
+    return ofType(legal, 'UPGRADE_BUILDING').filter(a => a.pieceId === pieceId && upSrc(a) === src);
+  }
+
+  private buildClaim(b: Builder, g: GameState, legal: readonly Action[], m: Extract<Mode, { k: 'claim' }>): boolean {
+    const cands = this.claimCands(legal, m.src, m.pieceId);
+    const piece = pieceById(g, m.pieceId);
+    if (cands.length === 0 || !piece) return false;
+    const v = b.view;
+    v.instruction = W.claimOn(pieceName(piece.type));
+    v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    const back = this.backMode();
+    v.tray = v.tray.map(t => {
+      const a = cands.find(c => c.controlModule === t.module);
+      if (!a) return t;
+      b.item({ id: `module:${t.module}`, label: '', enabled: true }, () => this.send(a, back));
+      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - g.mineCount + 1) };
+    });
+    return true;
+  }
+
+  private buildUpgradeOld(b: Builder, g: GameState, legal: readonly Action[], m: Extract<Mode, { k: 'upgradeOld' }>): boolean {
+    const cands = this.upCands(legal, m.src, m.pieceId);
+    const piece = pieceById(g, m.pieceId);
+    if (cands.length === 0 || !piece) return false;
+    const olds = [...new Set(cands.map(a => a.oldModule))].sort((x, y) => x - y);
+    const v = b.view;
+    v.instruction = W.pickOld;
+    v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    v.choices = {
+      title: W.pickOld,
+      items: olds.map(o => b.item({ id: `old:${o}`, label: W.oldModule(o), enabled: true },
+        () => this.setMode({ k: 'upgrade', src: m.src, pieceId: m.pieceId, old: o }))),
+    };
+    return true;
+  }
+
+  private buildUpgrade(b: Builder, g: GameState, legal: readonly Action[], m: Extract<Mode, { k: 'upgrade' }>): boolean {
+    const cands = this.upCands(legal, m.src, m.pieceId).filter(a => a.oldModule === m.old);
+    const piece = pieceById(g, m.pieceId);
+    if (cands.length === 0 || !piece) return false;
+    const v = b.view;
+    v.instruction = W.upgradeOn(pieceName(piece.type), m.old);
+    v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    const back = this.backMode();
+    v.tray = v.tray.map(t => {
+      const a = cands.find(c => c.newModule === t.module);
+      if (!a) return t;
+      b.item({ id: `module:${t.module}`, label: '', enabled: true }, () => this.send(a, back));
+      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - m.old) };
+    });
+    return true;
+  }
+
+  /** Where a claim/upgrade returns to: the Production Increase mode while it is running. */
+  private backMode(): Mode {
+    return this.piActive ? { k: 'pi' } : IDLE;
+  }
+
+  // ── Belts ───────────────────────────────────────────────────────────────────
+
+  private buildBelt(b: Builder, g: GameState, me: PlayerId, legal: readonly Action[], m: Extract<Mode, { k: 'belt' }>): boolean {
+    const places = ofType(legal, 'PLACE_BELT');
+    if (places.length === 0) return false;
+    const v = b.view;
+    b.clearTargets();
+    v.selection = { kind: 'belt', label: selectionLabel.belt };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    if (!m.start) {
+      v.instruction = W.beltPickStart;
+      for (const a of places) {
+        for (const p of [a.fromPoint, a.toPoint]) {
+          b.lit({ kind: 'point', pieceId: a.pieceId, point: p }, () => this.setMode({ k: 'belt', start: { pieceId: a.pieceId, position: p } }));
+        }
+      }
+      return true;
+    }
+    const start = m.start;
+    const direct = places.filter(a => a.pieceId === start.pieceId && (a.fromPoint === start.position || a.toPoint === start.position));
+    const reach = routeReach(g, start, me);
+    if (direct.length === 0 && ![...reach].some(k => !k.startsWith(`${start.pieceId}:`))) return false;
+    v.instruction = W.beltPickEnd;
+    v.selection = { kind: 'belt', label: W.beltStart };
+    b.lit({ kind: 'point', pieceId: start.pieceId, point: start.position }, () => this.setMode({ k: 'belt', start: null }));
+    for (const key of reach) {
+      const cut = key.lastIndexOf(':');
+      const pieceId = key.slice(0, cut);
+      const pos = Number(key.slice(cut + 1));
+      if (pieceId === start.pieceId) continue;
+      b.lit({ kind: 'point', pieceId, point: pos }, () => this.layRoute(start, { pieceId, position: pos }));
+    }
+    for (const a of direct) {
+      const other = a.fromPoint === start.position ? a.toPoint : a.fromPoint;
+      b.lit({ kind: 'point', pieceId: a.pieceId, point: other }, () => this.send(a, { k: 'belt', start: null }));
+    }
+    return true;
+  }
+
+  /** Route helper: lay the router's chain between two points on different tiles. */
+  private layRoute(start: RoutePoint, end: RoutePoint): void {
+    const g = this.game, me = this.me;
+    if (!g || me === null) return;
+    const route = findBeltPath(g, start, end, me);
+    if (!route || route.cost === 0) { this.hintText = W.noRoute; return; }
+    const have = g.players[me]?.beltsRemaining ?? 0;
+    const need = Math.max(0, route.cost - have);
+    const acts: Action[] = [
+      ...Array.from({ length: need }, (): Action => ({ type: 'BUY_BELT' })),
+      ...route.belts.map((x): PlaceBeltAction => ({ type: 'PLACE_BELT', pieceId: x.pieceId, fromPoint: x.fromPoint, toPoint: x.toPoint })),
+    ];
+    // Check the whole chain against the engine before sending anything.
+    let s = g;
+    for (const a of acts) {
+      const r = applyAction(s, a);
+      if (!r.ok) {
+        this.hintText = a.type === 'BUY_BELT' ? W.routeCantBuy(need) : W.routeBlocked;
+        return;
+      }
+      s = r.state;
+    }
+    if (need > 0) {
+      this.mode = { k: 'routeBuy', actions: acts, need, cost: route.cost, have };
+      return;
+    }
+    this.mode = { k: 'belt', start: null };
+    this.startQueue(acts);
+  }
+
+  // ── Teleporter (bank) ───────────────────────────────────────────────────────
+
+  private buildTeleporter(b: Builder, g: GameState, legal: readonly Action[], m: Extract<Mode, { k: 'teleporter' }>): boolean {
+    const tps = ofType(legal, 'PLACE_TELEPORTER');
+    if (tps.length === 0) return false;
+    const v = b.view;
+    b.clearTargets();
+    v.instruction = W.teleporterPick;
+    v.selection = { kind: 'teleporter', label: selectionLabel.teleporter };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    this.bufferTargets(b, tps.map(a => ({ pieceId: a.pieceId, buffer: a.bufferType })),
+      pick => this.setMode({ ...m, pick, whichOn: null }),
+      pieceId => this.setMode({ ...m, pick: null, whichOn: pieceId }));
+    if (m.whichOn) {
+      const on = m.whichOn;
+      const opts = tps.filter(a => a.pieceId === on);
+      if (opts.length === 0) return false;
+      v.choices = {
+        title: W.teleporterWhich,
+        items: opts.map(a => b.item({ id: `buffer:${a.bufferType}`, label: W.teleporterOn(a.bufferType), enabled: true },
+          () => this.setMode({ ...m, pick: { pieceId: on, buffer: a.bufferType }, whichOn: null }))),
+      };
+    }
+    if (m.pick) {
+      const pick = m.pick;
+      const tp = tps.find(a => a.pieceId === pick.pieceId && a.bufferType === pick.buffer);
+      const piece = pieceById(g, pick.pieceId);
+      if (!tp || !piece) return false;
+      v.instruction = W.teleporterConfirm(W.bufferName(pick.buffer), pieceName(piece.type));
+      v.confirmBar = { confirm: true, rotate: false, cancel: true };
+      b.onConfirm = (): void => this.send(tp);
+    }
+    return true;
+  }
+
+  /** Light buffers; tapping a piece picks its only buffer or asks which one. */
+  private bufferTargets(
+    b: Builder,
+    opts: { pieceId: string; buffer: Buf }[],
+    pick: (p: { pieceId: string; buffer: Buf }) => void,
+    ask: (pieceId: string) => void,
+  ): void {
+    for (const o of opts) b.lit({ kind: 'buffer', pieceId: o.pieceId, buffer: o.buffer }, () => pick(o));
+    for (const id of new Set(opts.map(o => o.pieceId))) {
+      const mine = opts.filter(o => o.pieceId === id);
+      b.lit({ kind: 'piece', pieceId: id }, () => (mine.length === 1 ? pick(mine[0]!) : ask(id)));
+    }
+  }
+
+  // ── Exchange ────────────────────────────────────────────────────────────────
+
+  private exchangeItems(b: Builder, player: Player, legal: readonly Action[]): Item[] {
+    return (['plate', 'sphere', 'tesseract'] as const).map(give => {
+      const a = legal.find(x => x.type === 'EXCHANGE_MATERIALS' && x.give === give);
+      const gets = EXCHANGE_GETS[give];
+      const getsText = (Object.entries(gets) as [Material, number][]).map(([m, n]) => `${n} ${MATERIAL_NAME[m]}`).join(' + ');
+      const over = (Object.entries(gets) as [Material, number][]).filter(([m, n]) => player.inventory[m] + n > INVENTORY_CAP).map(([m]) => m);
+      const it: Item = {
+        id: `exchange:${give}`,
+        label: W.exchangeLabel(give, getsText),
+        enabled: !!a,
+        ...(over.length && a ? { detail: W.exchangeOverflow(materialList(over)), danger: true } : {}),
+        ...(a ? {} : { reason: W.exchangeNone(give) }),
+      };
+      return b.item(it, a ? (): void => this.send(a) : undefined);
+    });
+  }
+
+  // ── Leverage cards ──────────────────────────────────────────────────────────
+
+  private buildCard(b: Builder, g: GameState, player: Player, legal: readonly Action[], m: Extract<Mode, { k: 'card' }>): boolean {
+    const plays = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === m.card);
+    if (plays.length === 0) return false;
+    const v = b.view;
+    const name = CARD_NAME[m.card];
+    b.clearTargets();
+    v.selection = { kind: 'card', label: selectionLabel.card(name) };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    const ready = (a: PlayCardAction, text: string): void => {
+      v.instruction = text;
+      v.confirmBar = { confirm: true, rotate: false, cancel: true };
+      b.onConfirm = (): void => {
+        if (a.cardType === 'productionIncrease') { this.piActive = true; this.send(a, { k: 'pi' }); }
+        else this.send(a);
+      };
+    };
+
+    if (NO_TARGET_CARDS.has(m.card)) {
+      ready(plays[0]!, `${W.playCard(name)} ${CARD_TEXT[m.card]}`);
+      return true;
+    }
+
+    switch (m.card) {
+      case 'shortSale':
+      case 'sinkHole': {
+        for (const a of plays) {
+          if (a.pieceId) { const id = a.pieceId; b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ ...m, a: id })); }
+        }
+        const module = [...player.controlModules].filter(x => x >= g.mineCount).sort((x, y) => x - y)[0] ?? 0;
+        v.instruction = m.card === 'shortSale' ? W.shortSalePick(module) : W.sinkHolePick;
+        if (m.a) {
+          const a = plays.find(x => x.pieceId === m.a);
+          const piece = pieceById(g, m.a);
+          if (!a || !piece) return false;
+          ready(a, m.card === 'shortSale' ? W.shortSaleConfirm(pieceName(piece.type), module) : W.sinkHoleConfirm(pieceName(piece.type)));
+        }
+        return true;
+      }
+      case 'rdTaxWriteOff': {
+        v.instruction = W.rdPick;
+        const opts = plays.filter(a => a.pieceId && a.bufferType).map(a => ({ pieceId: a.pieceId!, buffer: a.bufferType! }));
+        this.bufferTargets(b, opts,
+          p => this.setMode({ ...m, a: p.pieceId, buffer: p.buffer, whichOn: null }),
+          id => this.setMode({ ...m, a: null, buffer: null, whichOn: id }));
+        if (m.whichOn) {
+          const on = m.whichOn;
+          const here = opts.filter(o => o.pieceId === on);
+          if (here.length === 0) return false;
+          v.choices = {
+            title: W.teleporterWhich,
+            items: here.map(o => b.item({ id: `buffer:${o.buffer}`, label: W.teleporterOn(o.buffer), enabled: true },
+              () => this.setMode({ ...m, a: on, buffer: o.buffer, whichOn: null }))),
+          };
+        }
+        if (m.a && m.buffer) {
+          const a = plays.find(x => x.pieceId === m.a && x.bufferType === m.buffer);
+          const piece = pieceById(g, m.a);
+          if (!a || !piece) return false;
+          ready(a, W.rdConfirm(W.bufferName(m.buffer), pieceName(piece.type)));
+        }
+        return true;
+      }
+      case 'changingPriorities': {
+        if (!m.a) {
+          v.instruction = W.cpPickFrom;
+          for (const id of new Set(plays.map(a => a.pieceId!))) {
+            b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ ...m, a: id, b: null, module: null }));
+          }
+          return true;
+        }
+        const from = m.a;
+        const fromPlays = plays.filter(a => a.pieceId === from);
+        if (fromPlays.length === 0) return false;
+        b.lit({ kind: 'piece', pieceId: from }, () => this.setMode({ ...m, a: null, b: null, module: null }));
+        if (!m.b) {
+          v.instruction = W.cpPickTo;
+          for (const id of new Set(fromPlays.map(a => a.toPieceId!))) {
+            b.lit({ kind: 'piece', pieceId: id }, () => {
+              const mods = [...new Set(fromPlays.filter(a => a.toPieceId === id).map(a => a.controlModule!))];
+              this.setMode({ ...m, b: id, module: mods.length === 1 ? mods[0]! : null });
+            });
+          }
+          return true;
+        }
+        const to = m.b;
+        const pairPlays = fromPlays.filter(a => a.toPieceId === to);
+        if (pairPlays.length === 0) return false;
+        b.lit({ kind: 'piece', pieceId: to }, () => this.setMode({ ...m, b: null, module: null }));
+        const mods = [...new Set(pairPlays.map(a => a.controlModule!))].sort((x, y) => x - y);
+        if (m.module === null) {
+          v.instruction = W.cpPickModule;
+          v.choices = {
+            title: W.cpPickModule,
+            items: mods.map(n => b.item({ id: `cpModule:${n}`, label: W.oldModule(n), enabled: true }, () => this.setMode({ ...m, module: n }))),
+          };
+          return true;
+        }
+        const a = pairPlays.find(x => x.controlModule === m.module);
+        const fp = pieceById(g, from), tp = pieceById(g, to);
+        if (!a || !fp || !tp) return false;
+        ready(a, W.cpConfirm(m.module, pieceName(fp.type), pieceName(tp.type)));
+        return true;
+      }
+      default:
+        return false;
+    }
+  }
+
+  // ── Step 4: meeple ──────────────────────────────────────────────────────────
+
+  private buildMeeple(b: Builder, g: GameState, legal: readonly Action[]): boolean {
+    const v = b.view;
+    v.step = 'meeple';
+    const end = legal.find(a => a.type === 'END_TURN');
+    const places = ofType(legal, 'PLACE_MEEPLE');
+    v.primary = { label: W.endTurn, enabled: !!end, ...(end ? {} : { hint: W.meepleFirst }) };
+    if (end) b.onPrimary = (): void => this.send(end);
+    const player = this.me !== null ? g.players[this.me] : undefined;
+    if (places.length === 0) {
+      v.instruction = player?.meepleOnPieceId ? W.meepleDone : W.noMeepleSpot;
+      return this.mode.k === 'idle';
+    }
+    v.instruction = W.meeplePlace;
+    const minePieces = new Set<string>();
+    for (const a of places) {
+      if (a.slotIndex === undefined) {
+        b.lit({ kind: 'piece', pieceId: a.pieceId }, () => this.setMode({ k: 'meeple', pieceId: a.pieceId, slot: null }));
+      } else {
+        const slot = a.slotIndex;
+        b.lit({ kind: 'mineSlot', pieceId: a.pieceId, slot }, () => this.setMode({ k: 'meeple', pieceId: a.pieceId, slot }));
+        minePieces.add(a.pieceId);
+      }
+    }
+    for (const id of minePieces) {
+      const slots = places.filter(a => a.pieceId === id).map(a => a.slotIndex!);
+      b.lit({ kind: 'piece', pieceId: id }, () => this.setMode(slots.length === 1
+        ? { k: 'meeple', pieceId: id, slot: slots[0]! }
+        : { k: 'meepleSlot', pieceId: id }));
+    }
+    const m = this.mode;
+    if (m.k === 'idle') return true;
+    v.selection = { kind: 'meeple', label: selectionLabel.meeple };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    if (m.k === 'meepleSlot') {
+      const slots = places.filter(a => a.pieceId === m.pieceId && a.slotIndex !== undefined);
+      if (slots.length === 0) return false;
+      v.instruction = W.meepleWhich;
+      v.choices = {
+        title: W.meepleWhich,
+        items: slots.map(a => b.item({ id: `slot:${a.slotIndex}`, label: a.slotIndex === 1 ? W.upgradePoint : W.resourcePoint, enabled: true },
+          () => this.setMode({ k: 'meeple', pieceId: m.pieceId, slot: a.slotIndex! }))),
+      };
+      return true;
+    }
+    if (m.k !== 'meeple') return false;
+    const a = places.find((x: PlaceMeepleAction) => x.pieceId === m.pieceId && (m.slot === null ? x.slotIndex === undefined : x.slotIndex === m.slot));
+    const piece = pieceById(g, m.pieceId);
+    if (!a || !piece) return false;
+    const where = piece.type === 'mine' ? (m.slot === 1 ? W.upgradePoint : W.resourcePoint) : pieceName(piece.type);
+    v.instruction = W.meepleConfirm(where);
+    v.confirmBar = { confirm: true, rotate: false, cancel: true };
+    b.onConfirm = (): void => this.send(a);
+    return true;
+  }
+
+  // ── Round end ───────────────────────────────────────────────────────────────
+
+  private buildRoundEnd(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
+    const v = b.view;
+    v.step = 'roundEnd';
+    v.instruction = W.roundEndIdle;
+    const end = legal.find(a => a.type === 'END_ACTIONS');
+    v.primary = { label: W.roundEndDone, enabled: !!end };
+    if (end) b.onPrimary = (): void => this.send(end);
+    const pieces = new Set<string>();
+    for (const a of legal) {
+      if (a.type === 'LOAD_BUILDING_INPUT' || a.type === 'OPERATE_BUILDING' || a.type === 'COLLECT_OUTPUT'
+        || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
+    }
+    // The meeple's building always opens, so the player can see why it cannot run.
+    const meep = player.meepleOnPieceId ? pieceById(g, player.meepleOnPieceId) : undefined;
+    if (meep && isBuilding(meep) && player.meepleSlotIndex === null) pieces.add(meep.id);
+    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    const m = this.mode;
+    switch (m.k) {
+      case 'idle': return true;
+      case 'menu': return this.buildMenu(b, g, me, player, legal, m.pieceId);
+      case 'claim': return this.buildClaim(b, g, legal, m);
+      case 'upgradeOld': return this.buildUpgradeOld(b, g, legal, m);
+      case 'upgrade': return this.buildUpgrade(b, g, legal, m);
+      case 'exchange': {
+        const items = this.exchangeItems(b, player, legal);
+        if (!items.some(i => i.enabled)) return false;
+        v.choices = { title: W.exchangeTitle, items };
+        v.confirmBar = { confirm: false, rotate: false, cancel: true };
+        return true;
+      }
+      default: return false;
+    }
+  }
+
+  // ── Bank and hand (always shown while seated) ───────────────────────────────
+
+  private gate(g: GameState, myTurn: boolean, pending: boolean, roundEndToo: boolean): string | null {
+    if (pending) return W.decideFirst;
+    if (!myTurn) return W.notYourTurn;
+    if (g.phase === 'actions') return null;
+    if (roundEndToo && g.phase === 'roundEnd') return null;
+    return roundEndToo ? W.onlyActionsOrRoundEnd : W.onlyActions;
+  }
+
+  private bankItems(b: Builder, g: GameState, player: Player, legal: readonly Action[], myTurn: boolean, pending: boolean): Item[] {
+    const gate = this.gate(g, myTurn, pending, false);
+    const worth = inventoryValue(player);
+    const has = (t: Action['type']): boolean => legal.some(a => a.type === t);
+    const items: Item[] = [];
+    const add = (it: Omit<Item, 'enabled' | 'reason'>, enabled: boolean, reason: () => string, fn: () => void): void => {
+      items.push(b.item(enabled ? { ...it, enabled } : { ...it, enabled, reason: gate ?? reason() }, enabled ? fn : undefined));
+    };
+
+    add({ id: 'bank:placeBelt', label: W.bankPlaceBelt, detail: W.bankPlaceBeltDetail(player.beltsRemaining) }, has('PLACE_BELT'),
+      () => (player.beltsRemaining <= 0 ? W.noBelts : W.noBeltPoint), () => this.setMode({ k: 'belt', start: null }));
+    add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST) }, has('BUY_BELT'),
+      () => W.cantAfford(BELT_COST, worth), () => this.send({ type: 'BUY_BELT' }));
+    add({ id: 'bank:undoBelts', label: W.bankUndoBelts, detail: W.bankUndoDetail(g.beltsPlacedThisTurn.length) }, has('UNDO_BELTS'),
+      () => W.noBeltsThisTurn, () => this.send({ type: 'UNDO_BELTS' }));
+    const cc = cardCost(g.mineCount);
+    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length) }, has('BUY_CARD'),
+      () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }));
+    const mp = nextMinePrice(g, MINE_COSTS);
+    add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp) }, has('BUY_MINE'),
+      () => (mp === null ? W.allMinesIn : g.pendingMineIds.length > 0 ? W.mineDropPending : W.cantAfford(mp, worth)),
+      () => this.setMode({ k: 'place', src: { kind: 'buyMine' }, coord: null, rotation: 0, auto: false }));
+    const tpPrice = g.globalTeleporterCount + 1;
+    add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.priceExact(tpPrice) }, has('PLACE_TELEPORTER'),
+      () => (player.teleportersRemaining <= 0 ? W.noTeleporters
+        : tryPayExact(player.inventory, tpPrice) === null ? W.cantPayExact(tpPrice) : W.noFreeBuffer),
+      () => this.setMode({ k: 'teleporter', pick: null, whichOn: null }));
+    const exGate = this.gate(g, myTurn, pending, true);
+    const exOk = has('EXCHANGE_MATERIALS');
+    items.push(b.item(exOk
+      ? { id: 'bank:exchange', label: W.bankExchange, detail: W.bankExchangeDetail, enabled: true }
+      : { id: 'bank:exchange', label: W.bankExchange, detail: W.bankExchangeDetail, enabled: false, reason: exGate ?? W.nothingToExchange },
+    exOk ? (): void => this.setMode({ k: 'exchange' }) : undefined));
+    return items;
+  }
+
+  private handItems(b: Builder, g: GameState, player: Player, legal: readonly Action[], myTurn: boolean, pending: boolean): PlayView['hand'] {
+    const counts = new Map<CardType, number>();
+    for (const c of player.hand) counts.set(c, (counts.get(c) ?? 0) + 1);
+    const out: PlayView['hand'] = [];
+    for (const [card, n] of counts) {
+      const plays = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === card);
+      const enabled = plays.length > 0;
+      let reason: string | undefined;
+      if (!enabled) {
+        if (pending) reason = W.decideFirst;
+        else if (!myTurn) reason = W.notYourTurn;
+        else if (g.phase !== 'actions') reason = W.cardOnlyActions;
+        else if (g.cardsPlayedThisTurn >= 2) reason = W.cardsMaxed;
+        else if (card === 'shortSale' && !player.controlModules.some(x => x >= g.mineCount)) reason = W.cardNoModule(g.mineCount);
+        else if (card === 'rdTaxWriteOff' && player.teleportersRemaining <= 0) reason = W.cardNoTeleporters;
+        else reason = W.cardNoTarget;
+      }
+      const it: Item = { id: `card:${card}`, label: W.cardCount(CARD_NAME[card], n), enabled, ...(reason ? { reason } : {}) };
+      b.item(it, enabled ? (): void => this.setMode(card === 'scoutingDrone'
+        ? { k: 'drone' }
+        : { k: 'card', card, a: null, b: null, module: null, buffer: null, whichOn: null }) : undefined);
+      out.push({ ...it, card, text: CARD_TEXT[card] });
+    }
+    return out;
+  }
+
+  // ── Why not? ────────────────────────────────────────────────────────────────
+
+  private whyNot(t: Target): string | null {
+    const g = this.game, me = this.me;
+    if (!g || me === null || g.gameOver) return null;
+    if (g.pendingFactoryOps.some(e => e.ownerId === me)) return W.promptHint;
+    if (activeId(g) !== me) return W.notYourTurn;
+    switch (t.kind) {
+      case 'cell': return this.mode.k === 'place' || g.phase === 'placePiece' ? W.notAdjacent : W.nothingHere;
+      case 'stack': {
+        const s = g.stacks[t.index as 0 | 1 | 2];
+        if (!s) return W.nothingHere;
+        if (!s.available) return W.stackLocked;
+        if (s.pieces.length === 0) return W.stackEmpty;
+        return W.nothingHere;
+      }
+      case 'piece': case 'buffer': case 'mineSlot': {
+        const piece = pieceById(g, t.pieceId);
+        if (piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === me)) return W.notYourBuilding;
+        return W.nothingHere;
+      }
+      case 'belt': {
+        const belt = g.belts.find(x => x.id === t.beltId);
+        return belt && belt.ownerId !== me ? W.notYourBelt : W.nothingHere;
+      }
+      case 'point': return g.phase === 'actions' ? W.pointNotFree : W.nothingHere;
+      case 'deck': return W.nothingHere;
+    }
+  }
+}
+
+// ── Module-level helpers ──────────────────────────────────────────────────────
+
+function stepIndexOf(g: GameState): 1 | 2 | 3 | 4 | null {
+  switch (g.phase) {
+    case 'placePiece': return 1;
+    case 'roll': return 2;
+    case 'actions': return 3;
+    case 'placeMeeple': return 4;
+    default: return null;
+  }
+}
+
+function baseTray(player: Player): TrayEntry[] {
+  const inTray = new Set(player.controlModules);
+  return Array.from({ length: CONTROL_MODULE_MAX }, (_, i) => ({
+    module: i + 1,
+    state: inTray.has(i + 1) ? 'inTray' as const : 'onBoard' as const,
+  }));
+}
+
+function runBlockText(why: string, need: number, have: number): string {
+  switch (why) {
+    case 'alreadyRan': return W.alreadyRan;
+    case 'powerFull': return W.powerFull;
+    case 'outputFull': return W.outputFull;
+    case 'loadFirst': return W.loadFirst;
+    case 'badRecipe': return W.badRecipe;
+    case 'needPower': return W.needPower(need, have);
+    default: return W.nothingHere;
+  }
+}
