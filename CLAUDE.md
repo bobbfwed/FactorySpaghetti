@@ -8,7 +8,7 @@ Priorities, in order:
 4. **Phone-friendly and installable** (Android, from the browser).
 5. **Still a playtest tool** — bots, headless balance simulation, config-driven tuning, replays.
 
-The earlier 2D prototype (Canvas 2D client + LAN WebSocket server) lives on the `vite-prototype` branch. On `main` those two folders (`src/client`, `src/server`) are still present until milestone N0 removes them.
+The earlier 2D prototype (Canvas 2D client + LAN WebSocket server) lives on the `vite-prototype` branch. Milestone N0 removes those two folders (`src/client`, `src/server`) from the online version; to read the old code use `git show vite-prototype:<path>`.
 
 ## Tech stack (decided)
 - **Language:** TypeScript everywhere. **Build:** Vite. **Tests:** Vitest.
@@ -62,7 +62,7 @@ factory-spaghetti/
 ```
 
 ## Build order
-The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are complete (264 tests). The new work follows milestones **N0–N11 in `docs/PLAN.md` §6**. Each milestone ends runnable and tested before the next starts. N1–N3 (online) and N4–N5 (3D) do not depend on each other and may be built in parallel; N6 needs both.
+The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are complete (245 engine, bot and simulator tests; the prototype's 19 LAN-server tests left with the server). The new work follows milestones **N0–N11 in `docs/PLAN.md` §6**. Each milestone ends runnable and tested before the next starts. N1–N3 (online) and N4–N5 (3D) do not depend on each other and may be built in parallel; N6 needs both.
 
 | # | Milestone |
 |---|---|
@@ -80,7 +80,7 @@ The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are co
 | N11 | Playtest tools: replay export/load, rules-problem snapshot, config variants |
 
 ## Physical reference
-The printed game is the visual reference. The designer's files are outside the repo at `G:\My Drive\Factory Speghetti` (note the spelling): `.3mf` print models in the root, photos of the printed pieces in `Factory Spaghetti\2025*.jpg`, rule PDFs, and card text spreadsheets. `docs/PLAN.md` §5.4 describes each printed piece. Do not commit the designer's source files; convert what is needed through `tools/`.
+The printed game is the visual reference. The designer's files are outside the repo at `G:\My Drive\Factory Speghetti` (note the spelling). **`Factory Speghetti AMS.3mf` in that folder is the one up-to-date source for the current 3D models and colours.** Many of the other `.3mf` files and the photos in `Factory Spaghetti\2025*.jpg` are out of date (older tile symbols, gold and purple inlays, the old starting mine); use them only for pieces the AMS file does not contain. Renders of the current tiles and mines are in `docs/reference/`. `docs/PLAN.md` §5.4 describes each piece. Do not commit the designer's source files; convert what is needed through `tools/`.
 
 ## Setup Algorthm (ordered)
 - **S1 — Hand out components.** Give each player the PLAYER_COMPONENTS set. All 18 Control Modules start in the tray (none on a building). Belts and teleporters start unplaced. Reference/assistant cards (cost & points summaries) are physical aids only — the engine doesn't model them.
@@ -116,5 +116,6 @@ The printed game is the visual reference. The designer's files are outside the r
 - Session and network code is tested through the in-memory transport in Vitest; a feature that only works over real WebRTC is not done.
 - Interface text uses the rulebook's words (Control Module, Power Token, Leverage card), never internal names such as `placePiece`.
 - Design for a phone first: every touch target at least 44 px, no hover-only information.
+- **Always commit after each round of code changes.** When a piece of work is finished and its checks pass, commit it before starting the next; do not leave finished work uncommitted in the working tree.
 - Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Do feature work on a branch and merge to `main`.
 - Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.

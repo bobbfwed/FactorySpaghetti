@@ -111,21 +111,13 @@ function painter(px, Sx, Sz) {
 }
 
 const MAT = {
-  white: { color: '#e9e6de', rough: 0.74, metal: 0 },
-  gold: { color: '#dcaa38', rough: 0.36, metal: 0.8 },
-  black: { color: '#151515', rough: 0.55, metal: 0 },
-  groove: { color: '#c9c5bc', rough: 0.85, metal: 0 },
-  rayGap: { color: '#4a4846', rough: 0.7, metal: 0 },
+  white: { color: '#dddddb', rough: 0.72, metal: 0 },
+  black: { color: '#0e0e0e', rough: 0.55, metal: 0 },
+  groove: { color: '#cfcfcb', rough: 0.85, metal: 0 },
+  green: { color: '#3fc455', rough: 0.5, metal: 0 },
+  yellow: { color: '#e2c400', rough: 0.45, metal: 0 },
+  slotBlue: { color: '#0560b0', rough: 0.5, metal: 0 },
 };
-function irid(c, s = 6) {
-  return {
-    color: (ctx) => {
-      const g = ctx.createLinearGradient(c[0] - s, c[1] - s, c[0] + s, c[1] + s);
-      g.addColorStop(0, '#8d4fc4'); g.addColorStop(0.35, '#5b5fc9'); g.addColorStop(0.6, '#7a55b0'); g.addColorStop(0.85, '#a8508f'); g.addColorStop(1, '#5e8a8a');
-      return g;
-    }, rough: 0.3, metal: 0.55,
-  };
-}
 
 const ICON_SHAPES = {
   ore: (c, s = 1) => roundPts([[0, -4.6], [5.2, 4.2], [-5.2, 4.2]].map((p) => add(mul(p, s), c)), 1.1 * s),
@@ -133,84 +125,99 @@ const ICON_SHAPES = {
   sphere: (c, s = 1) => circlePts(4.4 * s, c),
   tess: (c, s = 1) => { const o = []; for (let i = 0; i < 8; i++) { const r = (i % 2 ? 1.5 : 5.8) * s, a = (45 + i * 45) * DEG; o.push([c[0] + r * Math.cos(a), c[1] + r * Math.sin(a)]); } return o; },
 };
+const BOLT = [[1.2, -4.2], [-2.0, 0.6], [-0.2, 0.6], [-1.3, 4.2], [2.1, -0.9], [0.3, -0.9], [1.9, -4.2]];
+const boltAt = (c, s = 1) => BOLT.map((q) => add(mul(q, s), c));
 
-// Building definitions in the tile's local frame (rotation 0). [edge, slot]
+// Building definitions in the tile's local frame (rotation 0). [edge, slot]. Current print design:
+// black stubs to the edge, inputs on the left pointing in, one output on the right pointing out.
 const FACTORY = {
-  plate: { ins: [[4, 1]], out: [1, 1], icons: [['ore', [7, -22]], ['plate', [-7, 22]]] },
-  sphere: { ins: [[4, 1], [5, 0]], out: [1, 1], icons: [['ore', [-19, -18]], ['plate', [19, -18]], ['sphere', [-7, 22]]] },
-  tess: { ins: [[3, 1], [4, 1], [0, 0]], out: [1, 1], icons: [['ore', [-19, -20]], ['plate', [5, -24]], ['sphere', [20, -19]], ['tess', [-7, 22]]] },
-  power: { ins: [[3, 0]], out: null, pocket: [-14, 10] },
+  plate: { ins: [[3, 0]], out: [0, 1], bolts: [[-8.5, 4.5]], inIcons: [['ore', [-23, -4], 0.95]], outIcon: ['plate', [23, -4], 0.95], pocket: [4, 0] },
+  sphere: { ins: [[3, 0], [4, 0]], out: [0, 1], bolts: [[-8.5, -4.5], [-8.5, 4.5]], inIcons: [['ore', [-24, -9.5], 0.72], ['plate', [-24, -1.5], 0.72]], outIcon: ['sphere', [23, -4], 1], pocket: [4, 0] },
+  tess: { ins: [[4, 0], [3, 0], [2, 1]], out: [0, 1], bolts: [[-9, -5], [-10.5, 4.5], [-6.3, 5.5]], inIcons: [['sphere', [-26, -3], 0.7], ['plate', [-21.5, -5], 0.66], ['ore', [-21.5, -1], 0.62]], outIcon: ['tess', [23, -4], 1.05], pocket: [4, 0] },
+  power: { ins: [[3, 0]], out: null, pocket: [5, 19] },
   blank: { ins: [], out: null },
 };
 const buffersOf = (type) => { const f = FACTORY[type]; return [...f.ins, ...(f.out ? [f.out] : [])]; };
 
-function paintStub(p, from, e, j) {
-  const end = holeCentroid(e, j);
-  const u = norm(sub(end, from)), n = [-u[1], u[0]], L = len(sub(end, from)), w = 3.5;
+// black stub from `from` to the tile edge at hole (e, j); barbs show the flow direction
+function paintStub(p, from, e, j, inward) {
+  const end = add(mul(edgeN(e), TILE_AP + 1.5), mul(edgeT(e), (j ? 1 : -1) * HOLE_SPREAD));
+  const u = norm(sub(end, from)), n = [-u[1], u[0]], L = len(sub(end, from)), w = 3.1;
   const at = (s, o) => add(add(from, mul(u, s)), mul(n, o));
-  p.fill(path([at(0, -w), at(L, -w), at(L, w), at(0, w)]), MAT.gold);
+  p.fill(path([at(0, -w), at(L, -w), at(L, w), at(0, w)]), MAT.black);
+  // flow direction along the stub: +1 outward, -1 inward
+  const f = inward ? -1 : 1, s0 = L - 10;
   for (const sgn of [-1, 1]) {
-    p.fill(path([at(L - 9.5, sgn * w * 0.9), at(L - 5.5, sgn * w * 0.9), at(L - 3.8, sgn * (w + 3.2)), at(L - 6.6, sgn * (w + 2.6))]), MAT.gold);
+    p.fill(path([at(s0 + f * 1.0, sgn * w * 0.8), at(s0 - f * 1.4, sgn * w * 0.8), at(s0 - f * 3.6, sgn * (w + 2.4)), at(s0 - f * 1.8, sgn * (w + 2.6))]), MAT.black);
   }
-  p.fill(path(dShape(e, j, 0.9)), MAT.black);
 }
+function paintIcon(p, kind, c, s, mat) { p.fill(path(ICON_SHAPES[kind](c, s)), mat); }
 
 function paintTile(p, type) {
   p.base(MAT.white);
   const f = FACTORY[type];
   if (type === 'plate' || type === 'sphere' || type === 'tess') {
-    for (const [e, j] of buffersOf(type)) paintStub(p, [0, 0], e, j);
-    const sq = rectPts(22, 22);
-    p.fill(path(sq), MAT.white);
-    p.stroke(path(rectPts(21, 21)), MAT.black, 1.1);
-    for (const [kind, c] of f.icons) p.fill(path(ICON_SHAPES[kind](c, 1.05)), irid(c));
+    for (const [e, j] of f.ins) paintStub(p, [0, 0], e, j, true);
+    paintStub(p, [0, 0], f.out[0], f.out[1], false);
+    p.fill(path(rectPts(28, 24)), MAT.white);
+    p.stroke(path(rectPts(26.4, 22.4)), MAT.black, 1.6);
+    for (const b of f.bolts) p.fill(path(boltAt(b, 1.25)), MAT.yellow);
+    for (const [kind, c, s] of f.inIcons) paintIcon(p, kind, c, s, MAT.green);
+    paintIcon(p, f.outIcon[0], f.outIcon[1], f.outIcon[2], MAT.green);
   } else if (type === 'power') {
-    for (const [e, j] of f.ins) paintStub(p, f.pocket, e, j);
-    p.fill(path(rectPts(22, 22, f.pocket)), MAT.white);
-    p.stroke(path(rectPts(21, 21, f.pocket)), MAT.black, 1.1);
-    // six solar-panel outlines, two staggered rows of three, tilted
-    const c0 = [9, -9], ang = -28;
-    for (let row = 0; row < 2; row++) for (let col = 0; col < 3; col++) {
-      const local = [(col - 1) * 8.6 + (row ? 4.3 : -4.3), (row - 0.5) * 14.4];
-      p.stroke(path(rectPts(7.4, 13.2, add(rot(local, ang), c0), ang)), MAT.black, 0.9);
+    paintStub(p, [-12, 8.5], 3, 0, true);
+    const c0 = [0, -7], ang = -30;
+    for (let col = 0; col < 2; col++) for (let row = 0; row < 3; row++) {
+      const local = [(col - 0.5) * 15.6, (row - 1) * 8.4 + (col ? -3.2 : 3.2)];
+      p.fill(path(rectPts(14.2, 7.2, add(rot(local, ang), c0), ang)), MAT.white);
+      p.stroke(path(rectPts(13.2, 6.2, add(rot(local, ang), c0), ang)), MAT.black, 1.1);
     }
+    p.fill(path(boltAt([18.5, -3], 1.4)), MAT.yellow);
+    p.fill(path(rectPts(4.6, 1.0, [23.6, -6.8])), MAT.black);
+    p.fill(path(rectPts(1.0, 4.6, [23.6, -6.8])), MAT.black);
   }
-  p.printLines();
+  p.printLines(0.025);
 }
 
-function paintMine(p) {
+// Mine painters. n = 1 (starting mine with belt tracks), 2 or 3 (lie on the stacks)
+function paintMine(p, n = 1) {
   p.base(MAT.white);
-  const rc = [-CELL_AP, 0], lc = [CELL_AP, 0];
+  const rc = [-CELL_AP, 0];
   const cx = p.cx, ox = p.ox;
-  // engraved rings, clipped to the rich half
   const richClip = path(hexPts(TILE_AP, rc));
   for (const ctx of [cx, ox]) { ctx.save(); ctx.clip(richClip); }
-  for (let r = 16; r <= 44; r += 3.1) p.stroke(path(circlePts(r, rc, 90)), MAT.groove, 0.35);
-  // twelve tapered rays to the twelve holes
+  for (let r = 20; r <= 44; r += 3.0) p.stroke(path(circlePts(r, rc, 90)), MAT.groove, 0.3);
   for (let e = 0; e < 6; e++) for (let j = 0; j < 2; j++) {
-    const end = add(rc, holeCentroid(e, j));
-    const u = norm(sub(end, rc)), n = [-u[1], u[0]], L = len(sub(end, rc));
-    const at = (s, o) => add(add(rc, mul(u, s)), mul(n, o));
-    p.fill(path([at(12, -1.4), at(L, -3.4), at(L, 3.4), at(12, 1.4)]), MAT.black);
-    p.fill(path(dShape(e, j, 0.4).map((q) => add(q, rc))), MAT.black);
+    if (e === 0) continue; // the two rays facing the second hex become tracks (mine 1) or a stub (mines 2, 3)
+    const end = add(rc, add(holeChord(e, j), mul(edgeN(e), 0.6)));
+    const u = norm(sub(end, rc)), nn = [-u[1], u[0]], L = len(sub(end, rc));
+    const at = (s, o) => add(add(rc, mul(u, s)), mul(nn, o));
+    p.fill(path([at(15, -2.0), at(L, -4.0), at(L, 4.0), at(15, 2.0)]), MAT.black);
   }
-  for (let r = 16; r <= 44; r += 3.1) p.stroke(path(circlePts(r, rc, 90)), MAT.rayGap, 0.3);
   for (const ctx of [cx, ox]) ctx.restore();
-  p.fill(path(circlePts(14, rc, 64)), MAT.black);
-  // lean half: two meeple slots — orange parallelogram, red stacked squares, each with a black plus
-  const par = [22, 0];
-  p.fill(path(roundPts([[-3.5, -7], [7.5, -7], [3.5, 7], [-7.5, 7]].map((q) => add(q, par)), 0.6)), { color: '#e0922c', rough: 0.4, metal: 0.35 });
-  const red = [47, 0];
-  p.fill(path(roundPts(rectPts(11, 11, add(red, [-1.6, -1.6])), 1.6)), { color: '#de3f48', rough: 0.5, metal: 0 });
-  p.fill(path(roundPts(rectPts(11, 11, add(red, [1.2, 1.2])), 1.6)), { color: '#e6464f', rough: 0.5, metal: 0 });
-  p.stroke(path(roundPts(rectPts(11, 11, add(red, [1.2, 1.2])), 1.6)), { color: '#c4343e', rough: 0.5, metal: 0 }, 0.3);
-  for (const c of [par, add(red, [0, 0])]) {
-    p.fill(path(rectPts(6.4, 1.3, c)), MAT.black);
-    p.fill(path(rectPts(1.3, 6.4, c)), MAT.black);
+  p.fill(path(circlePts(17, rc, 72)), MAT.black);
+  const plus = (c) => { p.fill(path(rectPts(6.4, 1.3, c)), MAT.black); p.fill(path(rectPts(1.3, 6.4, c)), MAT.black); };
+  const g = [13, 1.5], b = [44, 1.5];
+  if (n === 1) {
+    const track = (pts) => {
+      const pa = new Path2D(); pa.moveTo(...pts[0]); pa.bezierCurveTo(...pts[1], ...pts[2], ...pts[3]);
+      for (const [ctx, col] of [[cx, MAT.black.color], [ox, orm(MAT.black)]]) { ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 6.4; ctx.lineCap = 'butt'; ctx.stroke(pa); ctx.restore(); }
+    };
+    track([[-19, -4.5], [4, -10], [29, -13], [25.8, -36]]);
+    track([[-19, 4.5], [0, 18], [48, 19], [71, 8.5]]);
+    // light-green double triangle + blue double square
+    for (const o of [[2.2, -1.6], [-1.4, 1.0]]) p.fill(path(roundPts([[0, -6.4], [6.6, 5.2], [-6.6, 5.2]].map((q) => add(add(q, g), o)), 1.4)), MAT.green);
+    for (const o of [[-1.5, -1.5], [1.3, 1.3]]) p.fill(path(roundPts(rectPts(11, 11, add(b, o)), 1.6)), MAT.slotBlue);
+  } else {
+    p.fill(path(rectPts(4, 1.4, add(rc, [18.5, 0]))), MAT.black);
+    if (n === 2) p.fill(path(roundPts([[-3.5, -6.5], [7.5, -6.5], [3.5, 6.5], [-7.5, 6.5]].map((q) => add(q, g)), 0.6)), { color: '#38c41a', rough: 0.5, metal: 0 });
+    else p.fill(path(circlePts(6.8, g, 48)), { color: '#78c80e', rough: 0.5, metal: 0 });
+    const k = n === 2 ? 3 : 4;
+    for (let i = 0; i < k; i++) { const o = (i - (k - 1) / 2) * 2.2; p.fill(path(roundPts(rectPts(10.5, 10.5, add(b, [o, o])), 1.6)), MAT.slotBlue); }
   }
-  p.printLines();
+  plus(g); plus(n === 1 ? add(b, [1.3, 1.3]) : add(b, [((n === 2 ? 3 : 4) - 1) / 2 * 2.2, ((n === 2 ? 3 : 4) - 1) / 2 * 2.2]));
+  p.printLines(0.025);
 }
-
 function minePts() {
   const rich = hexPts(TILE_AP, [-CELL_AP, 0]), lean = hexPts(TILE_AP, [CELL_AP, 0]);
   // hexPts order: angles 30,90,150,210,270,330
@@ -375,10 +382,10 @@ function makeKit(renderer) {
     const m = new THREE.Mesh(tileGeo(type), opts.plain ? [sideWhite, sideWhite] : tileMat(type));
     m.castShadow = true; m.receiveShadow = true; return m;
   };
-  const mine = () => {
+  const mine = (n = 1) => {
     const g = memo('mineG', () => extrudePlan(roundPts(minePts(), 2.4), [], TILE_T, 0.55));
-    const mat = memo('mineM', () => {
-      const p = painter(2560, 160, 80); paintMine(p);
+    const mat = memo('mineM' + n, () => {
+      const p = painter(2560, 160, 80); paintMine(p, n);
       const { map, orm: o } = p.textures(renderer);
       return [std({ map, roughnessMap: o, metalnessMap: o, metalness: 1, roughness: 1 }), sideWhite];
     });
@@ -406,24 +413,24 @@ function makeKit(renderer) {
     });
     const m = new THREE.Mesh(g, plastic(color)); m.castShadow = m.receiveShadow = true; return m;
   };
-  const oreMat = memo('oreM', () => new THREE.MeshPhysicalMaterial({ color: '#7d47b8', roughness: 0.28, metalness: 0.35, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [250, 700], envMapIntensity: 1.1 }));
+  const oreMat = memo('oreM', () => std({ color: '#9ee89c', roughness: 0.42, metalness: 0.05 }));
   const ore = () => {
     const g = memo('oreG', () => extrudePlan(roundPts([[0, -5.6], [6, 4.4], [-6, 4.4]], 1.8), [], 3.5, 0.7, 6));
     const m = new THREE.Mesh(g, oreMat); m.castShadow = true; return m;
   };
   const plate = () => {
     const g = memo('plateG', () => extrudePlan(roundPts([[-3.25, -6], [8.25, -6], [3.25, 6], [-8.25, 6]], 1.6), [], 4, 0.7, 6));
-    const mat = memo('plateM', () => new THREE.MeshPhysicalMaterial({ color: '#ff9a12', roughness: 0.18, transmission: 0.55, thickness: 4, ior: 1.45, attenuationColor: '#ff7a00', attenuationDistance: 6, emissive: '#8a3c00', emissiveIntensity: 0.35, envMapIntensity: 1.0 }));
+    const mat = memo('plateM', () => std({ color: '#3fbf4c', roughness: 0.4, metalness: 0.05 }));
     const m = new THREE.Mesh(g, mat); m.castShadow = true; return m;
   };
   const sphere = () => {
     const g = memo('sphG', () => new THREE.LatheGeometry([[0, 0], [5.6, 0], [7, 1.3], [7, 3.1], [5.8, 4.5], [0, 4.5]].map(([a, b]) => new THREE.Vector2(a, b)), 48));
-    const mat = memo('sphM', () => std({ map: glitterTexture('#183c22', ['#5fbf7a', '#2c7a44', '#9fe8b0', '#0f2a17'], 3), roughness: 0.35, metalness: 0.25, envMapIntensity: 1.0 }));
+    const mat = memo('sphM', () => std({ color: '#a9d630', roughness: 0.42, metalness: 0.05 }));
     const m = new THREE.Mesh(g, mat); m.castShadow = true; return m;
   };
   const tesseract = () => {
     const grp = new THREE.Group();
-    const mat = memo('tesM', () => std({ map: glitterTexture('#151517', ['#4f7a58', '#8a8a8a', '#3a5a40', '#2a2a2a'], 5), roughness: 0.3, metalness: 0.35, envMapIntensity: 1.2 }));
+    const mat = memo('tesM', () => std({ map: glitterTexture('#1d4a29', ['#3f8a52', '#2a6a3a', '#5fae6e', '#143a20'], 5), roughness: 0.35, metalness: 0.2, envMapIntensity: 1.0 }));
     const S = 10.5, b = 1.7;
     const bar = (w, h, d, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; grp.add(m); };
     // frame in XY plane, frame in ZY plane, frame in XZ plane
@@ -560,15 +567,15 @@ const BOARD = [
   { id: 'redSphere', cell: [1, -1], type: 'sphere', k: 2, owner: 'red', module: 4, outMat: 'sphere' },
   { id: 'blank1', cell: [0, -1], type: 'blank' },
   { id: 'blank2', cell: [-1, 0], type: 'blank' },
-  { id: 'bp1', cell: [-1, 1], type: 'plate', k: 0, owner: 'blue', module: 3, outMat: 'plate' },
+  { id: 'bp1', cell: [-1, 1], type: 'plate', k: 1, owner: 'blue', module: 3, outMat: 'plate' },
   { id: 'bluePower', cell: [0, 1], type: 'power', k: 5, owner: 'blue', module: 2 },
   { id: 'blank3', cell: [2, 0], type: 'blank' },
-  { id: 'redPlate', cell: [2, -1], type: 'plate', k: 0, owner: 'red', module: 3 },
-  { id: 'tess', cell: [1, 1], type: 'tess', k: 1 },
+  { id: 'redPlate', cell: [2, -1], type: 'plate', k: 1, owner: 'red', module: 3 },
+  { id: 'tess', cell: [1, 1], type: 'tess', k: 3 },
   { id: 'orangePlate', cell: [-2, 0], type: 'plate', k: 1, owner: 'orange', module: 3 },
   { id: 'bp2', cell: [1, 2], type: 'plate', k: 0, owner: 'blue', module: 5, inMat: 'ore', teleOut: 'blue', meeple: 'blue' },
   { id: 'blank4', cell: [-1, 2], type: 'blank' },
-  { id: 'sphere2', cell: [0, 2], type: 'sphere', k: 5 },
+  { id: 'sphere2', cell: [0, 2], type: 'sphere', k: 0 },
   { id: 'blank5', cell: [-2, 1], type: 'blank' },
   { id: 'blank6', cell: [2, 1], type: 'blank' },
   { id: 'redPower', cell: [3, 0], type: 'power', k: 4, owner: 'red', module: 2 },
@@ -581,11 +588,11 @@ const BOARD = [
 // belts in world edge terms: [edge, slot] on the given cell, material flows a -> b
 const BELTS = [
   { cell: [0, -1], a: [1, 0], b: [2, 1], color: 'blue' },  // from the mine ray-hole
-  { cell: [-1, 0], a: [5, 0], b: [1, 0], color: 'blue' },  // into bp1's input
-  { cell: [-1, 2], a: [4, 0], b: [0, 0], color: 'blue' },  // bp1 output toward the sphere factory
+  { cell: [-1, 0], a: [5, 0], b: [1, 1], color: 'blue' },  // into bp1's input
+  { cell: [-1, 2], a: [4, 0], b: [0, 1], color: 'blue' },  // bp1 output toward the sphere factory
   { cell: [2, 0], a: [4, 0], b: [2, 0], color: 'red' },
 ];
-const MEEPLE_SPOT = { plate: [21, -3], sphere: [21, 3], tess: [22, 6], power: [16, 17] };
+const MEEPLE_SPOT = { plate: [17, -18], sphere: [16, -19], tess: [16, -19], power: [21, 9] };
 
 function buildGame(kit, scene, anchors, opts) {
   const board = new THREE.Group(); scene.add(board);
@@ -594,7 +601,7 @@ function buildGame(kit, scene, anchors, opts) {
   const mine = kit.mine(); board.add(mine);
   anchors.mine = new THREE.Vector3(0, TILE_T, 0);
   // red meeple on the lean-half parallelogram slot
-  const rm = kit.meeple(PLAYER_COLORS.red); rm.position.set(22, TILE_T, 0); rm.rotation.y = 8 * DEG; board.add(rm);
+  const rm = kit.meeple(PLAYER_COLORS.red); rm.position.set(13, TILE_T, 1.5); rm.rotation.y = 8 * DEG; board.add(rm);
 
   const flash = new Set(opts.flashModules || []);
   for (const t of BOARD) {
@@ -644,14 +651,14 @@ function buildGame(kit, scene, anchors, opts) {
       t.rotation.y = (R() - 0.5) * 3 * DEG; board.add(t);
     }
     let top = n * (TILE_T + 0.04);
-    if (withMine) { const m = kit.mine(); m.position.set(pos[0], top, pos[1]); m.rotation.y = ((R() - 0.5) * 4) * DEG; board.add(m); top += TILE_T; }
+    if (withMine) { const m = kit.mine(withMine); m.position.set(pos[0], top, pos[1]); m.rotation.y = ((R() - 0.5) * 4) * DEG; board.add(m); top += TILE_T; }
     anchors[id] = new THREE.Vector3(pos[0], top, pos[1]);
     anchors[id + '.base'] = new THREE.Vector3(pos[0], 0, pos[1] + 40);
   };
   const SX = opts.stacksX ?? 292;
   stackAt([SX, -94], 10, false, 'stack1');
-  stackAt([SX, 4], 7, true, 'stack2');
-  stackAt([SX, 102], 6, true, 'stack3');
+  stackAt([SX, 4], 7, 2, 'stack2');
+  stackAt([SX, 102], 6, 3, 'stack3');
 
   const DX = opts.deckX ?? -300;
   for (let i = 0; i < 18; i++) { const c = kit.card(null); c.position.set(DX + (R() - 0.5) * 0.8, 0.2 + i * 0.42, (opts.deckZ ?? 0) + (R() - 0.5) * 0.8); c.rotation.y = (R() - 0.5) * 2 * DEG; board.add(c); }
@@ -695,7 +702,7 @@ function buildGallery(kit, scene, anchors, labels, which) {
   const L = (text, x, z, sub) => labels.push({ text, sub, pos: new THREE.Vector3(x, 0, z) });
   if (which === 'large') {
     const row1 = -172, row2 = 2, row3 = 176;
-    const types = [['blank', 'Blank tile', '12 half-round belt holes'], ['plate', 'Plate Factory', 'ore in → plate out'], ['sphere', 'Sphere Factory', 'ore + plate in → sphere out'], ['tess', 'Tesseract Factory', 'ore + plate + sphere → tesseract'], ['power', 'Power Plant', 'solar panels · input · module pocket']];
+    const types = [['blank', 'Blank tile', '12 half-round belt holes'], ['plate', 'Plate Factory', 'ore in → plate out'], ['sphere', 'Sphere Factory', 'ore + plate in → sphere out'], ['tess', 'Tesseract Factory', 'ore + plate + sphere → tesseract'], ['power', 'Power Plant', 'solar panels · input stub · power bolt']];
     types.forEach(([t, name, sub], i) => {
       const x = -240 + i * 120;
       const m = kit.tile(t); m.position.set(x, 0, row1); g.add(m);
@@ -703,10 +710,10 @@ function buildGallery(kit, scene, anchors, labels, which) {
       L(name, x, row1 + 42, sub);
     });
     const mine = kit.mine(); mine.position.set(-196, 0, row2); g.add(mine);
-    L('Mine (double hex)', -196, row2 + 42, 'rays = outputs · two meeple slots');
+    L('Mine 1 (starting mine)', -196, row2 + 42, 'rays, two belt tracks, two meeple slots');
     for (let i = 0; i < 7; i++) { const t = kit.tile('blank', { plain: true }); t.position.set(-22 + (i % 2) * 0.8, i * 3.04, row2 - 2 - (i % 3) * 0.5); t.rotation.y = (i % 3 - 1) * 1.5 * DEG; g.add(t); }
-    const m2 = kit.mine(); m2.position.set(-22, 7 * 3.04, row2 - 2); m2.rotation.y = 2 * DEG; g.add(m2);
-    L('Locked stack + its mine', -22, row2 + 42, 'face-down tiles, mine lies on top');
+    const m2 = kit.mine(2); m2.position.set(-22, 7 * 3.04, row2 - 2); m2.rotation.y = 2 * DEG; g.add(m2);
+    L('Locked stack + mine 2', -22, row2 + 42, 'face-down tiles, mine 2 lies on top');
     const tr = kit.tray(PLAYER_COLORS.blue, [2, 3, 5]); tr.position.set(110, 0, row2); g.add(tr);
     L('Control Module tray', 110, row2 + 64, 'Blue · 2, 3, 5 are on buildings');
     ['blue', 'red', 'orange', 'green'].forEach((c, i) => { const m = kit.module(PLAYER_COLORS[c], [6, 12, 3, 17][i]); m.position.set(168 + (i % 2) * 21, 0, row2 - 22 + Math.floor(i / 2) * 21); m.rotation.y = ((i * 7) % 5 - 2) * 3 * DEG; g.add(m); });
@@ -722,21 +729,21 @@ function buildGallery(kit, scene, anchors, labels, which) {
     const dk = (x, n) => { for (let i = 0; i < n; i++) { const c = kit.card(null); c.position.set(x + (i % 2) * 0.6, 0.2 + i * 0.42, row3 + (i % 3) * 0.4); g.add(c); } };
     dk(-170, 14); L('Deck', -170, row3 + 46, 'face down on the table');
     const pm = kit.tile('plate'); pm.position.set(160, 0, row3); g.add(pm);
-    const mm = kit.module(PLAYER_COLORS.blue, 3); mm.position.set(160, TILE_T, row3); g.add(mm);
+    const mm = kit.module(PLAYER_COLORS.blue, 3); mm.position.set(164, TILE_T, row3); g.add(mm);
     const bp = (e, j, inset) => { const h = holeCentroid(e, j); const s = (len(h) - inset) / len(h); return [160 + h[0] * s, row3 + h[1] * s]; };
-    const o = kit.ore(); const op = bp(4, 1, 4.5); o.position.set(op[0], TILE_T, op[1]); g.add(o);
-    const tp = kit.teleporter(PLAYER_COLORS.blue); const tpp = bp(1, 1, 1.5); tp.position.set(tpp[0], TILE_T, tpp[1]); g.add(tp);
-    const mp = kit.meeple(PLAYER_COLORS.blue); mp.position.set(181, TILE_T, row3 - 3); g.add(mp);
+    const o = kit.ore(); const op = bp(3, 0, 6); o.position.set(op[0], TILE_T, op[1]); g.add(o);
+    const tp = kit.teleporter(PLAYER_COLORS.blue); const tpp = bp(0, 1, 3); tp.position.set(tpp[0], TILE_T, tpp[1]); g.add(tp);
+    const mp = kit.meeple(PLAYER_COLORS.blue); mp.position.set(177, TILE_T, row3 - 18); g.add(mp);
     L('Pieces in play', 160, row3 + 42, 'ore on input · teleporter on output · meeple');
   } else {
     const rowA = -36, rowB = 50;
     ['blue', 'red', 'orange', 'green'].forEach((c, i) => { const m = kit.meeple(PLAYER_COLORS[c]); m.position.set(-150 + i * 17, 0, rowA - 4 + (i % 2) * 3); m.rotation.y = (i - 1.5) * 9 * DEG; g.add(m); });
     L('Meeples', -124.5, rowA + 10, 'blue · red · orange · green');
     const place = (obj, x, z, name, sub, lz = 12) => { obj.position.x = x; obj.position.z = z; g.add(obj); L(name, x, z + lz, sub); };
-    const o = kit.ore(); o.rotation.y = 0.3; place(o, -62, rowA, 'Ore', 'iridescent triangle');
-    const p = kit.plate(); p.rotation.y = -0.2; place(p, -20, rowA, 'Plate', 'translucent parallelogram');
-    place(kit.sphere(), 22, rowA, 'Sphere', 'green glitter disc');
-    const ts = kit.tesseract(); ts.rotation.y = 0.5; place(ts, 62, rowA, 'Tesseract', 'three square frames');
+    const o = kit.ore(); o.rotation.y = 0.3; place(o, -62, rowA, 'Ore', 'light-green triangle');
+    const p = kit.plate(); p.rotation.y = -0.2; place(p, -20, rowA, 'Plate', 'green parallelogram');
+    place(kit.sphere(), 22, rowA, 'Sphere', 'yellow-green disc');
+    const ts = kit.tesseract(); ts.rotation.y = 0.5; place(ts, 62, rowA, 'Tesseract', 'dark-green open cross');
     const tk = kit.powerToken(); tk.rotation.y = 0.2; place(tk, 106, rowA, 'Power token', 'gold · lightning bolt', 16);
     place(kit.teleporter(PLAYER_COLORS.blue), -110, rowB, 'Teleporter', 'placeholder · glowing collar', 14);
     const d1 = kit.die(5); d1.position.set(-36, 8, rowB - 2); d1.rotation.y = 15 * DEG; g.add(d1);
