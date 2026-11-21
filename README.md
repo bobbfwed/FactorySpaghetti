@@ -116,3 +116,14 @@ CLAUDE.md          architecture notes and the original build order
 - The Smart Bot never uses belts, cards, or teleporters.
 - Dice are rolled by the browser that sends the move, which is fine for a trusted table but not for online play.
 - LAN play needs someone to run the Node host; there is no internet play.
+
+## License
+
+Copyright (c) 2025-2026 Brandon Nimon.
+
+Factory Spaghetti is free to use, share and build on for **non-commercial** purposes, as long as you **credit Brandon Nimon**. Selling it, or any part of it, is not allowed without written permission. This applies to every version of this repository, including all earlier commits.
+
+- The software is under the [PolyForm Noncommercial License 1.0.0](LICENSES/PolyForm-Noncommercial-1.0.0.md).
+- The game's design, rules, artwork and documents are under [CC BY-NC-SA 4.0](LICENSES/CC-BY-NC-SA-4.0.txt).
+
+[LICENSE.md](LICENSE.md) says which license covers what, how to give credit, and how to ask about commercial use.
