@@ -2,7 +2,7 @@
 
 An online, isometric 3D version of the board game **Factory Spaghetti** (2–4 players). The aim is a game that looks and plays like the physical, 3D-printed game: the same pieces on the table and the same steps in a turn, with only legal moves on offer.
 
-**Status: playable, in development (branch `online-dev`).** A full game can be played against bots or online with a room code on the 3D table, saved as a link or a file, and resumed on another device. Animation, sound, replay tools and testing on real phones are still in progress. The plan is in [docs/PLAN.md](docs/PLAN.md).
+**Status: playable, in development (branch `online-dev`).** A full game can be played against bots or online with a room code on the 3D table, with animation and sound, saved as a link or a file, resumed on another device, and replayed move by move afterwards. It installs from the browser and plays solo offline. It has not yet been tested on real phones or between real networks: [docs/TESTING.md](docs/TESTING.md) is the checklist for that. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## The game today
 
@@ -73,7 +73,11 @@ These were drawn before the game was built, as the target for its look. They are
 | Game screen (`src/ui/game`) | The table with the interface over it, on desktop and phone, with a text view as a fallback. |
 | 2D client and LAN server | The earlier prototype. Preserved on the [`vite-prototype`](../../tree/vite-prototype) branch, whose README has screenshots of every screen. |
 
-Not built yet: animation and sound, replay and playtest tools, hardening on real phones, and a relay for networks where browsers cannot reach each other directly.
+| Animation and feel (`src/table`, `src/ui/game`) | Each move plays as a short transition; sound is made in code; speed, sound and vibration settings; "Bot speed" so bots do not outrun the picture. |
+| Replays and reports (`src/session`, `src/ui/replayView.ts`) | Every device keeps the list of moves. "Save replay", a replay viewer on the 3D table, and "Report a rules problem", which writes one file and sends nothing anywhere. |
+| Install and offline (`public/sw.js`, `src/app`) | "Install app" on the start menu; after one online visit a solo game works with no connection; the screen stays on during a game. |
+
+Not done yet: testing on real phones and networks, a relay for networks where browsers cannot reach each other directly (two phones on the same wifi are the likely case), and choosing rule variants per game.
 
 The prototype this builds on, mid-game:
 
