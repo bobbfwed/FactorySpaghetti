@@ -243,13 +243,20 @@ export function parseSaveFile(text: string): SaveEnvelope {
   return parseJsonSave(text);
 }
 
-/** The save text in a location hash such as '#save=v1.abc' (also inside '#a=b&save=...'). */
+/**
+ * The save text in a location hash such as '#save=v1.abc' (also inside '#a=b&save=...'), in
+ * 'save=v1.abc', or in a whole pasted address such as 'https://host/path?x=1#a=b&save=v1.abc'.
+ * Surrounding whitespace (a trailing newline from a paste) is ignored. Bare 'v1.abc' text has
+ * no 'save=' part, so this returns null and the caller uses the text as it is.
+ */
 export function saveFromHash(hash: string): string | null {
-  const h = hash.startsWith('#') ? hash.slice(1) : hash;
+  const text = hash.trim();
+  const at = text.indexOf('#');
+  const h = at >= 0 ? text.slice(at + 1) : text;
   for (const part of h.split('&')) {
     if (part.startsWith('save=')) {
       const value = part.slice('save='.length);
-      try { return decodeURIComponent(value); } catch { return value; }
+      try { return decodeURIComponent(value).trim(); } catch { return value.trim(); }
     }
   }
   return null;

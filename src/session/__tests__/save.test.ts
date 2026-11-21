@@ -170,6 +170,38 @@ describe('save envelope', () => {
     expect(saveFromHash('#join=ABCDE')).toBeNull();
     expect(saveFromHash('')).toBeNull();
   });
+
+  it('pulls the save out of a whole pasted address, ignoring other parts and surrounding whitespace', () => {
+    expect(saveFromHash('https://x.test/fs/#save=v1.abc_-')).toBe('v1.abc_-');
+    expect(saveFromHash('https://x.test/fs/?lang=en#join=ABCDE&save=v1.xyz&other=1')).toBe('v1.xyz');
+    expect(saveFromHash('  https://x.test/fs/#save=v1.abc\n')).toBe('v1.abc');
+    expect(saveFromHash('\t#save=v1.abc \r\n')).toBe('v1.abc');
+    expect(saveFromHash('https://x.test/fs/#join=ABCDE')).toBeNull();
+    expect(saveFromHash('https://x.test/fs/')).toBeNull();
+    expect(saveFromHash('v1.abc')).toBeNull(); // bare text: the caller uses it as it is
+  });
+
+  it('unpacks a link given as bare text, a hash, a fragment part or a whole pasted address', async () => {
+    const save = toSave(midGameRoom(), { savedAt: 1000, app: 'v-test' }, { forLink: true });
+    const link = await packLink(save);
+    for (const text of [
+      link,
+      `${link}\n`,
+      `#save=${link}`,
+      `save=${link}`,
+      `https://x.test/fs/#save=${link}`,
+      `https://x.test/fs/#save=${link}\n`,
+      `  https://x.test/fs/?lang=en#join=ABCDE&save=${link}&other=1  \r\n`,
+      `http://192.168.1.20:5173/#save=${link}`,
+    ]) {
+      expect(await unpackLink(text)).toEqual(save);
+    }
+    // The same error kinds and limits apply to the save text inside an address.
+    await expectSaveError(unpackLink(`https://x.test/fs/#save=${link.slice(0, Math.floor(link.length / 2))}`), 'truncated');
+    await expectSaveError(unpackLink(`https://x.test/fs/#save=v1.${'A'.repeat(64_001)}`), 'invalid');
+    await expectSaveError(unpackLink('https://x.test/fs/#join=ABCDE'), 'corrupt');
+    await expectSaveError(unpackLink('https://x.test/fs/#save=v2.abc'), 'unsupported-version');
+  });
 });
 
 describe('save store', () => {

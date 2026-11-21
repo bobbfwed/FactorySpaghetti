@@ -68,6 +68,32 @@ describe('Leverage cards', () => {
     expect(sent[0]).toMatchObject({ type: 'PLAY_CARD', cardType: 'scoutingDrone' });
   });
 
+  it('scoutingDrone: the piece can go on any lit cell, not just the first, and be turned', () => {
+    const { state, player } = atActions(5, 3);
+    const s = patchPlayer({ ...state, cardsPlayedThisTurn: 0 }, player, { hand: ['scoutingDrone'] });
+    const { c, sent } = harness(s, player);
+    c.choose('card:scoutingDrone');
+    c.choose(c.view.choices!.items[0]!.id);
+    const cells = c.view.targets.filter(t => t.kind === 'cell');
+    expect(cells.length).toBeGreaterThan(1);
+    const cell = cells[cells.length - 1]!; // not the first cell
+    if (cell.kind !== 'cell') throw new Error('expected a cell');
+    c.tap(cell);
+    expect(c.view.confirmBar?.rotate).toBe(true);
+    c.rotate(2);
+    const rotation = c.view.ghost!.rotation;
+    expect(rotation).not.toBe(0);
+    c.confirm();
+    expect(sent).toHaveLength(1);
+    const a = sent[0]!;
+    expect(a).toMatchObject({ type: 'PLAY_CARD', cardType: 'scoutingDrone', coord: { q: cell.q, r: cell.r }, rotation });
+    // The engine accepts it, and the piece lands where and how it was shown.
+    const after = apply(s, a);
+    const placed = after.board[after.board.length - 1]!;
+    expect(placed.coord).toEqual({ q: cell.q, r: cell.r });
+    expect(placed.rotation).toBe(rotation);
+  });
+
   it('changingPriorities: from building, to building, then module, then confirm', () => {
     const { state, player } = atActions(5, 3);
     const s = patchPlayer({ ...state, cardsPlayedThisTurn: 0 }, player, { hand: ['changingPriorities'] });

@@ -47,7 +47,6 @@ describe('soundness: random gestures only ever send legal actions', () => {
   it('plays whole games through the controllers', () => {
     let states = 0, sends = 0, fallbacks = 0, gestures = 0, rolls = 0, routes = 0;
     const sentTypes = new Map<string, number>();
-    const engineRefusals: string[] = [];
     for (const [pc, seeds] of [[2, [11, 12, 13, 14]], [3, [21, 22, 23]], [4, [31, 32, 33]]] as const) {
       for (const seed of seeds) {
         const r = new Rand(seed);
@@ -79,11 +78,9 @@ describe('soundness: random gestures only ever send legal actions', () => {
             const res = applyAction(s, real);
             if (!res.ok) {
               // legalActions offered it but the engine refuses it: an engine inconsistency, not the
-              // controller's doing. Only the known one (a pending factory that can no longer run) is tolerated.
+              // controller's doing. None is tolerated; the moves since the roll help find the cause.
               const since = history.slice(history.map(h => h.includes('ROLL_DICE')).lastIndexOf(true));
-              engineRefusals.push(`${a.type} ${res.error.code} (${pc} players, seed ${seed}, moves since the roll: ${since.join(' | ')})`);
-              expect(`${a.type} ${res.error.code}`).toBe('OPERATE_BUILDING CANNOT_OPERATE');
-              continue;
+              throw new Error(`engine refused an action legalActions offered: ${a.type} ${res.error.code} (${pc} players, seed ${seed}, moves since the roll: ${since.join(' | ')})`);
             }
             s = res.state;
             history.push(`P${p} ${JSON.stringify(real)}`);
@@ -112,7 +109,7 @@ describe('soundness: random gestures only ever send legal actions', () => {
       }
     }
     // eslint-disable-next-line no-console -- the run's coverage figures are part of the report
-    console.log(`soundness: ${states} states, ${gestures} gestures, ${sends} sends (${rolls} rolls, ${routes} route steps), ${fallbacks} fallback moves\n  engine refused ${engineRefusals.length} legal actions: ${engineRefusals.join('; ')}\n  sent: ${[...sentTypes].sort().map(([k, n]) => `${k} ${n}`).join(', ')}`);
+    console.log(`soundness: ${states} states, ${gestures} gestures, ${sends} sends (${rolls} rolls, ${routes} route steps), ${fallbacks} fallback moves\n  sent: ${[...sentTypes].sort().map(([k, n]) => `${k} ${n}`).join(', ')}`);
     expect(sends).toBeGreaterThan(500);
   }, 600_000);
 });
