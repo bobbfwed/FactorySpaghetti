@@ -279,7 +279,7 @@ Player colours in the printed set: **blue, red, orange, green**.
 
 No model exists yet for teleporters or the leverage cards. The mock-ups use placeholders for these.
 
-All eighteen models above have been converted from the AMS file into `public/models/` (see `docs/models/README.md` and `docs/models/gallery.png`).
+Milestone N4 converts these pieces from the AMS file into `public/models/`, with a gallery image in `docs/models/`.
 
 The grey lunar-crater artwork in the rulebook diagrams does not appear on the printed tiles. See open decision D3.
 
