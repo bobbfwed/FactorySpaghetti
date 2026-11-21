@@ -151,7 +151,7 @@ export function menuView(ctrl: AppController, version: string): View {
         h('a', { text: 'Network check', attrs: { href: './net-check.html' } }))));
 
   let lastSaves: unknown = null;
-  let lastInstall: boolean | null = null;
+  let lastInstall: string | null = null;
 
   const update = (): void => {
     const s = ctrl.state;
@@ -188,9 +188,17 @@ export function menuView(ctrl: AppController, version: string): View {
       }
     }
 
-    if (s.installAvailable !== lastInstall) {
-      lastInstall = s.installAvailable;
+    const installKey = `${s.installAvailable}|${s.installNote ?? ''}`;
+    if (installKey !== lastInstall) {
+      lastInstall = installKey;
       install.replaceChildren();
+      if (!s.installAvailable && s.installNote) {
+        // Browsers without an install button (Safari on iPhone, Firefox on Android): say how.
+        install.append(h('div', { class: 'install note-only', attrs: { 'data-install-note': '1' } },
+          icon('install'),
+          h('span', { class: 'install-text' }, h('b', { text: 'Install app' }), ` · ${s.installNote}`),
+          h('button', { class: 'x', title: 'Not now', attrs: { 'aria-label': 'Hide the install hint' }, onclick: () => ctrl.dismissInstall() }, icon('cross'))));
+      }
       if (s.installAvailable) {
         install.append(h('div', { class: 'install' },
           h('button', { class: 'install-go', onclick: () => ctrl.install() }, icon('install'),

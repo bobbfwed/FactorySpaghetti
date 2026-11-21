@@ -94,6 +94,8 @@ export interface AppDeps {
   online?: Partial<OnlineOptions>;
   /** Pause before each autoplay move. Default 400 ms. */
   autoplayDelayMs?: number;
+  /** True when the device knows it has no connection (navigator.onLine === false). */
+  isOffline?: () => boolean;
 }
 
 export interface ResumeSetup {
@@ -131,6 +133,8 @@ export interface AppState {
   /** The last refused move of this player (the code says why; see refusalText in gameText.ts). */
   moveError: { code: string; message: string } | null;
   installAvailable: boolean;
+  /** How to install on this browser when it offers no install button, or null. */
+  installNote: string | null;
   /** The replay viewer, when open (it shows over whatever else is going on). */
   replay: ReplayScreen | null;
   /** The rules-problem dialog, when open. */
@@ -258,6 +262,11 @@ export function cleanCodeInput(text: string): string {
   return out;
 }
 
+/** A saved game with a single person and bots in every other seat (it needs no network). */
+export function isSoloSave(save: SaveEnvelope): boolean {
+  return save.room.seats.filter(s => s.kind === 'human').length === 1;
+}
+
 export function makeDeviceToken(): string {
   const a = new Uint8Array(16);
   globalThis.crypto.getRandomValues(a);
@@ -308,6 +317,7 @@ export class AppController {
       autoplay: false,
       moveError: null,
       installAvailable: false,
+      installNote: null,
       replay: null,
       report: null,
     };
@@ -418,7 +428,12 @@ export class AppController {
     fn?.();
   }
 
-  dismissInstall(): void { this.set({ installAvailable: false }); }
+  /** A short "how to install" note for browsers that never offer an install button (see install.ts). */
+  setInstallNote(text: string | null): void {
+    this.set({ installNote: text });
+  }
+
+  dismissInstall(): void { this.set({ installAvailable: false, installNote: null }); }
 
   // ── Rooms ───────────────────────────────────────────────────────────────────────
 
@@ -468,6 +483,7 @@ export class AppController {
   async host(): Promise<void> {
     const name = this.validName();
     if (!name) return;
+    if (this.needsConnection(this.state.transportKind, 'Hosting a game')) return;
     await this.connect('Opening a room…', null, () => OnlineRoom.host(this.options(this.state.transportKind, name)));
   }
 
@@ -480,6 +496,7 @@ export class AppController {
       return;
     }
     this.state = { ...this.state, joinCode: code };
+    if (this.needsConnection(this.state.transportKind, 'Joining a game')) return;
     await this.connect(`Joining ${code}…`, code, () => OnlineRoom.join({ ...this.options(this.state.transportKind, name), code }));
   }
 
@@ -919,9 +936,26 @@ export class AppController {
 
   private async hostSave(save: SaveEnvelope, seat: number): Promise<void> {
     const name = save.room.seats[seat]?.name || cleanName(this.state.name) || 'Host';
+    // A game with one player and bots needs nobody else: it resumes on this device, with no
+    // network (so it also works offline). Anything else is hosted for the others to join.
+    const solo = isSoloSave(save);
+    const kind: TransportKind = solo ? 'solo' : this.state.transportKind;
+    if (this.needsConnection(kind, 'Hosting a saved game with other players')) return;
     await this.connect('Opening the saved game…', null, () => OnlineRoom.host({
-      ...this.options(this.state.transportKind, name), resume: save, seat,
-    }));
+      ...this.options(kind, name), resume: save, seat,
+    }), solo);
+  }
+
+  /** True (with the error shown) when `kind` needs the internet and this device is offline. */
+  private needsConnection(kind: TransportKind, what: string): boolean {
+    if (kind !== 'internet' || !this.deps.isOffline?.()) return false;
+    this.set({ error: `${what} needs an internet connection, and this device is offline. Play solo vs bots works without one.` });
+    return true;
+  }
+
+  /** A game is on screen and running: the screen should stay on (see wakeLock.ts). */
+  get wantsScreenOn(): boolean {
+    return this.screen === 'game' && !this.room?.game?.gameOver;
   }
 
   /** After the room was lost: host the last room this device holds, as a resumed game. */

@@ -14,6 +14,9 @@ import { localStorageStore, memoryStore } from '../session/store';
 import type { AppDeps, ShareData, TransportKind } from './controller';
 import { AppController, TOKEN_KEY } from './controller';
 import { registerServiceWorker, watchInstall } from './pwa';
+import { installAdvice } from './install';
+import type { WakeSentinel } from './wakeLock';
+import { ScreenKeeper } from './wakeLock';
 import { mountApp } from '../ui/mount';
 
 const params = new URLSearchParams(window.location.search);
@@ -82,6 +85,7 @@ const deps: AppDeps = {
     clearHash: (): void => { history.replaceState(null, '', window.location.pathname + window.location.search); },
   },
   download,
+  isOffline: (): boolean => navigator.onLine === false,
   ...(navigator.clipboard ? { clipboard: (text: string): Promise<void> => navigator.clipboard.writeText(text) } : {}),
   ...(typeof navigator.share === 'function' ? { share } : {}),
 };
@@ -106,7 +110,34 @@ window.addEventListener('hashchange', () => {
 window.addEventListener('pagehide', () => ctrl.flushJournal());
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') ctrl.flushJournal(); });
 
-watchInstall(fn => ctrl.setInstaller(fn));
+// ── Installing: Chrome's install button, or a "how to install" note, or nothing when installed ──
+const standalone = (): boolean => window.matchMedia?.('(display-mode: standalone)').matches
+  || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+const install = { prompt: null as (() => void) | null, installed: false };
+const showInstall = (): void => {
+  const advice = installAdvice({
+    standalone: standalone(), promptAvailable: install.prompt !== null, installed: install.installed,
+    userAgent: navigator.userAgent, maxTouchPoints: navigator.maxTouchPoints ?? 0,
+  });
+  ctrl.setInstaller(advice?.kind === 'button' ? install.prompt : null);
+  ctrl.setInstallNote(advice?.kind === 'note' ? advice.text : null);
+};
+watchInstall((fn) => {
+  install.prompt = fn;
+  if (fn === null) install.installed = true; // appinstalled
+  showInstall();
+});
+showInstall();
+
+// ── Keep the screen on while a game is shown ──
+const wakeLock = (navigator as Navigator & { wakeLock?: { request(type: 'screen'): Promise<WakeSentinel> } }).wakeLock;
+const keeper = new ScreenKeeper({
+  ...(wakeLock ? { request: (): Promise<WakeSentinel> => wakeLock.request('screen') } : {}),
+  visible: (): boolean => document.visibilityState === 'visible',
+});
+ctrl.subscribe(() => keeper.setWanted(ctrl.wantsScreenOn));
+document.addEventListener('visibilitychange', () => keeper.onVisibility());
+(window as unknown as { __wake: ScreenKeeper }).__wake = keeper;
 
 if (import.meta.env.PROD) {
   window.addEventListener('load', () => {
