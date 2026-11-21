@@ -13,8 +13,10 @@ import { acceptHostRoom } from './save';
 import type { SaveStore } from './store';
 import { readJournal, writeJournal, writeSave } from './store';
 import type { JournalData } from './journal';
+import type { AheadEntry } from './recovery';
+import { RECOVERY_WAIT_MS, aheadEntries, resendable, sameAction } from './recovery';
 import {
-  capJournal, copyJournal, extendJournal, journalEnd, journalFrom, journalSeed, partialJournal,
+  capJournal, copyJournal, extendJournal, journalEnd, journalFrom, journalSeed, partialJournal, replayTo,
 } from './journal';
 import type { HostOptions } from './hostSession';
 import { HostSession } from './hostSession';
@@ -42,12 +44,35 @@ export interface ClientOptions {
  */
 export const JOURNAL_WRITE_MS = 2000;
 
+/** A journal request starts this many moves before the device's end, to check they agree. */
+export const JOURNAL_OVERLAP = 16;
+
 /** The move waiting for the host's answer. */
 export interface PendingMove {
   id: string;
   action: Action;
   /** room.seq when the move was first sent (null until it has been sent). */
   seq: number | null;
+  /**
+   * Set while lost moves are being made again (see recovery.ts): 'own' is this seat's lost move,
+   * sent again; 'wait' stands for another seat's lost move this device is waiting for. Either way
+   * the interface sees a move in flight and offers no new moves.
+   */
+  recovery?: 'own' | 'wait';
+}
+
+interface Recovery {
+  /** The move number this device had seen before the new host turned out to be behind. */
+  from: number;
+  entries: AheadEntry[];
+  /** False when this device lacked some lost moves (or they did not fit): those are not made again. */
+  complete: boolean;
+  /** A move of the player that was in flight when the host changed: sent once recovery ends. */
+  deferred: { move: PendingMove; done: ((r: ActResult) => void) | null } | null;
+  waitPos: number | null;
+  waitTimer: unknown;
+  /** The connection the current 'own' move was sent on. */
+  sentOn: Conn | null;
 }
 
 /** A move of this player that the host (or the engine behind it) refused. */
@@ -79,6 +104,8 @@ export class ClientSession {
    */
   rolledBack: { from: number; to: number } | null = null;
   private seen: { seed: number; seq: number } | null = null;
+  /** Lost moves being made again, after a new host turned out to be behind (recovery.ts). */
+  private recovery: Recovery | null = null;
   /**
    * This device's copy of the game's moves (see journal.ts). It reaches room.seq, except
    * briefly while the missing part is being fetched from the host.
@@ -195,7 +222,7 @@ export class ClientSession {
   /** Ask the host to make a move. One move at a time; resolves when the host confirms or refuses. */
   act(action: Action): Promise<ActResult> {
     if (this.status === 'closed') return Promise.resolve(closedError('The room is closed.'));
-    if (this.pending) {
+    if (this.pending || this.recovery) {
       return Promise.resolve({ ok: false, error: { code: 'BUSY', message: 'Still waiting for the host to confirm the last move.' } });
     }
     this.pending = { id: randomId(), action, seq: null };
@@ -257,7 +284,8 @@ export class ClientSession {
         this.status = 'joined';
         this.setRoom(room, msg.now, null, msg.moves ?? null);
         // Send the unconfirmed move: for the first time, or again if the host never applied it.
-        if (this.pending && this.conn.open && this.seat !== null) this.sendPending();
+        if (this.pending && !this.pending.recovery && this.conn.open && this.seat !== null) this.sendPending();
+        else this.sendRecoveryMove();
         break;
       }
       case 'room': {
@@ -278,6 +306,8 @@ export class ClientSession {
           const p = this.pending;
           this.lastRefused = { action: p.action, error: msg.error, seq: this.room?.seq ?? 0 };
           this.finishPending({ ok: false, error: msg.error });
+          // A lost move of ours the new host would not take again: recovery stops here.
+          if (p.recovery === 'own') this.endRecovery(false);
         } else if (msg.id !== null) this.finishCommand(msg.id, { ok: false, error: msg.error });
         break;
       case 'closed':
@@ -292,20 +322,169 @@ export class ClientSession {
 
   private setRoom(room: Room, hostNow: number, re: string | null, moves: MovesBlock | null): void {
     const g = room.game;
+    // A new host that is behind what this device saw: keep the moves it lacks (before the
+    // journal below is reset to the host's) and make them again (recovery.ts).
+    let lost: { from: number; moves: Action[] | null } | null = null;
+    let backAgain = false;
+    const rec = this.recovery;
     if (g && this.seen && this.seen.seed === g.seed && room.seq < this.seen.seq) {
-      this.rolledBack = { from: this.seen.seq, to: room.seq };
+      if (!rec) lost = { from: this.seen.seq, moves: this.journalSlice(g.seed, room.seq, this.seen.seq) };
+      else backAgain = room.seq < (rec.entries[0]?.pos ?? rec.from); // yet another host, further behind
     }
-    this.seen = g ? { seed: g.seed, seq: room.seq } : null;
+    // While moves are being made again, the furthest move seen stays the mark.
+    if (!rec || !g || this.seen?.seed !== g.seed) this.seen = g ? { seed: g.seed, seq: lost ? lost.from : room.seq } : null;
     this.room = room;
     this.offset = hostNow - this.clock();
     const p = this.pending;
-    if (p && (re === p.id || room.recent.some(r => r.id === p.id && r.seat === this.seat))) {
+    if (p && p.recovery !== 'wait' && (re === p.id || room.recent.some(r => r.id === p.id && r.seat === this.seat))) {
       this.finishPending({ ok: true });
     }
     if (re !== null) this.finishCommand(re, { ok: true });
     this.syncJournal(moves);
     if (this.store && room.phase !== 'lobby' && room.game) {
       writeSave(this.store, room, { savedAt: this.clock(), app: this.app });
+    }
+    if (backAgain) this.endRecovery(false);
+    if (lost && g) this.startRecovery(lost.from, room.seq, lost.moves ? aheadEntries(g, room.seq, lost.moves) : null);
+    this.stepRecovery();
+  }
+
+  // --- Making lost moves again (recovery.ts) -----------------------------------------
+
+  /** This device's journal moves after move `from` up to move `to`, or null when it lacks them. */
+  private journalSlice(seed: number, from: number, to: number): Action[] | null {
+    const j = this.moveJournal;
+    if (!j || journalSeed(j) !== seed || journalFrom(j) > from || journalEnd(j) < to) return null;
+    return j.moves.slice(from - journalFrom(j), to - journalFrom(j));
+  }
+
+  /** The move number `n` as the host applied it (from this device's journal), if known. */
+  private journalMoveAt(n: number): Action | undefined {
+    const j = this.moveJournal;
+    if (!j || !this.room?.game || journalSeed(j) !== this.room.game.seed) return undefined;
+    const i = n - journalFrom(j) - 1;
+    return i >= 0 && i < j.moves.length ? j.moves[i] : undefined;
+  }
+
+  /**
+   * Compare this device's journal with the host's over the moves both have. Where they part, the
+   * moves only this device saw are lost moves (a new host never had them, and the game may have
+   * gone another way since): they are made again where possible (stepRecovery), or the notice.
+   */
+  private checkDivergence(mine: JournalData, theirs: JournalData): void {
+    if (this.recovery) return;
+    const lo = Math.max(journalFrom(mine), journalFrom(theirs));
+    const hi = Math.min(journalEnd(mine), journalEnd(theirs));
+    let p: number | null = null;
+    for (let n = lo; n < hi; n++) {
+      if (!sameAction(mine.moves[n - journalFrom(mine)]!, theirs.moves[n - journalFrom(theirs)]!)) { p = n; break; }
+    }
+    if (p === null) {
+      if (journalEnd(mine) <= journalEnd(theirs)) return; // the same game: nothing lost
+      p = journalEnd(theirs);
+    }
+    const lost = mine.moves.slice(p - journalFrom(mine));
+    const state = replayTo(theirs, p);
+    if (!state || lost.length === 0) return;
+    this.startRecovery(journalEnd(mine), p, aheadEntries(state, p, lost));
+  }
+
+  private startRecovery(from: number, pos: number, entries: AheadEntry[] | null): void {
+    // A move of the player that was in flight waits until the lost moves are made again.
+    const old = this.recovery;
+    let deferred = old?.deferred ?? null;
+    this.dropRecovery();
+    const p = this.pending;
+    if (p && !p.recovery) {
+      deferred = { move: p, done: this.pendingDone };
+      this.pending = null;
+      this.pendingDone = null;
+    }
+    // Moves this device does not have (or that do not apply at the host's position) cannot be made
+    // again: the ones before them still are, then the notice.
+    const complete = entries !== null && entries.length === from - pos;
+    this.recovery = { from, entries: entries ?? [], complete, deferred, waitPos: null, waitTimer: null, sentOn: null };
+  }
+
+  /** Move recovery on: confirm what the host applied, send our own lost move, or wait for another seat's. */
+  private stepRecovery(): void {
+    const rec = this.recovery;
+    const room = this.room;
+    if (!rec || !room?.game) return;
+    for (;;) {
+      const e = rec.entries[0];
+      if (!e) { this.endRecovery(rec.complete); return; }
+      if (room.seq > e.pos) {
+        const applied = this.journalMoveAt(e.pos + 1);
+        if (applied === undefined) return; // the journal is still being fetched; try again then
+        if (!sameAction(applied, e.action)) { this.endRecovery(false); return; }
+        rec.entries.shift();
+        this.clearRecoveryWait();
+        if (this.pending?.recovery) { this.pending = null; this.pendingDone = null; }
+        continue;
+      }
+      if (room.seq < e.pos) { this.endRecovery(false); return; }
+      if (e.seat === this.seat) {
+        if (this.pending?.recovery !== 'own') {
+          this.clearRecoveryWait();
+          // Sent again as the player would send it: a roll without dice (the host rolls them from
+          // the same point of the seeded dice stream), marked as a re-send at this move number.
+          this.pending = { id: randomId(), action: resendable(e.action), seq: e.pos, recovery: 'own' };
+          this.pendingDone = null;
+          rec.sentOn = null;
+        }
+        this.sendRecoveryMove();
+        return;
+      }
+      // Another seat's lost move: its own device (or the bot) makes it again; wait, but not forever.
+      if (!this.pending) this.pending = { id: `recovery-${e.pos}`, action: e.action, seq: e.pos, recovery: 'wait' };
+      if (rec.waitPos !== e.pos) {
+        this.clearRecoveryWait();
+        rec.waitPos = e.pos;
+        rec.waitTimer = this.sched.setTimeout(() => {
+          rec.waitTimer = null;
+          if (this.recovery === rec && this.room?.seq === e.pos) { this.endRecovery(false); this.emit(); }
+        }, RECOVERY_WAIT_MS);
+      }
+      return;
+    }
+  }
+
+  private sendRecoveryMove(): void {
+    const rec = this.recovery;
+    const p = this.pending;
+    if (!rec || p?.recovery !== 'own' || rec.sentOn === this.conn || this.status !== 'joined' || !this.conn.open) return;
+    rec.sentOn = this.conn;
+    this.sendPending();
+  }
+
+  private clearRecoveryWait(): void {
+    const rec = this.recovery;
+    if (rec?.waitTimer != null) this.sched.clearTimeout(rec.waitTimer);
+    if (rec) { rec.waitTimer = null; rec.waitPos = null; }
+  }
+
+  /** Forget recovery without a word (a newer hand-over starts it again). */
+  private dropRecovery(): void {
+    this.clearRecoveryWait();
+    this.recovery = null;
+    if (this.pending?.recovery) { this.pending = null; this.pendingDone = null; }
+  }
+
+  /** Recovery is over: silent when every lost move was made again, otherwise the notice. */
+  private endRecovery(ok: boolean): void {
+    const rec = this.recovery;
+    if (!rec) return;
+    this.dropRecovery();
+    const to = this.room?.seq ?? 0;
+    if (!ok) this.rolledBack = { from: rec.from, to };
+    if (this.seen) this.seen = { ...this.seen, seq: Math.max(to, this.room?.seq ?? 0) };
+    const d = rec.deferred;
+    if (d) {
+      // The move that was in flight goes now; the host applies it if it still fits, else refuses it.
+      this.pending = d.move;
+      this.pendingDone = d.done;
+      if (this.status === 'joined' && this.conn.open) this.sendPending();
     }
   }
 
@@ -341,7 +520,9 @@ export class ClientSession {
     const j = this.moveJournal;
     const id = randomId();
     this.journalAsk = id;
-    this.conn.send({ t: 'journal', seed: game.seed, have: j ? journalEnd(j) : null, id } satisfies ClientMsg);
+    // Ask from a little before our end: the overlap shows whether the host's game is the one we saw.
+    const have = j ? Math.max(journalFrom(j), journalEnd(j) - JOURNAL_OVERLAP) : null;
+    this.conn.send({ t: 'journal', seed: game.seed, have, id } satisfies ClientMsg);
   }
 
   private onJournal(msg: Extract<HostMsg, { t: 'journal' }>): void {
@@ -352,13 +533,23 @@ export class ClientSession {
     if (!room || !game) return;
     const before = this.moveJournal ? journalEnd(this.moveJournal) : -1;
     if (msg.from !== undefined && msg.moves) {
+      const mine = this.moveJournal && journalSeed(this.moveJournal) === game.seed ? this.moveJournal : null;
       if (msg.start) {
         const theirs: JournalData = { start: msg.start, moves: [...msg.moves] };
-        const mine = this.moveJournal;
-        const mineOk = mine && journalEnd(mine) === room.seq;
-        if (!mineOk && journalSeed(theirs) === game.seed && journalEnd(theirs) === room.seq) this.moveJournal = theirs;
-      } else if (this.moveJournal && journalSeed(this.moveJournal) === game.seed) {
-        extendJournal(this.moveJournal, msg.from, msg.moves);
+        if (journalSeed(theirs) === game.seed && journalEnd(theirs) === room.seq) {
+          if (mine) this.checkDivergence(mine, theirs);
+          this.moveJournal = theirs;
+        }
+      } else if (mine) {
+        // The overlap with what we already have must agree; if not, the host's game went another way.
+        const theirs: JournalData = { start: mine.start, moves: mine.moves.slice(0, Math.max(0, msg.from - journalFrom(mine))) };
+        if (journalEnd(theirs) === msg.from) {
+          theirs.moves.push(...msg.moves);
+          this.checkDivergence(mine, theirs);
+          this.moveJournal = theirs;
+        } else {
+          extendJournal(mine, msg.from, msg.moves);
+        }
       }
     }
     const j = this.moveJournal;
@@ -372,6 +563,7 @@ export class ClientSession {
       // The host does not have the missing part either: keep a journal from this position on.
       this.startPartialJournal();
     }
+    this.stepRecovery(); // recovery may have been waiting for these moves
   }
 
   private startPartialJournal(): void {
@@ -439,6 +631,12 @@ export class ClientSession {
   private failAll(message: string, includingMove: boolean): void {
     for (const id of [...this.commands.keys()]) this.finishCommand(id, closedError(message));
     if (includingMove && this.pending) this.finishPending(closedError(message));
+    if (includingMove && this.recovery) {
+      const d = this.recovery.deferred;
+      this.recovery.deferred = null;
+      this.dropRecovery();
+      d?.done?.(closedError(message));
+    }
   }
 
   private emit(): void {

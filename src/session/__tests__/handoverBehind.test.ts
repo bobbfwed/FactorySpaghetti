@@ -1,75 +1,225 @@
-// A move in flight when the host drops, and the successor never heard the move before it.
-// Seen over the real PeerJS service (N10 check): the old host's last broadcast reached the mover
-// but not the successor, so the new host's game is one move behind the mover. The mover's re-sent
-// move must not be applied on top of the wrong position; it is refused with a clear message, and
-// every device ends with the successor's game and the same journal. The mover's earlier move,
-// which the successor never had, is undone: the mover is told so (ClientSession.rolledBack).
+// Moves a new host never received. Seen over the real PeerJS service (N10 check): the old host's
+// last broadcast reached some players but not the one who took over, so the new host's game is a
+// move or more behind them. Each seat's own device makes its own lost moves again (a roll without
+// dice: the host rolls them from the same point of the seeded stream, so the same dice come out),
+// and devices wait for other seats' devices to do the same. Nothing is ever applied twice, nobody
+// vouches for another seat's move, and the notice appears only when something could not be made
+// again. See recovery.ts.
 
 import { describe, it, expect } from 'vitest';
-import type { PlayerId } from '../../engine/state';
+import type { Action } from '../../engine/actions';
+import type { GameState, PlayerId } from '../../engine/state';
+import { legalActions } from '../../engine';
 import { chooseAction as greedy } from '../../bots/greedyBot';
+import type { RoomSettings } from '../room';
 import { activeSeat } from '../room';
-import { promoteToHost } from '../clientSession';
-import { ManualScheduler, join, newLobby, rejoin, settle } from './helpers';
-import { refusalText } from '../../app/gameText';
+import { ClientSession, promoteToHost } from '../clientSession';
+import { memoryPair } from '../memoryConn';
+import type { HostSession } from '../hostSession';
+import { journalEnd, journalFrom, replayTo } from '../journal';
+import { RECOVERY_WAIT_MS, sameAction } from '../recovery';
+import type { Joined } from './helpers';
+import { ManualScheduler, newLobby, rejoin, settle } from './helpers';
 
-describe('a move in flight when the successor is behind the mover', () => {
-  it('is refused, never applied twice or on the wrong position, and every journal agrees', async () => {
-    const { host, me } = await newLobby({ settings: { playerCount: 3, factoryOpTimeoutMs: 0, roundEndTimeoutMs: 0, botDelayMs: 0, awayPolicy: 'wait' } });
-    const bea = join(host, 'Bea', 'tok-bea-0123456789');
-    const cy = join(host, 'Cy', 'tok-cy-0123456789xx');
-    await settle();
-    for (const c of [me, bea.client, cy.client]) expect((await c.setReady(true)).ok).toBe(true);
-    expect((await me.start()).ok).toBe(true);
-    const clients = [me, bea.client, cy.client];
-    // Play by hand until Cy (seat 2) is to move, with nobody else owing a choice.
-    for (let n = 0; n < 2000; n++) {
-      await settle();
-      const g = host.room.game!;
-      if (activeSeat(g) === 2 && g.pendingFactoryOps.length === 0 && host.room.seq > 10) break;
-      const seat = g.pendingFactoryOps[0]?.ownerId ?? activeSeat(g)!;
-      expect((await clients[seat]!.act(greedy(g, seat as PlayerId))).ok).toBe(true);
-    }
-    await settle();
-    const s = host.room.seq;
+// Seed 4 gives the turn order Cy, Bea, Ann, Dee: Dee plays just before Cy.
+const SEED = 4;
+const ANN = 0, BEA = 1, CY = 2, DEE = 3;
 
-    // Cy's first move reaches everyone except Bea, the successor.
-    bea.clientEnd.dropIncoming = true;
-    expect((await cy.client.act(greedy(host.room.game!, 2 as PlayerId))).ok).toBe(true);
-    await settle();
-    expect(bea.client.room!.seq).toBe(s);
-    expect(cy.client.room!.seq).toBe(s + 1);
-    bea.clientEnd.dropIncoming = false;
+interface Table { host: HostSession; sched: ManualScheduler; me: ClientSession; bea: Joined; cy: Joined; dee: Joined }
 
-    // Cy presses the next move as the host's tab closes: the host never gets it.
-    cy.hostEnd.dropIncoming = true;
-    const g1 = cy.client.room!.game!;
-    const result = cy.client.act(greedy(g1, (g1.pendingFactoryOps[0]?.ownerId ?? activeSeat(g1)!) as PlayerId));
-    await settle();
-    host.dispose();
-    await settle();
+async function table(settings: Partial<RoomSettings> = {}): Promise<Table> {
+  const { host, me, sched } = await newLobby({
+    settings: { playerCount: 4, factoryOpTimeoutMs: 0, roundEndTimeoutMs: 0, botDelayMs: 0, awayPolicy: 'wait', ...settings },
+    randomSeed: () => SEED,
+  });
+  // Every device on the test's clock (the 10 s wait is a timer).
+  const bea = joinOn(host, sched, 'Bea', 'tok-bea-0123456789');
+  const cy = joinOn(host, sched, 'Cy', 'tok-cy-0123456789xx');
+  const dee = joinOn(host, sched, 'Dee', 'tok-dee-0123456789x');
+  await settle();
+  for (const c of [me, bea.client, cy.client, dee.client]) expect((await c.setReady(true)).ok).toBe(true);
+  expect((await me.start()).ok).toBe(true);
+  await settle();
+  expect(host.room.game!.turnOrder).toEqual([CY, BEA, ANN, DEE]); // round 1; the order turns each round
+  return { host, sched, me, bea, cy, dee };
+}
 
-    // Bea takes over from her copy (one move behind); Cy comes back and re-sends.
-    const sched = new ManualScheduler();
-    const next = promoteToHost(bea.client.room!, 1, { hostToken: 'tok-bea-0123456789', scheduler: sched, journal: bea.client.journal });
-    bea.client.reattach(next.connectLocal());
-    rejoin(next, cy);
-    const res = await result;
+function joinOn(host: HostSession, sched: ManualScheduler, name: string, token: string): Joined {
+  const [hostEnd, clientEnd] = memoryPair();
+  host.accept(hostEnd);
+  const client = new ClientSession(clientEnd, { name, token, scheduler: sched, now: (): number => sched.now() });
+  return { client, hostEnd, clientEnd };
+}
+
+const clients = (t: Table): ClientSession[] => [t.me, t.bea.client, t.cy.client, t.dee.client];
+const actor = (g: GameState): number => g.pendingFactoryOps[0]?.ownerId ?? activeSeat(g)!;
+
+/** One move by whoever must act, through their own device (greedy, unless `choose` says otherwise). */
+async function playOne(t: Table, choose?: (g: GameState, seat: number) => Action): Promise<{ seat: number; action: Action }> {
+  const g = t.host.room.game!;
+  const seat = actor(g);
+  const action = choose ? choose(g, seat) : greedy(g, seat as PlayerId);
+  const res = await clients(t)[seat]!.act(action);
+  if (!res.ok) throw new Error(`${res.error.code} ${res.error.message}`);
+  await settle();
+  return { seat, action };
+}
+
+async function playUntil(t: Table, pred: (g: GameState) => boolean): Promise<void> {
+  for (let n = 0; n < 3000 && !pred(t.host.room.game!); n++) await playOne(t);
+  expect(pred(t.host.room.game!)).toBe(true);
+}
+
+/** Bea stops hearing the host; the given moves are made (Bea hears none of them). */
+async function lose(t: Table, n: number, choose?: (g: GameState, seat: number) => Action): Promise<{ seat: number; action: Action }[]> {
+  t.bea.clientEnd.dropIncoming = true;
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(await playOne(t, choose));
+  return out;
+}
+
+/** The host's tab closes; Bea (one or more moves behind) takes over; the given players come back. */
+async function handOver(t: Table, back: Joined[]): Promise<{ next: HostSession; sched: ManualScheduler }> {
+  t.host.dispose();
+  await settle();
+  const sched = t.sched;
+  const next = promoteToHost(t.bea.client.room!, BEA, { hostToken: 'tok-bea-0123456789', scheduler: sched, journal: t.bea.client.journal });
+  t.bea.client.reattach(next.connectLocal());
+  for (const j of back) rejoin(next, j);
+  for (let i = 0; i < 4; i++) await settle();
+  return { next, sched };
+}
+
+/** Every listed device holds the host's journal, and it replays to the host's game. */
+function expectSameGame(next: HostSession, devices: ClientSession[]): void {
+  const j = next.journal!;
+  expect(journalFrom(j)).toBe(0);
+  expect(journalEnd(j)).toBe(next.room.seq);
+  expect(replayTo(j, next.room.seq)).toEqual(next.room.game);
+  for (const d of devices) {
+    expect(d.room!.seq).toBe(next.room.seq);
+    expect(d.journal).toEqual(j);
+  }
+}
+
+describe('moves a new host never received', () => {
+  it('own move lost and made again silently; the move in flight then goes through; nothing twice', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === CY && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0);
+    const s = t.host.room.seq;
+    const [lostMove] = await lose(t, 1);
+    expect(lostMove!.seat).toBe(CY);
+    // Cy presses Roll just as the host's tab closes: the host never gets it.
+    t.cy.hostEnd.dropIncoming = true;
+    const rolled = t.cy.client.act({ type: 'ROLL_DICE', rolls: [] });
     await settle();
-    await settle();
-    expect(res).toMatchObject({ ok: false, error: { code: 'STALE' } });
-    // The player is told the move was not made and may make it again.
-    expect(refusalText(res.ok ? { code: '' } : res.error)).toMatch(/not made/);
-    expect(res.ok ? '' : res.error.message).toMatch(/not applied/);
+    expect(t.cy.client.pending).not.toBeNull();
+    const { next } = await handOver(t, [t.cy, t.dee]);
+    expect(await rolled).toEqual({ ok: true });
+    for (let i = 0; i < 3; i++) await settle();
+    expect(next.room.seq).toBeGreaterThanOrEqual(s + 2);
+    const moves = next.journal!.moves;
+    expect(sameAction(moves[s]!, lostMove!.action)).toBe(true);    // the lost move, made again
+    expect(moves[s + 1]!.type).toBe('ROLL_DICE');                   // then the roll that was in flight
+    expect(t.cy.client.takeRollback()).toBeNull();                   // all recovered: no notice
+    expect(t.cy.client.pending).toBeNull();
+    // The re-sent move was taken as new (a fresh move id) and the per-seat id list stays short.
+    expect(next.room.recent.filter(r => r.seat === CY).length).toBeLessThanOrEqual(4);
+    expectSameGame(next, [t.bea.client, t.cy.client, t.dee.client]);
+    next.dispose();
+  }, 60_000);
+
+  it('two own moves lost (a piece and a roll): made again, with the very same dice', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === CY && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0);
+    const s = t.host.room.seq;
+    const lost = await lose(t, 2);
+    expect(lost.map(m => m.seat)).toEqual([CY, CY]);
+    expect(lost[1]!.action.type).toBe('ROLL_DICE');
+    const original = t.cy.client.journal!.moves.slice(s, s + 2);
+    const { next } = await handOver(t, [t.cy, t.dee]);
+    for (let i = 0; i < 3; i++) await settle();
+    expect(next.room.seq).toBe(s + 2);
+    expect(next.journal!.moves.slice(s, s + 2)).toEqual(original);  // dice included
+    expect(t.cy.client.takeRollback()).toBeNull();
+    expectSameGame(next, [t.bea.client, t.cy.client, t.dee.client]);
+    next.dispose();
+  }, 60_000);
+
+  it('another seat\'s lost move is made again by that seat\'s device, then this device continues', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === DEE && g.pendingFactoryOps.length === 0 && g.phase === 'placeMeeple' && g.turnOrder[g.activePlayerIndex + 1] === CY);
+    const s = t.host.room.seq;
+    const lost = await lose(t, 3);
+    expect(lost.map(m => m.seat)).toEqual([DEE, DEE, CY]);
+    const { next } = await handOver(t, [t.cy, t.dee]);
+    for (let i = 0; i < 4; i++) await settle();
+    expect(next.room.seq).toBe(s + 3);
+    expect(t.cy.client.takeRollback()).toBeNull();
+    expect(t.dee.client.takeRollback()).toBeNull();
+    expectSameGame(next, [t.bea.client, t.cy.client, t.dee.client]);
+    next.dispose();
+  }, 60_000);
+
+  it('another seat\'s lost move whose device never comes back: after 10 s the notice, and the game goes on', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === DEE && g.pendingFactoryOps.length === 0 && g.phase === 'placeMeeple' && g.turnOrder[g.activePlayerIndex + 1] === CY);
+    const s = t.host.room.seq;
+    await lose(t, 3);
+    const { next, sched } = await handOver(t, [t.cy]); // Dee's tab closed too
     expect(next.room.seq).toBe(s);
-    expect(cy.client.room!.seq).toBe(s);
-    // Cy's first move had been accepted, and the new host never had it: Cy is told, once.
-    expect(cy.client.takeRollback()).toEqual({ from: s + 1, to: s });
-    expect(cy.client.takeRollback()).toBeNull();
-    expect(bea.client.takeRollback()).toBeNull();
-    expect(cy.client.pending).toBeNull();
-    expect(cy.client.journal).toEqual(next.journal);
-    expect(bea.client.journal).toEqual(next.journal);
+    // Cy waits for Dee's move, showing a move in flight, and makes no new move meanwhile.
+    expect(t.cy.client.pending?.recovery).toBe('wait');
+    expect(await t.cy.client.act({ type: 'END_TURN' })).toMatchObject({ ok: false, error: { code: 'BUSY' } });
+    await sched.advance(RECOVERY_WAIT_MS - 1);
+    expect(t.cy.client.takeRollback()).toBeNull();
+    await sched.advance(1);
+    expect(t.cy.client.takeRollback()).toEqual({ from: s + 3, to: s });
+    expect(t.cy.client.pending).toBeNull();
+    // The game goes on: the host gives Dee's seat to a bot.
+    expect((await t.bea.client.setSeat(DEE, 'bot')).ok).toBe(true);
+    await sched.flushDue();
+    await settle();
+    expect(next.room.seq).toBeGreaterThan(s);
+    expect(t.cy.client.journal).toEqual(next.journal);
+    next.dispose();
+  }, 60_000);
+
+  it('a bot moves first at that position with a different move: the notice', async () => {
+    const t = await table({ awayPolicy: 'bot', awayGraceMs: 0 });
+    await playUntil(t, g => activeSeat(g) === DEE && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0);
+    const s = t.host.room.seq;
+    // Dee places a piece somewhere the bot would not.
+    const [lost] = await lose(t, 1, (g, seat) => {
+      const best = greedy(g, seat as PlayerId);
+      return legalActions(g, seat as PlayerId).find(a => !sameAction(a, best)) ?? best;
+    });
+    expect(lost!.seat).toBe(DEE);
+    const { next, sched } = await handOver(t, [t.cy]); // Dee does not come back; a bot plays Dee's seat
+    await sched.flushDue();
+    for (let i = 0; i < 3; i++) await settle();
+    expect(next.room.seq).toBeGreaterThan(s);
+    expect(sameAction(next.journal!.moves[s]!, lost!.action)).toBe(false);
+    // Cy had seen Dee's own move; the game went another way: told once.
+    expect(t.cy.client.takeRollback()).toMatchObject({ from: s + 1 });
+    expect(t.cy.client.takeRollback()).toBeNull();
+    expect(t.cy.client.journal).toEqual(next.journal);
+    next.dispose();
+  }, 60_000);
+
+  it('the lost move was the old host\'s own: nobody can make it again, so the notice', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === ANN && g.pendingFactoryOps.length === 0);
+    const s = t.host.room.seq;
+    const [lost] = await lose(t, 1);
+    expect(lost!.seat).toBe(ANN);
+    const { next, sched } = await handOver(t, [t.cy, t.dee]);
+    expect(t.cy.client.pending?.recovery).toBe('wait');
+    await sched.advance(RECOVERY_WAIT_MS);
+    expect(t.cy.client.takeRollback()).toEqual({ from: s + 1, to: s });
+    expect(t.dee.client.takeRollback()).toEqual({ from: s + 1, to: s });
+    expect(next.room.seq).toBe(s);
+    expectSameGame(next, [t.bea.client, t.cy.client, t.dee.client]);
     next.dispose();
   }, 60_000);
 });

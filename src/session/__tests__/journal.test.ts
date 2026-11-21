@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import type { GameState } from '../../engine/state';
 import type { HostSession } from '../hostSession';
 import { HostSession as Host } from '../hostSession';
-import { ClientSession, JOURNAL_WRITE_MS, promoteToHost } from '../clientSession';
+import { ClientSession, JOURNAL_OVERLAP, JOURNAL_WRITE_MS, promoteToHost } from '../clientSession';
 import type { JournalData } from '../journal';
 import {
   MAX_JOURNAL_MOVES, extendJournal, fullJournal, journalEnd, journalFrom, journalMatches, parseJournal, replayTo,
@@ -276,7 +276,8 @@ describe('the move journal through a host and its clients', () => {
     again.clientEnd.send = (m: unknown): void => { if ((m as { t: string }).t === 'journal') asked.push(m); send(m); };
     await settle();
     await settle();
-    expect(asked).toMatchObject([{ t: 'journal', have: journalEnd(stored) }]);
+    // It asks from a few moves before its end, so the overlap shows the games agree.
+    expect(asked).toMatchObject([{ t: 'journal', have: Math.max(journalFrom(stored), journalEnd(stored) - JOURNAL_OVERLAP) }]);
     expect(again.client.journalStart).toBe(0);
     expect(again.client.journal).toEqual(host.journal);
     again.client.flushJournal();
