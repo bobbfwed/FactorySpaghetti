@@ -139,6 +139,11 @@ export interface AppState {
   installNote: string | null;
   /** The replay viewer, when open (it shows over whatever else is going on). */
   replay: ReplayScreen | null;
+  /**
+   * This device could not store the automatic save of the current game (its storage is full or
+   * blocked): the interface should say "use Save link or Download save file".
+   */
+  cannotStore: boolean;
   /** The rules-problem dialog, when open. */
   report: ReportDialog | null;
 }
@@ -264,6 +269,13 @@ export function cleanCodeInput(text: string): string {
   return out;
 }
 
+/** The notice when a new host never had moves this device saw, and they could not all be made again. */
+export function rollbackText(r: { at: number; lost: number }): string {
+  const moves = r.lost === 1 ? 'move' : `${r.lost} moves`;
+  return `The new host had not received ${r.lost === 1 ? 'a move' : `${r.lost} moves`} seen on this device after move ${r.at}, `
+    + `so the game went on without ${r.lost === 1 ? 'it' : 'them'}. Make your ${moves} again if still allowed.`;
+}
+
 /** A saved game with a single person and bots in every other seat (it needs no network). */
 export function isSoloSave(save: SaveEnvelope): boolean {
   return save.room.seats.filter(s => s.kind === 'human').length === 1;
@@ -321,6 +333,7 @@ export class AppController {
       installAvailable: false,
       installNote: null,
       replay: null,
+      cannotStore: false,
       report: null,
     };
     const fromHash = saveFromHash(deps.location.hash);
@@ -466,10 +479,11 @@ export class AppController {
   private onRoomChange(): void {
     const o = this.state.online;
     if (o && o.status === 'closed') this.stopAutoplay();
+    const cannotStore = !!o?.client.storageFailed;
+    if (cannotStore !== this.state.cannotStore) this.state = { ...this.state, cannotStore };
     const undone = o?.client.takeRollback();
     if (undone) {
-      const n = undone.from - undone.to;
-      this.notify(`The new host had not received the last ${n === 1 ? 'move' : `${n} moves`}, so the game goes on from move ${undone.to}. Make ${n === 1 ? 'it' : 'them'} again if still allowed.`);
+      this.notify(rollbackText(undone));
     }
     this.emit();
   }

@@ -13,6 +13,7 @@ import type { JournalData, ReplayStart } from './journal';
 import { MAX_JOURNAL_MOVES, isActionLike, parseStart, startSeq, startState } from './journal';
 import { rulesFingerprint } from './save';
 import { describeAction } from './describe';
+import { diceRngFromSeed, rollDice } from './dice';
 
 export const REPLAY_KIND = 'factory-spaghetti-replay';
 export const REPLAY_EXT = '.fsreplay';
@@ -170,6 +171,11 @@ export class ReplayCursor {
   readonly sameRules: boolean;
   /** The first move the engine refused, or null when every move was accepted. */
   readonly refused: RefusedReplayMove | null;
+  /**
+   * Whether the rolls match the seeded dice stream of the game. Only a replay from the start can
+   * be checked ('unchecked' otherwise); 'mismatch' names the first move whose dice differ.
+   */
+  readonly dice: { status: 'ok' | 'mismatch' | 'unchecked'; firstMismatch: number | null };
   /** The accepted moves. */
   readonly moves: readonly Action[];
   private readonly checkpoints: GameState[];
@@ -182,10 +188,12 @@ export class ReplayCursor {
   constructor(parts: {
     replay: ReplayFile; checkpoints: GameState[]; turnKeys: number[]; actors: number[]; moves: Action[];
     refused: RefusedReplayMove | null; last: GameState;
+    dice: { status: 'ok' | 'mismatch' | 'unchecked'; firstMismatch: number | null };
   }) {
     this.replay = parts.replay;
     this.sameRules = parts.replay.rules === rulesFingerprint();
     this.refused = parts.refused;
+    this.dice = parts.dice;
     this.moves = parts.moves;
     this.checkpoints = parts.checkpoints;
     this.turnKeys = parts.turnKeys;
@@ -307,9 +315,18 @@ export async function verifyReplay(
   const actors: number[] = [];
   const moves: Action[] = [];
   let refused: RefusedReplayMove | null = null;
+  // A game from its seed rolls its dice from a seeded stream: every roll in the file must match it.
+  let diceRng = 'seed' in replay.start ? diceRngFromSeed(replay.start.seed) : null;
+  let firstMismatch: number | null = null;
   const first = startSeq(replay.start);
   for (let i = 0; i < replay.moves.length; i++) {
     const action = replay.moves[i]!;
+    if (diceRng !== null && action.type === 'ROLL_DICE') {
+      const [expected, next] = rollDice(diceRng, s.mineCount);
+      diceRng = next;
+      const same = expected.length === action.rolls.length && expected.every((d, k) => d === action.rolls[k]);
+      if (!same && firstMismatch === null) firstMismatch = first + i + 1;
+    }
     let res: ReturnType<typeof applyAction>;
     try {
       res = applyAction(s, action);
@@ -331,5 +348,9 @@ export async function verifyReplay(
     }
   }
   opts.onProgress?.(moves.length, replay.moves.length);
-  return new ReplayCursor({ replay, checkpoints, turnKeys, actors, moves, refused, last: s });
+  const dice = {
+    status: 'seed' in replay.start ? (firstMismatch === null ? 'ok' as const : 'mismatch' as const) : 'unchecked' as const,
+    firstMismatch,
+  };
+  return new ReplayCursor({ replay, checkpoints, turnKeys, actors, moves, refused, last: s, dice });
 }

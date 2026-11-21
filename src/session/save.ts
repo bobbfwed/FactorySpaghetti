@@ -354,10 +354,10 @@ function checkRoom(room: unknown): Room {
   check(isInt(room.seq) && room.seq >= 0 && isNum(room.diceRng), 'move counter');
   check(room.opDeadline === null || isNum(room.opDeadline), 'deadline');
   check(room.roundEndDeadline === null || isNum(room.roundEndDeadline), 'deadline');
-  checkList(room.waiting, 50, 'waiting list', w => isObj(w) && isStr(w.id, MAX_ID) && isStr(w.name, MAX_NAME));
-  checkList(room.recent, 64, 'recent moves', r => isObj(r) && isInt(r.seat) && isStr(r.id, MAX_ID));
-  checkList(room.log, 500, 'log', e => isObj(e) && isInt(e.seq) && (e.seat === null || isInt(e.seat)) && isStr(e.text, MAX_LOG_TEXT));
-  checkList(room.lastEvents, 500, 'events', e => isObj(e) && typeof e.kind === 'string');
+  checkList(room.waiting, LIST_LIMITS.waiting, 'waiting list', w => isObj(w) && isStr(w.id, MAX_ID) && isStr(w.name, MAX_NAME));
+  checkList(room.recent, LIST_LIMITS.recent, 'recent moves', r => isObj(r) && isInt(r.seat) && isStr(r.id, MAX_ID));
+  checkList(room.log, LIST_LIMITS.log, 'log', e => isObj(e) && isInt(e.seq) && (e.seat === null || isInt(e.seat)) && isStr(e.text, MAX_LOG_TEXT));
+  checkList(room.lastEvents, LIST_LIMITS.events, 'events', e => isObj(e) && typeof e.kind === 'string');
 
   const settings = room.settings;
   check(isObj(settings), 'settings');
@@ -421,13 +421,65 @@ export function acceptHostRoom(x: unknown): Room | null {
     const name = clipReceivedName(raw.name);
     return { ...raw, color, name: name || (raw.kind === 'open' ? '' : `Seat ${i + 1}`) };
   });
-  const waiting = Array.isArray(x.waiting)
-    ? x.waiting.map(w => (isObj(w) ? { ...w, name: clipReceivedName(w.name) || 'Guest' } : w))
-    : x.waiting;
+  // Lists only shown to people are trimmed to their limits and cleaned of malformed entries, so an
+  // overlong one never makes the whole room unusable; only a room that cannot be used is refused.
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+  const waiting = list(x.waiting)
+    .filter(w => isObj(w) && isStr(w.id, MAX_ID))
+    .slice(0, LIST_LIMITS.waiting)
+    .map(w => ({ ...(w as Obj), name: clipReceivedName((w as Obj).name) || 'Guest' }));
+  const log = list(x.log)
+    .filter(e => isObj(e) && isInt(e.seq) && (e.seat === null || isInt(e.seat)) && typeof e.text === 'string')
+    .map(e => ({ ...(e as Obj), text: ((e as Obj).text as string).slice(0, MAX_LOG_TEXT) }))
+    .slice(-LIST_LIMITS.log);
+  const pc = isObj(x.settings) ? x.settings.playerCount : 4;
+  const lastEvents = list(x.lastEvents).filter(e => isTableEvent(e, typeof pc === 'number' ? pc : 4)).slice(-LIST_LIMITS.events);
+  const recent = list(x.recent).filter(r => isObj(r) && isInt(r.seat) && isStr(r.id, MAX_ID)).slice(-LIST_LIMITS.recent);
   try {
-    return validateRoom({ ...x, seats, waiting });
+    return validateRoom({ ...x, seats, waiting, log, lastEvents, recent });
   } catch {
     return null;
+  }
+}
+
+/** The most entries a room's lists may hold (as checked in checkRoom). */
+export const LIST_LIMITS = { waiting: 50, recent: 64, log: 500, events: 500 } as const;
+
+const OUTCOMES = new Set(['awaiting-choice', 'power', 'power-capped', 'output-full', 'input-missing', 'no-power']);
+
+/**
+ * A table event with the fields the interface reads, each of the right type and range. Events
+ * drive animations and notices, so a malformed one from a modified host is dropped, not shown.
+ */
+export function isTableEvent(e: unknown, playerCount: number): boolean {
+  if (!isObj(e)) return false;
+  const seat = (v: unknown): boolean => isInt(v) && v >= 0 && v < playerCount;
+  const id = (v: unknown): boolean => isStr(v, MAX_ID) && v.length > 0;
+  const building = (v: unknown): boolean => PIECE_TYPES.has(v as string);
+  const smallInt = (v: unknown): boolean => isInt(v) && Math.abs(v) <= 1000;
+  switch (e.kind) {
+    case 'roll':
+      return seat(e.seat) && Array.isArray(e.dice) && e.dice.length <= 3 && e.dice.every(d => isInt(d) && d >= 1 && d <= 6) && smallInt(e.total);
+    case 'activated':
+      return seat(e.seat) && id(e.pieceId) && building(e.building) && OUTCOMES.has(e.outcome as string) && smallInt(e.amount);
+    case 'piecePlaced': case 'skipped':
+      return seat(e.seat) && id(e.pieceId) && building(e.building);
+    case 'operated':
+      return seat(e.seat) && id(e.pieceId) && building(e.building) && (e.product === null || MATERIALS.has(e.product as string))
+        && smallInt(e.powerChange) && typeof e.teleported === 'boolean';
+    case 'collected':
+      return seat(e.seat) && id(e.pieceId) && Array.isArray(e.materials) && e.materials.length <= 12 && e.materials.every(m => MATERIALS.has(m as string));
+    case 'cardBought':
+      return seat(e.seat) && (e.card === null || CARD_TYPES.has(e.card as string)) && typeof e.playedOnDraw === 'boolean';
+    case 'cardPlayed':
+      return seat(e.seat) && CARD_TYPES.has(e.card as string);
+    case 'timeout':
+      return seat(e.seat) && (e.what === 'factory-op' || e.what === 'round-end');
+    case 'gameOver':
+      return (e.winner === null || seat(e.winner)) && Array.isArray(e.tied) && e.tied.length <= 4 && e.tied.every(seat)
+        && (e.reason === null || e.reason === 'tesseracts' || e.reason === 'boardExhausted');
+    default:
+      return false;
   }
 }
 

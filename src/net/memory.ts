@@ -5,7 +5,7 @@
 
 import type { Conn, HostHandle, Transport } from './conn';
 import { JoinError } from './conn';
-import { chunked, utf8Length } from './chunk';
+import { MAX_TO_HOST_BYTES, chunked, utf8Length } from './chunk';
 import type { Scheduler } from '../session/scheduler';
 import { realScheduler } from '../session/scheduler';
 
@@ -162,7 +162,7 @@ class Transport_ implements MemoryTransport {
       reg.links.add(link);
       this.hub.allLinks.add(link);
       const deliver = reg.onConnection;
-      const hostSide = this.hub.wrap(link.hostEnd);
+      const hostSide = this.hub.wrap(link.hostEnd, MAX_TO_HOST_BYTES);
       this.hub.later(() => { if (link.hostEnd.open) deliver(hostSide); });
       return this.hub.wrap(link.joinEnd);
     });
@@ -234,8 +234,8 @@ class Hub implements MemoryHub {
     } else this.sched.setTimeout(run, d.delayMs);
   }
 
-  wrap(end: End): Conn {
-    return this.chunkBytes === undefined ? end : chunked(end, this.chunkBytes);
+  wrap(end: End, maxMessage?: number): Conn {
+    return this.chunkBytes === undefined ? end : chunked(end, this.chunkBytes, maxMessage);
   }
 
   stopHosting(code: string, reg: Registration, graceful: boolean): void {

@@ -5,7 +5,7 @@
 
 import type { Conn, HostHandle, Transport } from './conn';
 import { JoinError } from './conn';
-import { chunked } from './chunk';
+import { MAX_TO_HOST_BYTES, chunked } from './chunk';
 
 export const LOCAL_CHANNEL_PREFIX = 'factory-spaghetti-';
 
@@ -114,8 +114,8 @@ class LocalTransport implements Transport {
     this.chunkBytes = opts.chunkBytes ?? 15 * 1024;
   }
 
-  private wrap(c: Conn): Conn {
-    return this.chunkBytes > 0 ? chunked(c, this.chunkBytes) : c;
+  private wrap(c: Conn, maxMessage?: number): Conn {
+    return this.chunkBytes > 0 ? chunked(c, this.chunkBytes, maxMessage) : c;
   }
 
   host(code: string, onConnection: (conn: Conn) => void): Promise<HostHandle> {
@@ -154,7 +154,7 @@ class LocalTransport implements Transport {
             const c = new TabConn(post, me, w.from, () => conns.delete(w.from));
             conns.set(w.from, c);
             post({ k: 'accept', to: w.from, from: me });
-            onConnection(this.wrap(c));
+            onConnection(this.wrap(c, MAX_TO_HOST_BYTES));
             break;
           }
           case 'msg': if (w.to === me) { const c = conns.get(w.from); if (c) { c.lastHeard = Date.now(); c.receive(w.d); } } break;

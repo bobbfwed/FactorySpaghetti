@@ -26,10 +26,12 @@ export const NORMAL_PAUSE = {
   offTurn: 500,
 } as const;
 
-/** The room's bot speed; a missing or unknown value (an older save) is the default. */
-export function botSpeedOf(settings: Pick<RoomSettings, 'botSpeed'> | { botSpeed?: unknown }): BotSpeed {
-  const v = (settings as { botSpeed?: unknown }).botSpeed;
-  return BOT_SPEEDS.includes(v as BotSpeed) ? (v as BotSpeed) : DEFAULT_BOT_SPEED;
+/** The room's bot speed. A missing or unknown value (an older save) is the default, or Instant when its pause was 0. */
+export function botSpeedOf(settings: { botSpeed?: unknown; botDelayMs?: unknown }): BotSpeed {
+  const v = settings.botSpeed;
+  if (BOT_SPEEDS.includes(v as BotSpeed)) return v as BotSpeed;
+  // Rooms from before the setting: a pause of 0 meant instant bots.
+  return typeof settings.botDelayMs === 'number' && settings.botDelayMs <= 0 ? 'instant' : DEFAULT_BOT_SPEED;
 }
 
 export type LastMove = 'roll-active' | 'roll-quiet' | 'other';

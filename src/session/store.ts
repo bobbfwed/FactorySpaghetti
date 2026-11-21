@@ -7,9 +7,25 @@ import { journalSeed, parseJournal } from './journal';
 
 export interface SaveStore {
   get(key: string): string | null;
+  /** Store a value; a store that cannot keep it durably may keep it for this page only. */
   set(key: string, value: string): void;
   remove(key: string): void;
   keys(): string[];
+  /**
+   * Store a value durably, or report that it could not be (a full browser store). Stores without
+   * it (memory) always keep what is set.
+   */
+  tryPersist?(key: string, value: string): boolean;
+}
+
+/** How many saved games keep their move journals on this device (the newest ones). */
+export const JOURNALS_KEPT = 5;
+
+/** Store durably if the store can say so; true when stored. */
+function persist(store: SaveStore, key: string, value: string): boolean {
+  if (store.tryPersist) return store.tryPersist(key, value);
+  store.set(key, value);
+  return true;
 }
 
 export const SAVE_KEY_PREFIX = 'fs.save.';
@@ -51,6 +67,17 @@ export function localStorageStore(): SaveStore {
       try { const s = ls(); if (s) { s.setItem(k, v); return; } } catch { /* fall back */ }
       fallback.set(k, v);
     },
+    tryPersist(k, v): boolean {
+      try {
+        const s = ls();
+        if (!s) return false;
+        s.setItem(k, v);
+        fallback.remove(k);
+        return true;
+      } catch {
+        return false; // full, or storage blocked
+      }
+    },
     remove(k): void {
       try { ls()?.removeItem(k); } catch { /* ignore */ }
       fallback.remove(k);
@@ -66,12 +93,46 @@ export function localStorageStore(): SaveStore {
   };
 }
 
-/** Write the room as this device's automatic save for its code. */
-export function writeSave(store: SaveStore, room: Room, meta: { savedAt: number; app: string }): void {
+/**
+ * Write the room as this device's automatic save for its code. When the store is full, move
+ * journals are given up for it (oldest games first, then all of them). Returns false when even
+ * then the save could not be stored durably: it is kept for this page only, and the player
+ * should be told to use a save link or file.
+ */
+export function writeSave(store: SaveStore, room: Room, meta: { savedAt: number; app: string }): boolean {
   try {
-    store.set(saveKey(room.code), serializeSaveFile(toSave(room, meta)));
+    const key = saveKey(room.code);
+    const text = serializeSaveFile(toSave(room, meta));
+    if (persist(store, key, text)) return true;
+    for (const jk of journalKeysOldestFirst(store, room.code)) {
+      store.remove(jk);
+      if (persist(store, key, text)) return true;
+    }
+    store.set(key, text); // at least for this page
+    return false;
   } catch {
-    // A full or broken store must never break the game.
+    return false; // a broken store must never break the game
+  }
+}
+
+/** Journal keys, those of the oldest saved games first and this room's own last. */
+function journalKeysOldestFirst(store: SaveStore, code: string): string[] {
+  const savedAt = new Map(listSaves(store).map(s => [journalKey(s.code), s.savedAt]));
+  return store.keys()
+    .filter(k => k.startsWith(JOURNAL_KEY_PREFIX))
+    .sort((a, b) => {
+      const own = Number(a === journalKey(code)) - Number(b === journalKey(code));
+      return own || (savedAt.get(a) ?? -Infinity) - (savedAt.get(b) ?? -Infinity);
+    });
+}
+
+/** Keep the journals of the JOURNALS_KEPT newest saved games (and of `code`); remove the rest. */
+export function pruneJournals(store: SaveStore, code: string): void {
+  try {
+    const keep = new Set([journalKey(code), ...listSaves(store).slice(0, JOURNALS_KEPT).map(s => journalKey(s.code))]);
+    for (const k of store.keys()) if (k.startsWith(JOURNAL_KEY_PREFIX) && !keep.has(k)) store.remove(k);
+  } catch {
+    // ignore: pruning is housekeeping
   }
 }
 
@@ -89,12 +150,15 @@ export function journalKeyForSave(saveKeyText: string): string {
   return JOURNAL_KEY_PREFIX + saveKeyText.slice(SAVE_KEY_PREFIX.length);
 }
 
-/** Store this device's journal for a room. A full store loses the journal, never the game. */
-export function writeJournal(store: SaveStore, code: string, journal: JournalData): void {
+/**
+ * Store this device's journal for a room. A full store loses the journal, never the game: the
+ * journal is never kept at a save's expense. Returns whether it was stored.
+ */
+export function writeJournal(store: SaveStore, code: string, journal: JournalData): boolean {
   try {
-    store.set(journalKey(code), JSON.stringify(journal));
+    return persist(store, journalKey(code), JSON.stringify(journal));
   } catch {
-    // ignore: the journal is a playtest aid
+    return false; // ignore: the journal is a playtest aid
   }
 }
 

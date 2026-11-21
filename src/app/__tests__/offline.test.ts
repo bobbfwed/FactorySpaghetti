@@ -124,4 +124,19 @@ describe('offline', () => {
     expect(later.ctrl.state.error).toMatch(/needs an internet connection/);
     expect(later.asked).toEqual([]);
   }, 60_000);
+
+  it('says when this device cannot store the game (its storage is full)', async () => {
+    const w = world();
+    const m = memoryStore();
+    const full: SaveStore = { ...m, tryPersist: (): boolean => false };
+    const a = device(w, { offline: true, saves: full });
+    await run(w, a.ctrl.solo());
+    await until(w, () => lobbyInfo(a.ctrl.room!, 0).canStart);
+    await run(w, a.ctrl.configure({ playerCount: 2, botDelayMs: 0 }));
+    await until(w, () => lobbyInfo(a.ctrl.room!, 0).canStart);
+    expect(a.ctrl.state.cannotStore).toBe(false);
+    expect(await run(w, a.ctrl.start())).toBe(true);
+    await until(w, () => a.ctrl.state.cannotStore);
+    a.ctrl.leave();
+  }, 60_000);
 });

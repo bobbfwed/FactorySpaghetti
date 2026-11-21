@@ -7,6 +7,14 @@ import type { Conn } from './conn';
 /** The `t` of a part envelope. Reserved: no session message may use it. */
 export const PART = '~part';
 
+/**
+ * Largest message put back together from parts, by default (a whole journal of a long game with
+ * the room is about 1 MB). A host takes much less from a client: see MAX_TO_HOST_BYTES.
+ */
+export const MAX_MESSAGE_BYTES = 8 * 1024 * 1024;
+/** Largest message a host accepts from a client (moves and commands are tiny). */
+export const MAX_TO_HOST_BYTES = 256 * 1024;
+
 /** At most this many messages may be half-received at once; the oldest is dropped beyond it. */
 export const MAX_OPEN_MESSAGES = 8;
 
@@ -74,7 +82,7 @@ function asPart(msg: object): Part | null {
   return { t: PART, id, i: index, n: count, d };
 }
 
-interface OpenMessage { n: number; got: number; parts: (string | undefined)[] }
+interface OpenMessage { n: number; got: number; bytes: number; parts: (string | undefined)[] }
 
 class ChunkedConn implements Conn {
   onclose: (() => void) | null = null;
@@ -83,7 +91,11 @@ class ChunkedConn implements Conn {
   private nextId = 1;
   private readonly openMessages = new Map<number, OpenMessage>();
 
-  constructor(private readonly raw: Conn, private readonly maxBytes: number) {
+  /** Most parts one message may have, from the size limit and the part size. */
+  private readonly maxParts: number;
+
+  constructor(private readonly raw: Conn, private readonly maxBytes: number, private readonly maxMessage: number) {
+    this.maxParts = Math.ceil(maxMessage / Math.max(16, maxBytes - 64)) + 1;
     raw.onmessage = (m): void => this.receive(m);
     raw.onclose = (): void => { this.openMessages.clear(); this.onclose?.(); };
   }
@@ -115,10 +127,13 @@ class ChunkedConn implements Conn {
     if (typeof raw !== 'object' || raw === null || (raw as { t?: unknown }).t !== PART) { this.deliver(raw); return; }
     const part = asPart(raw);
     if (!part) return; // a malformed part is dropped, never handed to the session
+    // A message announced as larger than allowed, or growing past the limit, ends the connection:
+    // only a broken or hostile peer sends one.
+    if (part.n > this.maxParts) { this.refuse(); return; }
     let job = this.openMessages.get(part.id);
     if (job && job.n !== part.n) return; // inconsistent part: ignore it
     if (!job) {
-      job = { n: part.n, got: 0, parts: new Array<string | undefined>(part.n) };
+      job = { n: part.n, got: 0, bytes: 0, parts: new Array<string | undefined>(part.n) };
       this.openMessages.set(part.id, job);
       // A message whose other parts never come (a link that dropped half way) is forgotten.
       if (this.openMessages.size > MAX_OPEN_MESSAGES) {
@@ -127,6 +142,10 @@ class ChunkedConn implements Conn {
       }
     }
     if (job.parts[part.i] !== undefined) return; // a duplicate
+    job.bytes += part.d.length;
+    let held = 0;
+    for (const m of this.openMessages.values()) held += m.bytes;
+    if (job.bytes > this.maxMessage || held > this.maxMessage * 2) { this.refuse(); return; }
     job.parts[part.i] = part.d;
     job.got++;
     if (job.got < job.n) return;
@@ -134,6 +153,11 @@ class ChunkedConn implements Conn {
     let msg: unknown;
     try { msg = JSON.parse(job.parts.join('')); } catch { return; }
     this.deliver(msg);
+  }
+
+  private refuse(): void {
+    this.openMessages.clear();
+    this.raw.close();
   }
 
   private deliver(msg: unknown): void {
@@ -146,7 +170,8 @@ class ChunkedConn implements Conn {
  * Wrap a raw connection so that a message whose JSON is bigger than `maxBytes` of UTF-8 travels
  * as several parts (`{t:'~part', id, i, n, d}`), each within the limit, and arrives whole.
  * Both ends must be wrapped. Messages that arrive before a handler is set are queued.
+ * maxMessage caps the size of a message put back together (the connection is closed beyond it).
  */
-export function chunked(raw: Conn, maxBytes: number): Conn {
-  return new ChunkedConn(raw, maxBytes);
+export function chunked(raw: Conn, maxBytes: number, maxMessage = MAX_MESSAGE_BYTES): Conn {
+  return new ChunkedConn(raw, maxBytes, maxMessage);
 }

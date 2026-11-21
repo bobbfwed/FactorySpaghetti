@@ -23,10 +23,11 @@ import { cryptoUint32, realScheduler } from './scheduler';
 import type { SaveStore } from './store';
 import { writeSave } from './store';
 import { memoryPair } from './memoryConn';
+import { normalizeAction } from './normalize';
 import { BOT_SPEEDS, botPauseMs, botSpeedOf, lastMoveOf, normalizeSettings } from './pacing';
 import type { JournalData } from './journal';
 import {
-  capJournal, copyJournal, fullJournal, journalEnd, journalFrom, journalSeed, movesAfter, partialJournal,
+  capJournal, copyJournal, fullJournal, journalEnd, journalFrom, journalMatches, journalSeed, movesAfter, partialJournal,
 } from './journal';
 
 export interface HostOptions {
@@ -69,6 +70,7 @@ interface ConnInfo {
   seat: number | null;
   waitingId: string | null;
   name: string;             // the name given in `hello` (a waiting visitor's shown name may be de-duplicated)
+  journalAt: number | null; // host clock when this connection's last journal request was answered
 }
 
 type MoveResult = { ok: true } | { ok: false; error: WireError };
@@ -82,6 +84,10 @@ const BOT_BATCH = 40;
 const EVENTS_CAP = 100;
 /** A deliberate close waits this long so the `closed` message goes out first. */
 const CLOSE_DELAY_MS = 50;
+/** Most people waiting for a seat at once; more are told the room is full. */
+export const MAX_WAITING = 8;
+/** A connection gets at most one journal answer this often. */
+export const JOURNAL_ANSWER_MS = 5000;
 const TOKEN_MIN = 16;
 const TOKEN_MAX = 64;
 
@@ -128,6 +134,8 @@ export class HostSession {
   private moveJournal: JournalData | null = null;
   /** The move number the last broadcast reached (its moves block ends there). */
   private broadcastSeq: number | null = null;
+  /** Broadcasts sent so far (guard() never rolls back past one). */
+  private broadcasts = 0;
 
   constructor(opts: HostOptions) {
     this.hostToken = opts.hostToken;
@@ -196,7 +204,10 @@ export class HostSession {
   private initialJournal(given: JournalData | null): JournalData | null {
     const g = this.room.game;
     if (!g) return null;
-    if (given && journalSeed(given) === g.seed && journalEnd(given) === this.room.seq) return copyJournal(given);
+    // The journal must lead to this very game, not only have its seed and length: it is replayed
+    // (about 0.1 s for 2,000 moves). One that does not is replaced by a journal from here on.
+    const fits = given && journalSeed(given) === g.seed && journalEnd(given) === this.room.seq ? journalMatches(given, g, this.room.seq) : null;
+    if (fits) return copyJournal(fits);
     return partialJournal(g, this.room.seq);
   }
 
@@ -210,7 +221,7 @@ export class HostSession {
   /** A client connected. */
   accept(conn: Conn): void {
     if (this.disposed) { conn.close(); return; }
-    this.conns.set(conn, { token: null, seat: null, waitingId: null, name: '' });
+    this.conns.set(conn, { token: null, seat: null, waitingId: null, name: '', journalAt: null });
     conn.onmessage = (m): void => this.onMessage(conn, m);
     conn.onclose = (): void => this.guard(() => this.onClose(conn));
   }
@@ -253,12 +264,18 @@ export class HostSession {
     const snapshot = this.room;
     const journal = this.moveJournal;
     const journalLength = journal?.moves.length ?? 0;
+    const broadcastSeq = this.broadcastSeq;
+    const broadcasts = this.broadcasts;
     try {
       fn();
     } catch (e) {
-      this.room = snapshot;
-      this.moveJournal = journal;
-      if (journal) journal.moves.length = journalLength;
+      // What was already sent to everyone stands; otherwise the host goes back to where it was.
+      if (this.broadcasts === broadcasts) {
+        this.room = snapshot;
+        this.moveJournal = journal;
+        if (journal) journal.moves.length = journalLength;
+        this.broadcastSeq = broadcastSeq;
+      }
       this.burst = false;
       this.welcomes.clear();
       // eslint-disable-next-line no-console
@@ -291,7 +308,18 @@ export class HostSession {
 
     if (msg.t === 'act') { this.onAct(conn, info, msg); return; }
     if (msg.t === 'sync') { this.sendRoom(conn, id); return; }
-    if (msg.t === 'journal') { this.sendJournal(conn, msg, id); return; }
+    if (msg.t === 'journal') {
+      // Only players may ask, and not too often: a whole journal can be large.
+      if (info.seat === null) { this.nope(conn, id, err('NO_SEAT', 'You do not have a seat in this game.')); return; }
+      const now = this.sched.now();
+      if (info.journalAt !== null && now - info.journalAt < JOURNAL_ANSWER_MS) {
+        this.nope(conn, id, err('BUSY', 'Too many journal requests; ask again shortly.'));
+        return;
+      }
+      info.journalAt = now;
+      this.sendJournal(conn, msg, id);
+      return;
+    }
 
     const refusal = this.command(conn, info, msg);
     if (refusal) this.nope(conn, id, refusal);
@@ -312,7 +340,8 @@ export class HostSession {
     info.name = name;
     const seat = this.findSeat(msg.token, msg.seat, name);
     if (seat === null) {
-      if (hasAwayHumanSeat(r)) {
+      // A few people may wait for a seat; more are turned away (the room is full).
+      if (hasAwayHumanSeat(r) && r.waiting.length < MAX_WAITING) {
         const id = `w${++this.waitingSeq}`;
         info.waitingId = id;
         this.room = { ...r, waiting: [...r.waiting, { id, name: dedupeName(name, namesInUse(r)) }] };
@@ -389,13 +418,21 @@ export class HostSession {
     if (r.hold) { this.nope(conn, msg.id, err('ON_HOLD', 'The game is paused until the host continues it.')); return; }
 
     const game = r.game;
-    let action = msg.action;
+    // Only the known fields of a move are kept (see normalize.ts); anything else is refused.
+    const read = normalizeAction(msg.action);
+    if (!read) { this.nope(conn, msg.id, err('BAD_ACTION', 'That move could not be read.')); return; }
+    let action: Action = read;
     let ownChoice = false;
-    if ((action.type === 'OPERATE_BUILDING' || action.type === 'SKIP_FACTORY_ROLL') && game.phase === 'actions') {
-      // An activated factory is answered by its owner, on anyone's turn, and only for themselves.
-      action = { ...action, ownerId: seat as PlayerId };
-      const pieceId = action.pieceId;
-      ownChoice = game.pendingFactoryOps.some(e => e.pieceId === pieceId && e.ownerId === seat);
+    if (action.type === 'OPERATE_BUILDING' || action.type === 'SKIP_FACTORY_ROLL') {
+      if (game.phase === 'actions') {
+        // An activated factory is answered by its owner, on anyone's turn, and only for themselves.
+        action = { ...action, ownerId: seat as PlayerId };
+        const pieceId = action.pieceId;
+        ownChoice = game.pendingFactoryOps.some(e => e.pieceId === pieceId && e.ownerId === seat);
+      } else {
+        // Elsewhere the active player operates: no owner field is taken from the sender.
+        action = { type: action.type, pieceId: action.pieceId };
+      }
     }
     if (!ownChoice && activeSeat(game) !== seat) {
       this.nope(conn, msg.id, err('NOT_YOUR_TURN', 'It is not your turn.'));
@@ -411,6 +448,10 @@ export class HostSession {
     const r = this.room;
     const game = r.game;
     if (!game) return { ok: false, error: err('NOT_PLAYING', 'No game is in progress.') };
+    // Bots and timers too: only a well-formed move is applied and kept in the journal.
+    const clean = normalizeAction(action);
+    if (!clean) return { ok: false, error: err('BAD_ACTION', 'That move could not be read.') };
+    action = clean;
     let diceRng = r.diceRng;
     if (action.type === 'ROLL_DICE') {
       const [dice, next] = rollDice(diceRng, game.mineCount);
@@ -786,7 +827,13 @@ export class HostSession {
     this.save();
     this.broadcast(re);
     this.burst = false;
-    for (const fn of [...this.listeners]) fn();
+    for (const fn of [...this.listeners]) {
+      // A listener (the interface) that throws must not undo a change everyone already received.
+      try { fn(); } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('HostSession: a listener failed', e);
+      }
+    }
   }
 
   /** The next seat the host must play with a bot, if any. */
@@ -968,6 +1015,7 @@ export class HostSession {
     }
     this.welcomes.clear();
     this.broadcastSeq = this.moveJournal ? journalEnd(this.moveJournal) : null;
+    this.broadcasts++;
   }
 
   private sendRoom(conn: Conn, re: string | null): void {

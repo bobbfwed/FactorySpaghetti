@@ -83,6 +83,7 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     h('div', { class: 'gb-wrap' }, header, menuItems),
     connectionBanner(ctrl),
     failed ? h('div', { class: 'warn', attrs: { role: 'status' }, text: `The 3D table could not start on this device, so the game is shown as text. ${failed}` }) : null,
+    ctrl.state.cannotStore ? h('div', { class: 'warn', attrs: { role: 'alert' }, text: 'This device cannot store the game; use Copy save link or Download save file in the game menu.' }) : null,
     h('div', { class: 'game-grid' },
       h('div', { class: 'col-main' },
         g.gameOver ? gameOverPanel(ctrl, room) : null,

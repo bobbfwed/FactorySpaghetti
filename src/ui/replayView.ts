@@ -283,8 +283,11 @@ export function replayView(ctrl: AppController): View {
     if (!c.sameRules) {
       parts.push(h('div', { class: 'warn rv-rules', text: `Different rule settings: recorded with rules ${c.replay.rules}, shown with ${rulesFingerprint()}.` }));
     }
+    if (c.dice.status === 'mismatch') {
+      parts.push(h('div', { class: 'warn rv-dice', text: `The dice in this file do not match the seeded dice of this game (first at move ${c.dice.firstMismatch}). The file may have been edited.` }));
+    }
     if (c.partial) {
-      parts.push(h('div', { class: 'note rv-partial', text: `The early moves of this game were not recorded on the device that made this file, so the replay starts at move ${c.firstSeq}.` }));
+      parts.push(h('div', { class: 'note rv-partial', text: `The early moves of this game were not recorded on the device that made this file, so the replay starts at move ${c.firstSeq}. Its dice cannot be checked.` }));
     }
     if (s.report) parts.push(reportPanel(s, c));
     return h('div', { class: 'rv-notes' }, parts);

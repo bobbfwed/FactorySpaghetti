@@ -7,7 +7,7 @@
 import type { DataConnection, Peer as PeerType, PeerOptions } from 'peerjs';
 import type { Conn, HostHandle, JoinErrorKind, Transport } from './conn';
 import { JoinError } from './conn';
-import { chunked } from './chunk';
+import { MAX_TO_HOST_BYTES, chunked } from './chunk';
 import { heartbeat } from './heartbeat';
 import { OWN_RELAY } from './relay';
 
@@ -189,7 +189,7 @@ class PeerTransport implements Transport {
           let raw: Conn | null = null;
           raw = wrapData(dc, () => { if (raw) conns.delete(raw); });
           conns.add(raw);
-          onConnection(chunked(heartbeat(raw), PEER_CHUNK_BYTES));
+          onConnection(chunked(heartbeat(raw), PEER_CHUNK_BYTES, MAX_TO_HOST_BYTES));
         });
       });
       // Losing the broker does not end the game: players already connected keep their links.

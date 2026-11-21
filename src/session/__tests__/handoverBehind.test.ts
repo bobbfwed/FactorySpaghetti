@@ -20,6 +20,8 @@ import { journalEnd, journalFrom, replayTo } from '../journal';
 import { RECOVERY_WAIT_MS, sameAction } from '../recovery';
 import type { Joined } from './helpers';
 import { ManualScheduler, newLobby, rejoin, settle } from './helpers';
+import { rollbackText } from '../../app/controller';
+import { RECOVERY_DEADLINE_MS } from '../clientSession';
 
 // Seed 4 gives the turn order Cy, Bea, Ann, Dee: Dee plays just before Cy.
 const SEED = 4;
@@ -79,11 +81,15 @@ async function lose(t: Table, n: number, choose?: (g: GameState, seat: number) =
 }
 
 /** The host's tab closes; Bea (one or more moves behind) takes over; the given players come back. */
-async function handOver(t: Table, back: Joined[]): Promise<{ next: HostSession; sched: ManualScheduler }> {
+/** How the new host answers journal requests, for the tests of hosts that cannot help. */
+type JournalAnswer = (conn: { send(m: unknown): void }, msg: { id?: string }) => void;
+
+async function handOver(t: Table, back: Joined[], answer?: JournalAnswer): Promise<{ next: HostSession; sched: ManualScheduler }> {
   t.host.dispose();
   await settle();
   const sched = t.sched;
   const next = promoteToHost(t.bea.client.room!, BEA, { hostToken: 'tok-bea-0123456789', scheduler: sched, journal: t.bea.client.journal });
+  if (answer) (next as unknown as { sendJournal: (c: unknown, m: unknown, id: string | null) => void }).sendJournal = (c, m): void => answer(c as { send(m: unknown): void }, m as { id?: string });
   t.bea.client.reattach(next.connectLocal());
   for (const j of back) rejoin(next, j);
   for (let i = 0; i < 4; i++) await settle();
@@ -174,7 +180,7 @@ describe('moves a new host never received', () => {
     await sched.advance(RECOVERY_WAIT_MS - 1);
     expect(t.cy.client.takeRollback()).toBeNull();
     await sched.advance(1);
-    expect(t.cy.client.takeRollback()).toEqual({ from: s + 3, to: s });
+    expect(t.cy.client.takeRollback()).toEqual({ at: s, lost: 3 });
     expect(t.cy.client.pending).toBeNull();
     // The game goes on: the host gives Dee's seat to a bot.
     expect((await t.bea.client.setSeat(DEE, 'bot')).ok).toBe(true);
@@ -200,8 +206,10 @@ describe('moves a new host never received', () => {
     for (let i = 0; i < 3; i++) await settle();
     expect(next.room.seq).toBeGreaterThan(s);
     expect(sameAction(next.journal!.moves[s]!, lost!.action)).toBe(false);
-    // Cy had seen Dee's own move; the game went another way: told once.
-    expect(t.cy.client.takeRollback()).toMatchObject({ from: s + 1 });
+    // Cy had seen Dee's own move; the game went another way: told once, with the right count.
+    const told = t.cy.client.takeRollback()!;
+    expect(told).toEqual({ at: s, lost: 1 });
+    expect(rollbackText(told)).toBe(`The new host had not received a move seen on this device after move ${s}, so the game went on without it. Make your move again if still allowed.`);
     expect(t.cy.client.takeRollback()).toBeNull();
     expect(t.cy.client.journal).toEqual(next.journal);
     next.dispose();
@@ -216,10 +224,66 @@ describe('moves a new host never received', () => {
     const { next, sched } = await handOver(t, [t.cy, t.dee]);
     expect(t.cy.client.pending?.recovery).toBe('wait');
     await sched.advance(RECOVERY_WAIT_MS);
-    expect(t.cy.client.takeRollback()).toEqual({ from: s + 1, to: s });
-    expect(t.dee.client.takeRollback()).toEqual({ from: s + 1, to: s });
+    expect(t.cy.client.takeRollback()).toEqual({ at: s, lost: 1 });
+    expect(t.dee.client.takeRollback()).toEqual({ at: s, lost: 1 });
     expect(next.room.seq).toBe(s);
     expectSameGame(next, [t.bea.client, t.cy.client, t.dee.client]);
+    next.dispose();
+  }, 60_000);
+
+  for (const [what, answer] of [
+    ['refuses the journal request (an older host)', (c, m): void => c.send({ t: 'nope', id: m.id ?? null, error: { code: 'BAD_MESSAGE', message: 'That message was not understood.' } })],
+    ['has no journal', (c, m): void => c.send({ t: 'journal', re: m.id })],
+    ['answers with a journal that cannot be read', (c, m): void => c.send({ t: 'journal', re: m.id, from: 'x', moves: 7 })],
+  ] as [string, JournalAnswer][]) {
+    it(`a new host that ${what}: recovery ends with the notice, and input is free`, async () => {
+      const t = await table();
+      await playUntil(t, g => activeSeat(g) === CY && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0);
+      const s = t.host.room.seq;
+      await lose(t, 1);
+      const { next } = await handOver(t, [t.cy, t.dee], answer);
+      for (let i = 0; i < 3; i++) await settle();
+      expect(t.cy.client.takeRollback()).toEqual({ at: s, lost: 1 });
+      expect(t.cy.client.pending).toBeNull();
+      expect(t.cy.client.journalStart).toBe(s); // a journal from the host's position on
+      const g = next.room.game!;
+      expect((await t.cy.client.act(greedy(g, CY as PlayerId))).ok).toBe(true);
+      next.dispose();
+    }, 60_000);
+  }
+
+  it('a new host that never answers: recovery ends after the 30 s deadline, and input is free', async () => {
+    const t = await table();
+    await playUntil(t, g => activeSeat(g) === CY && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0);
+    const s = t.host.room.seq;
+    await lose(t, 1);
+    const { next, sched } = await handOver(t, [t.cy, t.dee], () => undefined);
+    expect(t.cy.client.pending?.recovery).toBe('wait');
+    expect(await t.cy.client.act({ type: 'END_TURN' })).toMatchObject({ ok: false, error: { code: 'BUSY' } });
+    await sched.advance(RECOVERY_DEADLINE_MS - 1);
+    expect(t.cy.client.pending?.recovery).toBe('wait');
+    await sched.advance(1);
+    expect(t.cy.client.takeRollback()).toEqual({ at: s, lost: 1 });
+    expect(t.cy.client.pending).toBeNull();
+    next.dispose();
+  }, 60_000);
+
+  it('a device keeps its own beginning when the new host only has a journal from later on', async () => {
+    const t = await table();
+    await playUntil(t, g => g.round >= 2 && activeSeat(g) === CY && g.phase === 'placePiece');
+    const s = t.host.room.seq;
+    // The host's tab closes; Bea takes over without any journal (from a save link, say).
+    t.host.dispose();
+    await settle();
+    const next = promoteToHost(t.bea.client.room!, BEA, { hostToken: 'tok-bea-0123456789', scheduler: t.sched, journal: null });
+    expect(journalFrom(next.journal!)).toBe(s);
+    t.bea.client.reattach(next.connectLocal());
+    rejoin(next, t.cy);
+    for (let i = 0; i < 4; i++) await settle();
+    // Cy's journal still starts at the beginning of the game, and goes on with the host's moves.
+    expect(t.cy.client.journalStart).toBe(0);
+    expect(t.cy.client.journalCurrent).toBe(true);
+    expect(t.cy.client.takeRollback()).toBeNull();
     next.dispose();
   }, 60_000);
 });
