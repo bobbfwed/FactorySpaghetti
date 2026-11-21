@@ -1,0 +1,806 @@
+// The host session: owns the room, runs the engine, decides who may speak, rolls the
+// dice, runs bot seats and timers, and sends the whole room to everyone after a change.
+// The engine judges whether a move is legal; the host judges who may make it.
+
+import type { Conn } from '../net/conn';
+import type { Action } from '../engine/actions';
+import type { PlayerId } from '../engine/state';
+import { applyAction, createGame, legalActions } from '../engine';
+import { botById } from '../bots/registry';
+import type { LogEntry, Room, RoomSettings, Seat, TableEvent } from './room';
+import {
+  STAND_IN_BOT, RECENT_CAP, activeSeat, appendLog, cleanName, isBotControlled,
+  isHumanControlled, newLobbyRoom, openSeat, sameName,
+} from './room';
+import type { ClientMsg, HostMsg, WireError } from './protocol';
+import { PROTOCOL, parseClientMsg } from './protocol';
+import {
+  awaySeatByName, dedupeName, firstOpenSeat, hasAwayHumanSeat, namesInUse, resizeSeats,
+} from './seating';
+import { describeAction } from './describe';
+import { moveEvents } from './events';
+import { diceRngFromSeed, rollDice } from './dice';
+import type { Scheduler } from './scheduler';
+import { cryptoUint32, realScheduler } from './scheduler';
+import type { SaveStore } from './store';
+import { writeSave } from './store';
+import { memoryPair } from './memoryConn';
+
+export interface HostOptions {
+  code: string;
+  hostName: string;
+  hostToken: string;
+  /** Present for 'resume' and 'takeover'. */
+  room?: Room;
+  mode?: 'new' | 'resume' | 'takeover';
+  /** Take-over only: the new host's seat (otherwise found by `hostName`). */
+  hostSeat?: number;
+  /** Saves after every accepted move while playing. */
+  store?: SaveStore;
+  scheduler?: Scheduler;
+  /** uint32 seed source for a new game; injected so tests are deterministic. */
+  randomSeed?: () => number;
+  appVersion?: string;
+}
+
+interface ConnInfo {
+  token: string | null;     // null until `hello`
+  seat: number | null;
+  waitingId: string | null;
+}
+
+type MoveResult = { ok: true } | { ok: false; error: WireError };
+type MoveSource = 'human' | 'bot' | 'auto';
+interface BotTurn { seat: number; pendingPieceId: string | null }
+
+/** Safety net against a bot or engine stall when bots run back to back. */
+const MAX_BOT_STEPS = 100_000;
+/** lastEvents keeps at most this many events from a run of bot moves. */
+const EVENTS_CAP = 100;
+
+const err = (code: string, message: string): WireError => ({ code, message });
+
+export class HostSession {
+  room: Room;
+
+  private readonly hostToken: string;
+  private readonly store: SaveStore | undefined;
+  private readonly sched: Scheduler;
+  private readonly randomSeed: () => number;
+  private readonly app: string;
+
+  private readonly conns = new Map<Conn, ConnInfo>();
+  private readonly seatConn = new Map<number, Conn>();
+  private readonly tokens = new Map<string, number>();
+  private readonly kicked = new Set<string>();
+  private readonly listeners = new Set<() => void>();
+
+  private opTimer: unknown = null;
+  private roundEndTimer: unknown = null;
+  private roundEndKey: string | null = null;
+  private botTimer: unknown = null;
+  private readonly awayTimers = new Map<number, unknown>();
+
+  private burst = false;           // moves applied since the last broadcast
+  private savedSeq = -1;
+  private savedPhase: Room['phase'] | null = null;
+  private waitingSeq = 0;
+  private disposed = false;
+
+  constructor(opts: HostOptions) {
+    this.hostToken = opts.hostToken;
+    this.store = opts.store;
+    this.sched = opts.scheduler ?? realScheduler;
+    this.randomSeed = opts.randomSeed ?? cryptoUint32;
+    this.app = opts.appVersion ?? 'dev';
+    const hostName = cleanName(opts.hostName);
+    const mode = opts.mode ?? (opts.room ? 'resume' : 'new');
+
+    if (mode === 'new' || !opts.room) {
+      this.room = newLobbyRoom(opts.code, hostName);
+      this.tokens.set(opts.hostToken, 0);
+      return;
+    }
+
+    const base = opts.room;
+    const now = this.sched.now();
+    if (mode === 'resume') {
+      const seats = base.seats.map(s => ({
+        ...s, connected: false, ready: false, awaySince: null, autopilot: false,
+        botId: s.kind === 'human' ? null : s.botId,
+      }));
+      const hostSeat = seats.find(s => s.kind === 'human' && sameName(s.name, hostName))?.index
+        ?? seats.find(s => s.kind === 'human')?.index
+        ?? base.hostSeat;
+      this.room = {
+        ...base, code: opts.code, seats, hostSeat, hold: true, waiting: [], recent: [],
+        lastEvents: [], opDeadline: null, roundEndDeadline: null,
+      };
+      this.tokens.set(opts.hostToken, hostSeat);
+      this.note(null, 'The game was loaded from a save. It continues when the host says so.');
+    } else {
+      const hostSeat = opts.hostSeat
+        ?? base.seats.find(s => s.kind === 'human' && sameName(s.name, hostName))?.index
+        ?? base.hostSeat;
+      const seats = base.seats.map(s => {
+        if (s.kind !== 'human') return s;
+        if (s.index === hostSeat) return { ...s, connected: true, awaySince: null };
+        return { ...s, connected: false, awaySince: now };
+      });
+      this.room = {
+        ...base, code: opts.code, seats, hostSeat, hold: false, waiting: [],
+        opDeadline: null, roundEndDeadline: null,
+      };
+      this.tokens.set(opts.hostToken, hostSeat);
+      this.note(null, `${seats[hostSeat]?.name ?? 'A player'} took over as host.`);
+      for (const s of seats) if (s.kind === 'human' && !s.connected) this.armAway(s.index);
+    }
+    this.afterChange();
+  }
+
+  // ── Public surface ────────────────────────────────────────────────────────────
+
+  /** A client connected. */
+  accept(conn: Conn): void {
+    if (this.disposed) { conn.close(); return; }
+    this.conns.set(conn, { token: null, seat: null, waitingId: null });
+    conn.onmessage = (m): void => this.onMessage(conn, m);
+    conn.onclose = (): void => this.onClose(conn);
+  }
+
+  /** The client end of an in-process pair, for the host player's own ClientSession. */
+  connectLocal(): Conn {
+    const [hostEnd, clientEnd] = memoryPair();
+    this.accept(hostEnd);
+    return clientEnd;
+  }
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => { this.listeners.delete(fn); };
+  }
+
+  /** Stop everything. With `notify`, clients are told the room ended; otherwise they just lose the host. */
+  dispose(opts: { notify?: boolean } = {}): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.clearTimer('op');
+    this.clearTimer('roundEnd');
+    this.clearTimer('bot');
+    for (const h of this.awayTimers.values()) this.sched.clearTimeout(h);
+    this.awayTimers.clear();
+    for (const conn of [...this.conns.keys()]) {
+      if (opts.notify) this.send(conn, { t: 'closed', why: 'ended' });
+      conn.close();
+    }
+    this.conns.clear();
+    this.listeners.clear();
+  }
+
+  // ── Inbound ───────────────────────────────────────────────────────────────────
+
+  private onMessage(conn: Conn, raw: unknown): void {
+    if (this.disposed) return;
+    const info = this.conns.get(conn);
+    if (!info) return;
+    const msg = parseClientMsg(raw);
+    if (!msg) {
+      const id = typeof (raw as { id?: unknown })?.id === 'string' ? (raw as { id: string }).id : null;
+      this.nope(conn, id, err('BAD_MESSAGE', 'That message was not understood.'));
+      return;
+    }
+    if (msg.t === 'hello') { this.onHello(conn, info, msg); return; }
+    const id = msg.t === 'act' ? msg.id : (msg.id ?? null);
+    if (info.token === null) { this.nope(conn, id, err('HELLO_FIRST', 'Say hello first.')); return; }
+
+    if (msg.t === 'act') { this.onAct(conn, info, msg); return; }
+    if (msg.t === 'sync') { this.sendRoom(conn, id); return; }
+
+    const refusal = this.command(conn, info, msg);
+    if (refusal) this.nope(conn, id, refusal);
+  }
+
+  private onHello(conn: Conn, info: ConnInfo, msg: Extract<ClientMsg, { t: 'hello' }>): void {
+    if (msg.v !== PROTOCOL) { this.refuse(conn, 'version'); return; }
+    if (this.kicked.has(msg.token)) { this.refuse(conn, 'kicked'); return; }
+    if (info.token !== null) { this.afterChange({ welcome: conn }); return; } // repeated hello: just re-welcome
+
+    const name = cleanName(msg.name);
+    const r = this.room;
+    info.token = msg.token;
+
+    let seat: number | null = null;
+    const known = this.tokens.get(msg.token);
+    if (known !== undefined) {
+      const s = r.seats[known];
+      const holder = this.seatConn.get(known);
+      const heldByOther = holder !== undefined && this.conns.get(holder)?.token !== msg.token;
+      if (s && !heldByOther && (s.kind === 'human' || (r.phase === 'lobby' && s.kind === 'open'))) seat = known;
+      else this.tokens.delete(msg.token);
+    }
+    if (seat === null) seat = r.phase === 'lobby' ? firstOpenSeat(r) : awaySeatByName(r, name);
+
+    if (seat === null) {
+      if (r.phase !== 'lobby' && hasAwayHumanSeat(r)) {
+        const id = `w${++this.waitingSeq}`;
+        info.waitingId = id;
+        this.room = { ...r, waiting: [...r.waiting, { id, name: dedupeName(name, namesInUse(r)) }] };
+        this.afterChange({ welcome: conn });
+        return;
+      }
+      this.refuse(conn, 'full');
+      return;
+    }
+    this.attach(conn, info, seat, name);
+    this.afterChange({ welcome: conn });
+  }
+
+  private onClose(conn: Conn): void {
+    const info = this.conns.get(conn);
+    this.conns.delete(conn);
+    if (!info || this.disposed) return;
+    if (info.waitingId !== null) {
+      const id = info.waitingId;
+      this.room = { ...this.room, waiting: this.room.waiting.filter(w => w.id !== id) };
+      this.afterChange();
+      return;
+    }
+    if (info.seat === null || this.seatConn.get(info.seat) !== conn) return;
+    this.seatConn.delete(info.seat);
+    this.markLeft(info.seat);
+    this.afterChange();
+  }
+
+  // ── Moves ─────────────────────────────────────────────────────────────────────
+
+  private onAct(conn: Conn, info: ConnInfo, msg: Extract<ClientMsg, { t: 'act' }>): void {
+    const seat = info.seat;
+    if (seat === null) { this.nope(conn, msg.id, err('NO_SEAT', 'You do not have a seat in this game.')); return; }
+    const r = this.room;
+    // Already applied (the reply was lost): acknowledge with the current room, apply nothing.
+    if (r.recent.some(x => x.seat === seat && x.id === msg.id)) { this.sendRoom(conn, msg.id); return; }
+    if (r.phase !== 'playing' || !r.game) { this.nope(conn, msg.id, err('NOT_PLAYING', 'No game is in progress.')); return; }
+    if (r.hold) { this.nope(conn, msg.id, err('ON_HOLD', 'The game is paused until the host continues it.')); return; }
+
+    const game = r.game;
+    let action = msg.action;
+    let ownChoice = false;
+    if ((action.type === 'OPERATE_BUILDING' || action.type === 'SKIP_FACTORY_ROLL') && game.phase === 'actions') {
+      // An activated factory is answered by its owner, on anyone's turn, and only for themselves.
+      action = { ...action, ownerId: seat as PlayerId };
+      const pieceId = action.pieceId;
+      ownChoice = game.pendingFactoryOps.some(e => e.pieceId === pieceId && e.ownerId === seat);
+    }
+    if (!ownChoice && activeSeat(game) !== seat) {
+      this.nope(conn, msg.id, err('NOT_YOUR_TURN', 'It is not your turn.'));
+      return;
+    }
+    const res = this.applyMove(seat, action, msg.id, 'human');
+    if (!res.ok) { this.nope(conn, msg.id, res.error); return; }
+    this.afterChange({ re: { conn, id: msg.id } });
+  }
+
+  /** Apply one move for `seat`. Rolls the dice itself. On refusal nothing changes. */
+  private applyMove(seat: number, action: Action, id: string | null, source: MoveSource): MoveResult {
+    const r = this.room;
+    const game = r.game;
+    if (!game) return { ok: false, error: err('NOT_PLAYING', 'No game is in progress.') };
+    let diceRng = r.diceRng;
+    if (action.type === 'ROLL_DICE') {
+      const [dice, next] = rollDice(diceRng, game.mineCount);
+      action = { type: 'ROLL_DICE', rolls: dice };
+      diceRng = next;
+    }
+    let res: ReturnType<typeof applyAction>;
+    try {
+      res = applyAction(game, action);
+    } catch {
+      return { ok: false, error: err('BAD_ACTION', 'That move could not be read.') };
+    }
+    if (!res.ok) return { ok: false, error: { code: res.error.code, message: res.error.message } };
+
+    const after = res.state;
+    const seq = r.seq + 1;
+    const name = this.seatName(seat);
+    const log: LogEntry[] = [{ seq, seat, text: describeAction(game, action, name) }];
+    const events = moveEvents(game, after, action, seat);
+    let phase = r.phase;
+    if (after.gameOver) {
+      phase = 'finished';
+      events.push({ kind: 'gameOver', winner: after.winner, tied: [...after.tiedWinners], reason: after.gameOverReason });
+      log.push({ seq, seat: null, text: this.gameOverText(after.winner, after.tiedWinners, after.gameOverReason) });
+    }
+    this.room = {
+      ...r,
+      game: after,
+      seq,
+      diceRng,
+      phase,
+      recent: id !== null && source === 'human' ? [...r.recent, { seat, id }].slice(-RECENT_CAP) : r.recent,
+      log: appendLog(r.log, log),
+      lastEvents: this.mergeEvents(events),
+    };
+    this.burst = true;
+    if (source === 'human') this.clearTimer('roundEnd'); // any move by the player restarts their idle clock
+    return { ok: true };
+  }
+
+  private mergeEvents(events: TableEvent[]): TableEvent[] {
+    const all = this.burst ? [...this.room.lastEvents, ...events] : events;
+    return all.length > EVENTS_CAP ? all.slice(all.length - EVENTS_CAP) : all;
+  }
+
+  // ── Commands ──────────────────────────────────────────────────────────────────
+
+  /** Handle a non-move command. Returns a refusal, or null after applying it. */
+  private command(conn: Conn, info: ConnInfo, msg: Exclude<ClientMsg, { t: 'hello' | 'act' | 'sync' }>): WireError | null {
+    const r = this.room;
+    const id = msg.id ?? null;
+    const done = (extra: { welcome?: Conn } = {}): null => {
+      this.afterChange({ ...extra, re: { conn, id } });
+      return null;
+    };
+    const mySeat = info.seat === null ? undefined : r.seats[info.seat];
+
+    switch (msg.t) {
+      case 'ready':
+        if (r.phase !== 'lobby') return err('NOT_IN_LOBBY', 'The game has already started.');
+        if (!mySeat || mySeat.kind !== 'human') return err('NO_SEAT', 'You do not have a seat.');
+        this.patchSeat(mySeat.index, { ready: msg.ready });
+        return done();
+
+      case 'color':
+        if (r.phase !== 'lobby') return err('NOT_IN_LOBBY', 'The game has already started.');
+        if (!mySeat || mySeat.kind !== 'human') return err('NO_SEAT', 'You do not have a seat.');
+      {
+        // A colour held by another player is taken; one held by an open or bot seat is swapped.
+        const holder = r.seats.find(s => s.index !== mySeat.index && s.color === msg.color);
+        if (holder?.kind === 'human') return err('COLOR_TAKEN', 'Another player already uses that colour.');
+        if (holder) this.patchSeat(holder.index, { color: mySeat.color });
+        this.patchSeat(mySeat.index, { color: msg.color });
+        return done();
+      }
+    }
+
+    if (!this.isHost(info)) return err('NOT_HOST', 'Only the host can do that.');
+
+    switch (msg.t) {
+      case 'cfg': {
+        if (r.phase !== 'lobby') return err('NOT_IN_LOBBY', 'Settings can only change in the lobby.');
+        const next = mergeSettings(r.settings, msg.settings);
+        if (!next) return err('BAD_SETTINGS', 'Those settings are not valid.');
+        let seats: Seat[] | null = r.seats;
+        if (next.playerCount !== r.settings.playerCount) {
+          seats = resizeSeats(r.seats, next.playerCount);
+          if (!seats) return err('SEAT_OCCUPIED', 'A player is sitting in a seat that would be removed.');
+        }
+        this.room = { ...r, settings: next, seats: seats.map(s => ({ ...s, ready: false })) };
+        return done();
+      }
+
+      case 'setSeat': {
+        const seat = r.seats[msg.index];
+        if (!seat) return err('BAD_SEAT', 'There is no such seat.');
+        const bot = botById(msg.botId ?? STAND_IN_BOT);
+        if (r.phase === 'lobby') {
+          if (seat.kind === 'human') return err('SEAT_OCCUPIED', 'A player is sitting in that seat.');
+          const next: Seat = msg.kind === 'open'
+            ? openSeat(seat.index, seat.color)
+            : { ...openSeat(seat.index, seat.color), kind: 'bot', botId: bot.id, name: dedupeName(bot.label, namesInUse(r, seat.index)) };
+          this.room = { ...r, seats: r.seats.map(s => (s.index === seat.index ? next : { ...s, ready: false })) };
+          return done();
+        }
+        if (msg.kind === 'open') return err('BAD_SEAT', 'A seat cannot be emptied once the game has started.');
+        if (seat.kind === 'human' && seat.connected) return err('SEAT_OCCUPIED', 'That player is still connected.');
+        this.forgetSeatTokens(seat.index);
+        this.clearAway(seat.index);
+        this.patchSeat(seat.index, { kind: 'bot', botId: bot.id, autopilot: false, awaySince: null, connected: false, ready: false });
+        this.note(seat.index, `${bot.label} now plays ${seat.name}'s seat.`);
+        return done();
+      }
+
+      case 'start': {
+        if (r.phase !== 'lobby') return err('NOT_IN_LOBBY', 'The game has already started.');
+        if (r.seats.some(s => s.kind === 'open')) return err('SEATS_OPEN', 'Every seat needs a player or a bot.');
+        if (r.seats.some(s => s.kind === 'human' && s.connected && !s.ready)) {
+          return err('NOT_READY', 'Every player must be ready.');
+        }
+        const seed = this.randomSeed() >>> 0;
+        const game = createGame(seed, r.settings.playerCount);
+        const names = r.seats.map(s => s.name).join(', ');
+        this.room = {
+          ...r, phase: 'playing', game, seq: 0, diceRng: diceRngFromSeed(seed),
+          recent: [], lastEvents: [], log: [{ seq: 0, seat: null, text: `The game begins: ${names}.` }],
+        };
+        return done();
+      }
+
+      case 'resume': {
+        if (r.phase === 'lobby') return err('NOT_PLAYING', 'There is no game to continue.');
+        if (r.hold) {
+          const now = this.sched.now();
+          this.room = {
+            ...r, hold: false,
+            seats: r.seats.map(s => (s.kind === 'human' && !s.connected ? { ...s, awaySince: now } : s)),
+          };
+          this.note(null, 'The host continued the game.');
+          for (const s of this.room.seats) if (s.kind === 'human' && !s.connected) this.armAway(s.index);
+        }
+        return done();
+      }
+
+      case 'assign': {
+        if (r.phase === 'lobby') return err('NOT_PLAYING', 'Players take seats themselves in the lobby.');
+        const visitor = r.waiting.find(w => w.id === msg.waitingId);
+        const target = [...this.conns].find(([, i]) => i.waitingId === msg.waitingId);
+        if (!visitor || !target) return err('NOT_WAITING', 'That person is no longer waiting.');
+        const seat = r.seats[msg.seat];
+        if (!seat) return err('BAD_SEAT', 'There is no such seat.');
+        if (seat.kind === 'human' && seat.connected) return err('SEAT_OCCUPIED', 'That player is still connected.');
+        const [vConn, vInfo] = target;
+        vInfo.waitingId = null;
+        this.room = { ...r, waiting: r.waiting.filter(w => w.id !== visitor.id) };
+        this.forgetSeatTokens(seat.index);
+        this.attach(vConn, vInfo, seat.index, visitor.name, true);
+        this.note(seat.index, `${this.seatName(seat.index)} takes over seat ${seat.index + 1}.`);
+        return done({ welcome: vConn });
+      }
+
+      case 'autopilot': {
+        const seat = r.seats[msg.seat];
+        if (!seat || seat.kind !== 'human') return err('BAD_SEAT', 'Only a player seat can be put on autopilot.');
+        this.clearAway(seat.index);
+        this.patchSeat(seat.index, { autopilot: msg.on, botId: msg.on ? STAND_IN_BOT : null });
+        if (r.phase !== 'lobby') {
+          this.note(seat.index, msg.on ? `A bot now plays for ${seat.name}.` : `${seat.name} plays their own seat again.`);
+        }
+        return done();
+      }
+
+      case 'kick': {
+        const seat = r.seats[msg.seat];
+        if (!seat || seat.kind !== 'human' || seat.index === r.hostSeat) return err('BAD_SEAT', 'That seat cannot be removed.');
+        const conn = this.seatConn.get(seat.index);
+        if (conn) {
+          const kInfo = this.conns.get(conn);
+          if (kInfo?.token) this.kicked.add(kInfo.token);
+          this.seatConn.delete(seat.index);
+          this.conns.delete(conn);
+          this.send(conn, { t: 'closed', why: 'kicked' });
+          conn.close();
+        }
+        this.forgetSeatTokens(seat.index);
+        this.markLeft(seat.index);
+        return done();
+      }
+    }
+    return null;
+  }
+
+  // ── Seats and connections ─────────────────────────────────────────────────────
+
+  private isHost(info: ConnInfo): boolean {
+    return info.token === this.hostToken && info.seat !== null && info.seat === this.room.hostSeat;
+  }
+
+  /** Put a connection in a seat (reattaching a returning player, or seating a newcomer). */
+  private attach(conn: Conn, info: ConnInfo, seat: number, name: string, rename = false): void {
+    const old = this.seatConn.get(seat);
+    if (old && old !== conn) {
+      // The same player connected again (a reload); the older connection is dropped quietly.
+      this.conns.delete(old);
+      old.close();
+    }
+    this.seatConn.set(seat, conn);
+    info.seat = seat;
+    if (info.token !== null) this.tokens.set(info.token, seat);
+    this.clearAway(seat);
+
+    const r = this.room;
+    const s = r.seats[seat]!;
+    if (r.phase === 'lobby' || rename) {
+      const keep = s.kind === 'human' && sameName(s.name, name);
+      this.patchSeat(seat, {
+        kind: 'human', name: keep ? s.name : dedupeName(name, namesInUse(r, seat)),
+        connected: true, ready: false, awaySince: null, autopilot: false, botId: null,
+      });
+    } else {
+      const wasAway = !s.connected;
+      this.patchSeat(seat, { connected: true, awaySince: null, autopilot: false, botId: null });
+      if (wasAway) this.note(seat, `${s.name} is back.`);
+    }
+  }
+
+  /** A seated player's connection went away. */
+  private markLeft(seat: number): void {
+    const r = this.room;
+    const s = r.seats[seat];
+    if (!s) return;
+    if (r.phase === 'lobby') {
+      this.forgetSeatTokens(seat);
+      this.patchSeat(seat, openSeat(seat, s.color));
+      return;
+    }
+    if (s.kind !== 'human') return;
+    this.patchSeat(seat, { connected: false, ready: false, awaySince: s.awaySince ?? this.sched.now() });
+    this.note(seat, `${s.name} left the table.`);
+    this.armAway(seat);
+  }
+
+  private forgetSeatTokens(seat: number): void {
+    for (const [token, s] of [...this.tokens]) {
+      if (s === seat && token !== this.hostToken) this.tokens.delete(token);
+    }
+  }
+
+  /** Under the 'bot' away policy, a bot takes an away seat once the grace period ends. */
+  private armAway(seat: number): void {
+    const r = this.room;
+    if (r.phase !== 'playing' || r.hold || r.settings.awayPolicy !== 'bot') return;
+    const s = r.seats[seat];
+    if (!s || s.kind !== 'human' || s.connected || s.autopilot || this.awayTimers.has(seat)) return;
+    const takeOver = (): void => {
+      const cur = this.room.seats[seat];
+      if (!cur || cur.kind !== 'human' || cur.connected || cur.autopilot) return;
+      if (this.room.phase !== 'playing' || this.room.hold) return;
+      this.patchSeat(seat, { autopilot: true, botId: STAND_IN_BOT });
+      this.note(seat, `A bot plays for ${cur.name} until they return.`);
+    };
+    if (r.settings.awayGraceMs <= 0) { takeOver(); return; }
+    this.awayTimers.set(seat, this.sched.setTimeout(() => {
+      this.awayTimers.delete(seat);
+      if (this.disposed) return;
+      takeOver();
+      this.afterChange();
+    }, r.settings.awayGraceMs));
+  }
+
+  private clearAway(seat: number): void {
+    const h = this.awayTimers.get(seat);
+    if (h !== undefined) { this.sched.clearTimeout(h); this.awayTimers.delete(seat); }
+  }
+
+  private patchSeat(index: number, patch: Partial<Seat>): void {
+    this.room = { ...this.room, seats: this.room.seats.map(s => (s.index === index ? { ...s, ...patch, index } : s)) };
+  }
+
+  private seatName(seat: number): string {
+    return this.room.seats[seat]?.name || `Seat ${seat + 1}`;
+  }
+
+  private note(seat: number | null, text: string): void {
+    this.room = { ...this.room, log: appendLog(this.room.log, [{ seq: this.room.seq, seat, text }]) };
+  }
+
+  private gameOverText(winner: number | null, tied: readonly number[], reason: string | null): string {
+    const how = reason === 'tesseracts' ? 'with 4 Tesseracts' : 'on points';
+    if (winner !== null) return `Game over: ${this.seatName(winner)} wins ${how}.`;
+    if (tied.length > 0) return `Game over: ${tied.map(t => this.seatName(t)).join(' and ')} share the win ${how}.`;
+    return 'Game over.';
+  }
+
+  // ── After every change: bots, timers, save, broadcast ────────────────────────
+
+  private afterChange(opts: { welcome?: Conn; re?: { conn: Conn; id: string | null } } = {}): void {
+    if (this.disposed) return;
+    if (this.room.settings.botDelayMs <= 0) this.runBotsNow();
+    this.updateTimers();
+    this.scheduleBot();
+    this.save();
+    this.broadcast(opts);
+    this.burst = false;
+    for (const fn of [...this.listeners]) fn();
+  }
+
+  /** The next seat the host must play with a bot, if any. */
+  private nextBotTurn(): BotTurn | null {
+    const r = this.room;
+    const g = r.game;
+    if (r.phase !== 'playing' || r.hold || !g || g.gameOver) return null;
+    for (const e of g.pendingFactoryOps) {
+      if (isBotControlled(r.seats[e.ownerId])) return { seat: e.ownerId, pendingPieceId: e.pieceId };
+    }
+    if (g.pendingFactoryOps.length > 0) return null; // people are still choosing
+    const a = activeSeat(g);
+    if (a !== null && isBotControlled(r.seats[a])) return { seat: a, pendingPieceId: null };
+    return null;
+  }
+
+  private runBotsNow(): void {
+    for (let i = 0; i < MAX_BOT_STEPS; i++) {
+      const turn = this.nextBotTurn();
+      if (!turn || !this.botStep(turn)) return;
+    }
+  }
+
+  private scheduleBot(): void {
+    const delay = this.room.settings.botDelayMs;
+    if (delay <= 0 || this.botTimer !== null || !this.nextBotTurn()) return;
+    this.botTimer = this.sched.setTimeout(() => {
+      this.botTimer = null;
+      if (this.disposed) return;
+      const turn = this.nextBotTurn();
+      if (turn) this.botStep(turn);
+      this.afterChange();
+    }, delay);
+  }
+
+  /** One bot move. Falls back to a safe move if the bot fails; false if nothing worked. */
+  private botStep(turn: BotTurn): boolean {
+    const g = this.room.game!;
+    const seat = turn.seat;
+    const bot = botById(this.room.seats[seat]?.botId ?? STAND_IN_BOT).fn;
+    let action: Action | null = null;
+    try { action = bot(g, seat as PlayerId); } catch { action = null; }
+    if (action && this.applyMove(seat, action, null, 'bot').ok) return true;
+
+    if (turn.pendingPieceId !== null) {
+      return this.applyMove(seat, { type: 'SKIP_FACTORY_ROLL', pieceId: turn.pendingPieceId, ownerId: seat as PlayerId }, null, 'bot').ok;
+    }
+    if (g.phase === 'roll') return this.applyMove(seat, { type: 'ROLL_DICE', rolls: [] }, null, 'bot').ok;
+    for (const a of legalActions(g, seat as PlayerId)) {
+      if (this.applyMove(seat, a, null, 'bot').ok) return true;
+    }
+    this.note(seat, `The bot for ${this.seatName(seat)} found no move.`);
+    return false;
+  }
+
+  // ── Timers ────────────────────────────────────────────────────────────────────
+
+  private clearTimer(which: 'op' | 'roundEnd' | 'bot'): void {
+    if (which === 'op' && this.opTimer !== null) { this.sched.clearTimeout(this.opTimer); this.opTimer = null; }
+    if (which === 'roundEnd' && this.roundEndTimer !== null) {
+      this.sched.clearTimeout(this.roundEndTimer);
+      this.roundEndTimer = null;
+      this.roundEndKey = null;
+    }
+    if (which === 'bot' && this.botTimer !== null) { this.sched.clearTimeout(this.botTimer); this.botTimer = null; }
+  }
+
+  /** Arm or clear the two default-move timers to match the current state. */
+  private updateTimers(): void {
+    const r = this.room;
+    const g = r.game;
+    const live = r.phase === 'playing' && !r.hold && !!g && !g.gameOver;
+    const now = this.sched.now();
+    const active = activeSeat(g);
+    let { opDeadline, roundEndDeadline } = r;
+
+    // Off-turn operate-or-skip: only decisions owed by people, not by the active player.
+    const offTurn = live && g!.pendingFactoryOps.some(e => e.ownerId !== active && isHumanControlled(r.seats[e.ownerId]));
+    const opMs = r.settings.factoryOpTimeoutMs;
+    if (offTurn && opMs > 0) {
+      if (this.opTimer === null) {
+        opDeadline = now + opMs;
+        this.opTimer = this.sched.setTimeout(() => this.onOpTimeout(), opMs);
+      }
+    } else {
+      this.clearTimer('op');
+      opDeadline = null;
+    }
+
+    // Idle round-end turn of a person.
+    const reMs = r.settings.roundEndTimeoutMs;
+    const key = live && g!.phase === 'roundEnd' && active !== null && isHumanControlled(r.seats[active]) && reMs > 0
+      ? `${g!.round}:${g!.activePlayerIndex}` : null;
+    if (key !== null) {
+      if (this.roundEndTimer === null || this.roundEndKey !== key) {
+        this.clearTimer('roundEnd');
+        this.roundEndKey = key;
+        roundEndDeadline = now + reMs;
+        this.roundEndTimer = this.sched.setTimeout(() => this.onRoundEndTimeout(), reMs);
+      }
+    } else {
+      this.clearTimer('roundEnd');
+      roundEndDeadline = null;
+    }
+
+    if (opDeadline !== r.opDeadline || roundEndDeadline !== r.roundEndDeadline) {
+      this.room = { ...r, opDeadline, roundEndDeadline };
+    }
+  }
+
+  /** Default for unanswered off-turn activations: operate when affordable, otherwise skip. */
+  private onOpTimeout(): void {
+    this.opTimer = null;
+    if (this.disposed) return;
+    const r = this.room;
+    const g = r.game;
+    if (r.phase === 'playing' && !r.hold && g && !g.gameOver) {
+      const active = activeSeat(g);
+      const owed = g.pendingFactoryOps.filter(e => e.ownerId !== active && isHumanControlled(r.seats[e.ownerId]));
+      for (const e of owed) {
+        this.note(e.ownerId, `${this.seatName(e.ownerId)} did not choose in time.`);
+        const operated = this.applyMove(e.ownerId, { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: e.ownerId }, null, 'auto');
+        if (!operated.ok) {
+          this.applyMove(e.ownerId, { type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: e.ownerId }, null, 'auto');
+        }
+        this.room = { ...this.room, lastEvents: this.mergeEvents([{ kind: 'timeout', seat: e.ownerId, what: 'factory-op' }]) };
+        this.burst = true;
+      }
+    }
+    this.afterChange();
+  }
+
+  /** Default for an idle round-end turn: end it. */
+  private onRoundEndTimeout(): void {
+    this.roundEndTimer = null;
+    this.roundEndKey = null;
+    if (this.disposed) return;
+    const r = this.room;
+    const g = r.game;
+    const active = activeSeat(g);
+    if (r.phase === 'playing' && !r.hold && g && !g.gameOver && g.phase === 'roundEnd'
+      && active !== null && isHumanControlled(r.seats[active])) {
+      this.note(active, `${this.seatName(active)}'s round-end turn timed out.`);
+      if (this.applyMove(active, { type: 'END_ACTIONS' }, null, 'auto').ok) {
+        this.room = { ...this.room, lastEvents: this.mergeEvents([{ kind: 'timeout', seat: active, what: 'round-end' }]) };
+      }
+    }
+    this.afterChange();
+  }
+
+  // ── Output ────────────────────────────────────────────────────────────────────
+
+  private save(): void {
+    const r = this.room;
+    if (!this.store || r.phase === 'lobby' || !r.game) return;
+    if (r.seq === this.savedSeq && r.phase === this.savedPhase) return;
+    writeSave(this.store, r, { savedAt: this.sched.now(), app: this.app });
+    this.savedSeq = r.seq;
+    this.savedPhase = r.phase;
+  }
+
+  private broadcast(opts: { welcome?: Conn; re?: { conn: Conn; id: string | null } }): void {
+    const now = this.sched.now();
+    for (const [conn, info] of this.conns) {
+      if (info.token === null) continue;
+      if (conn === opts.welcome) {
+        this.send(conn, { t: 'welcome', v: PROTOCOL, seat: info.seat, room: this.room, now });
+      } else {
+        const re = opts.re && opts.re.conn === conn && opts.re.id !== null ? opts.re.id : null;
+        this.send(conn, re !== null ? { t: 'room', room: this.room, now, re } : { t: 'room', room: this.room, now });
+      }
+    }
+  }
+
+  private sendRoom(conn: Conn, re: string | null): void {
+    const now = this.sched.now();
+    this.send(conn, re !== null ? { t: 'room', room: this.room, now, re } : { t: 'room', room: this.room, now });
+  }
+
+  private send(conn: Conn, msg: HostMsg): void {
+    conn.send(msg);
+  }
+
+  private nope(conn: Conn, id: string | null, error: WireError): void {
+    this.send(conn, { t: 'nope', id, error });
+  }
+
+  private refuse(conn: Conn, why: 'full' | 'version' | 'kicked'): void {
+    this.conns.delete(conn);
+    this.send(conn, { t: 'closed', why });
+    conn.close();
+  }
+}
+
+/** Apply a partial settings change, or null if any value is out of range. */
+function mergeSettings(cur: RoomSettings, patch: Partial<RoomSettings>): RoomSettings | null {
+  const next: RoomSettings = { ...cur };
+  const num = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  if (patch.playerCount !== undefined) {
+    if (patch.playerCount !== 2 && patch.playerCount !== 3 && patch.playerCount !== 4) return null;
+    next.playerCount = patch.playerCount;
+  }
+  for (const k of ['factoryOpTimeoutMs', 'roundEndTimeoutMs', 'awayGraceMs', 'botDelayMs'] as const) {
+    const v = patch[k];
+    if (v === undefined) continue;
+    if (!num(v)) return null;
+    next[k] = v;
+  }
+  if (patch.awayPolicy !== undefined) {
+    if (patch.awayPolicy !== 'bot' && patch.awayPolicy !== 'wait') return null;
+    next.awayPolicy = patch.awayPolicy;
+  }
+  return next;
+}
