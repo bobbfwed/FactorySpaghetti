@@ -1,19 +1,23 @@
 ## What we're building
-A digital version of the physical board game **Factory Spaghetti** (2–4 players), used primarily as a **rules-enforcing playtest tool**. Priorities, in order:
-1. **Correct, rule-enforced gameplay** — players physically cannot make illegal moves.
-2. **Headless balance simulation** — run thousands of bot games to tune the economy.
-3. **Local hot-seat / vs-bot play** on PC and Steam Deck (desktop mode).
-4. **LAN multiplayer** for in-person game nights.
-Visual polish is explicitly *lower* priority than rule fidelity. This is a lab bench, not a shipped product (yet).
+**Factory Spaghetti Online**: an online, isometric 3D version of the physical board game **Factory Spaghetti** (2–4 players) that looks and plays like the printed game, runs from GitHub Pages with no server of our own, and installs on an Android phone. The full plan is in `docs/PLAN.md`; read it before starting any milestone.
+
+Priorities, in order:
+1. **Correct, rule-enforced gameplay** — players physically cannot make illegal moves. The existing engine and its tests are the source of truth.
+2. **Online play with a room code** — one player hosts in their browser, others join with a 5-letter code or invite link. A game can be saved, sent to another device as a link or file, and resumed on a later day.
+3. **Looks and feels like the physical game** — every printed component is a 3D piece on the table; the turn follows the rulebook's steps; only legal moves can be chosen.
+4. **Phone-friendly and installable** (Android, from the browser).
+5. **Still a playtest tool** — bots, headless balance simulation, config-driven tuning, replays.
+
+The earlier 2D prototype (Canvas 2D client + LAN WebSocket server) lives on the `vite-prototype` branch. On `main` those two folders (`src/client`, `src/server`) are still present until milestone N0 removes them.
 
 ## Tech stack (decided)
-- **Language:** TypeScript everywhere.
+- **Language:** TypeScript everywhere. **Build:** Vite. **Tests:** Vitest.
 - **Engine:** pure, deterministic, zero-IO module. No DOM, no sockets, no `Math.random` (seeded PRNG only).
-- **Tests:** Vitest.
-- **Client:** browser, Canvas 2D to start (the board is geometric hexes — no engine needed). Reach for PixiJS only if perf demands it.
-- **LAN:** Node + `ws`. The host runs the authoritative engine; clients send *action requests*, host validates and broadcasts full state.
-- **Native (optional, later):** wrap the client with **Tauri** for small Linux/Windows binaries; add as a non-Steam game so it launches from Steam Deck Game Mode.
-- Steam Deck desktop mode is KDE/Firefox — the web build runs there as-is; Tauri is only for a native feel.
+- **3D:** Three.js, orthographic (isometric) camera. Piece models are converted from the designer's `.3mf` print files.
+- **Interface:** plain HTML/CSS over the 3D canvas. No UI framework.
+- **Online:** WebRTC through PeerJS. The **host's browser** runs the authoritative engine; clients send *move requests*, the host validates and broadcasts the full room state. Modelled on the reference game "No Receipt, No Mercy" (`github.com/bobbfwed/No-Receipt-No-Mercy`), without its real-time stream.
+- **Hosting:** GitHub Pages, built and deployed by a GitHub Actions workflow on push to `main`.
+- **Install:** web app manifest + service worker (offline solo play, always-fresh when online).
 
 ## Non-negotiable architecture
 The entire ruleset lives behind one pure function:
@@ -23,61 +27,60 @@ applyAction(state: GameState, action: Action): { ok: true; state: GameState } | 
 ```
 
 - **No randomness inside the engine.** Dice rolls, shuffles, and deals are inputs (the action carries the roll; setup takes a seed). This makes every game reproducible and replayable from `(seed, action[])`.
-- Rendering, networking, and bots are all *consumers* of the engine. They never contain rules.
+- Rendering, networking, sessions, and bots are all *consumers* of the engine. They never contain rules.
 - All tunables live in `engine/config.ts` as data (stack composition, card counts, prices, feature toggles), never hardcoded in logic — this is how we tune balance without code changes and how we sim variants.
+- **The room is one plain JSON object** (`Room` in `docs/PLAN.md` §4.1): seats, settings, the engine's `GameState`, a move counter, and the dice seed. Anything that must survive a host change or a save goes in it; nothing that must survive lives only in memory.
+- **Online, the host rolls the dice.** A client's roll request carries no dice; the host fills them in from the seeded dice stream stored in the room.
+- **The interface gets its options from `legalActions`.** It never decides on its own what is allowed.
+- **A save is a snapshot of the room**, compressed into a link (`#save=…`) or a file. Keep the room small and versioned; a 4-player save link must stay under 6,000 characters.
 
-## Suggested layout
+## Layout (target for `main`)
 ```
 factory-spaghetti/
-  CLAUDE.md
-  RULES.md
-  RULES_CHANGES.md
-  package.json  tsconfig.json  vitest.config.ts
+  CLAUDE.md  README.md  RULES.md  RULES_CHANGES.md
+  docs/
+    PLAN.md            # the plan: architecture, look and feel, milestones, open decisions
+    mockups/           # visual mock-ups of the table and interface
+    screenshots/       # screenshots of the 2D prototype
   src/
-    engine/
+    engine/            # UNCHANGED rules engine
       config.ts        # ALL tunables + feature toggles (data only)
-      rng.ts           # seeded PRNG (e.g. mulberry32) — determinism
-      state.ts         # GameState, Player, Building, Board, Buffer, Teleporter types
-      actions.ts       # Action union + RulesError type
-      reducer.ts       # applyAction()  — dispatch only; logic in rules/
-      rules/
-        setup.ts       # stacks, starting board, first-building claim order
-        pieces.ts      # placing board pieces, adjacency, stack exhaustion -> mine auto-drop
-        production.ts  # roll resolution, factory/power-plant operation, buffers
-        flow.ts        # direct adjacency, belts, teleporters (material movement)
-        buildings.ts   # claim/upgrade, Control Modules, mines (buy + auto-drop)
-        cards.ts        # leverage cards (incl. play-on-draw), 2/turn limit
-        scoring.ts      # points, bonus Tesseracts (behind toggle), victory + tiebreaks
-      index.ts         # public API: createGame, applyAction, legalActions, score
+      rng.ts           # seeded PRNG — determinism
+      state.ts  actions.ts  reducer.ts  routing.ts  connectivity.ts
+      rules/           # setup, pieces, production, flow, buildings, cards, scoring, recipes, ...
+      index.ts         # public API: createGame, applyAction, legalActions
       __tests__/       # one spec file per rules/ module
-    bots/
-      botInterface.ts  # chooseAction(state, playerId): Action
-      randomBot.ts     # uniform over legalActions() — the FUZZER
-      greedyBot.ts     # weighted heuristics — the sparring partner
-    sim/
-      runGames.ts      # headless N-game runner -> stats (CSV/JSON)
-    server/
-      protocol.ts      # client<->server message types
-      server.ts        # authoritative host (ws)
-    client/
-      net.ts           # ws client (full-state sync)
-      render/          # board, hexes, pieces, buffers, belts, teleporters, meeples
-      ui/              # action panel, log, bonus cheat-sheet panel
-      main.ts
+    bots/              # randomBot (the fuzzer), greedyBot ("Smart Bot"), evaluateState
+    sim/               # headless N-game runner -> stats
+    session/           # NEW host + client sessions, lobby, protocol, dice, save format
+    net/               # NEW transports (PeerJS, same-browser tabs, in-memory), chunking, room codes
+    table/             # NEW Three.js scene: board, pieces, camera, picking, animation
+    ui/                # NEW menu, lobby, player tray, turn bar, prompts, log, reference sheets
+    app/main.ts        # NEW wiring
+  public/              # manifest, service worker, icons, models (.glb), textures
+  tools/               # 3MF-to-GLB converter, network check page
 ```
 
-## Build order (each milestone is runnable + tested before moving on)
-- **M0 — Tooling.** TS + Vitest + lint + npm scripts. Seed `CLAUDE.md`, `RULES.md`, `RULES_CHANGES.md`. `npm test` green on an empty suite.
-- **M1 — Engine skeleton.** `state.ts`, `actions.ts`, seeded `rng.ts`, `config.ts`. `createGame(seed, playerCount)` builds stacks + starting board + first-building claim order. Tests: setup is deterministic for a given seed; piece counts match config.
-- **M2 — Turn loop.** Place piece → roll (N dice = N mines) → production → meeple placement → round completion (end-of-round operate, free upgrades = #mines, rotate start player). Tests: buffer rules, power payment, "same number rolled twice with full output buffer = nothing."
-- **M3 — Material flow.** Direct adjacency, belts (placement validity rules, chaining, the >2-connection-point rule, one-belt-per-mine-per-turn), teleporters (permanent, input + output behavior, cost counter). Tests: teleporter on opponent's-turn activation, output-cap overflow.
-- **M4 — Buildings & mines.** Claim/upgrade with Control Modules, multi-claim (≤3), mine **purchase** and **auto-drop on stack exhaustion**, mine-driven recompute (dice count, card price, claim floor). Tests: claim-cost-plus-upgrade math; "1" retired at 2 mines.
-- **M5 — Cards.** All cards incl. the 4 new ones, play-on-draw flag, 2-cards-per-turn limit, purchase-any-number. One test per card.
-- **M6 — Scoring & victory.** Points; victory check **only on active player's turn** (4 Tesseracts incl. face-up bonuses); board-exhaustion ending → most points + tiebreak ladder. Bonus Tesseracts behind `config.bonusesEnabled`. Tests: simultaneous-win impossibility; tiebreaks.
-- **M7 — Bots + sim.** randomBot (run it for 10k+ turns as a fuzzer to crash-test the engine), greedyBot, `runGames.ts` emitting game length, win-condition frequency, resource distributions, bonus-claim rates.
-- **M8 — Client.** Read-only board render of a live `GameState` first; then wire action input. Local single-player vs bots.
-- **M9 — LAN.** Authoritative ws host + browser clients, join-by-IP lobby, full-state broadcast (so reconnect just re-syncs).
-- **M10 — (optional) Tauri** native build + Steam Deck.
+## Build order
+The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are complete (264 tests). The new work follows milestones **N0–N11 in `docs/PLAN.md` §6**. Each milestone ends runnable and tested before the next starts. N1–N3 (online) and N4–N5 (3D) do not depend on each other and may be built in parallel; N6 needs both.
+
+| # | Milestone |
+|---|---|
+| N0 | Restructure, GitHub Pages deploy pipeline, install shell |
+| N1 | Session layer without network (room, host/client sessions, host-rolled dice, timers, save format) |
+| N2 | Transports (in-memory, same-browser tabs, PeerJS), room codes, join errors |
+| N3 | Menu and lobby, resume from device / link / file |
+| N4 | Asset pipeline (3MF → GLB) and piece gallery |
+| N5 | The 3D table, read-only |
+| N6 | Making moves: picking, lit legal targets, one gesture per engine action |
+| N7 | Player area, opponents, log, rules reference, bonus cheat sheet |
+| N8 | Animation and feel |
+| N9 | Phone and install hardening |
+| N10 | Online hardening: away players, host hand-over, TURN relay |
+| N11 | Playtest tools: replay export/load, rules-problem snapshot, config variants |
+
+## Physical reference
+The printed game is the visual reference. The designer's files are outside the repo at `G:\My Drive\Factory Speghetti` (note the spelling): `.3mf` print models in the root, photos of the printed pieces in `Factory Spaghetti\2025*.jpg`, rule PDFs, and card text spreadsheets. `docs/PLAN.md` §5.4 describes each printed piece. Do not commit the designer's source files; convert what is needed through `tools/`.
 
 ## Setup Algorthm (ordered)
 - **S1 — Hand out components.** Give each player the PLAYER_COMPONENTS set. All 18 Control Modules start in the tray (none on a building). Belts and teleporters start unplaced. Reference/assistant cards (cost & points summaries) are physical aids only — the engine doesn't model them.
@@ -108,5 +111,10 @@ factory-spaghetti/
 - Pure functions in `engine/`; never mutate `state` — return new state.
 - Every rule change updates **both** `RULES.md` and `RULES_CHANGES.md` in the same commit.
 - Prefer many small `rules/` functions with focused tests over one mega-reducer.
-- `legalActions(state, playerId)` must exist early — it powers both the UI (gray out illegal moves) and the bots.
-- Use the seeded RNG for *everything* random. A game is fully described by `(seed, action[])`; add a replay loader as soon as it's convenient — it's the best debugging tool you'll have.
+- `legalActions(state, playerId)` powers both the interface (only legal moves can be chosen) and the bots.
+- Use the seeded RNG for *everything* random. A game is fully described by `(seed, action[])`.
+- Session and network code is tested through the in-memory transport in Vitest; a feature that only works over real WebRTC is not done.
+- Interface text uses the rulebook's words (Control Module, Power Token, Leverage card), never internal names such as `placePiece`.
+- Design for a phone first: every touch target at least 44 px, no hover-only information.
+- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Do feature work on a branch and merge to `main`.
+- Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.
