@@ -114,7 +114,7 @@ describe('replays through the app', () => {
     const file = a.ctrl.saveFile()!;
     const parsed = JSON.parse(file.text) as { journal?: { moves: unknown[] } };
     expect(parsed.journal?.moves.length).toBe(a.ctrl.room!.seq);
-    const link = (await run(w, a.ctrl.saveLink()))!;
+    const link = (await a.ctrl.saveLink())!;
     a.ctrl.leave();
 
     // A phone that never saw the game: the file resumes with every move.
@@ -128,14 +128,16 @@ describe('replays through the app', () => {
     expect(replayTo(host.journal!, b.ctrl.room!.seq)).toEqual(b.ctrl.room!.game);
     b.ctrl.leave();
 
-    // The link carries no moves, but the device that played keeps them beside its save.
+    // (Packing and unpacking a link use the platform's compression streams, not the test clock,
+    // so they are awaited directly.) The link carries no moves, but the device that played
+    // keeps them beside its save.
     const again = device(w, 'Ann', { saves: a.saves });
     expect(a.saves.get(journalKey(a.ctrl.state.saves[0]!.code))).not.toBeNull();
-    await run(w, again.ctrl.loadSaveText(link, 'link'));
+    await again.ctrl.loadSaveText(link, 'link');
     expect(again.ctrl.state.resume!.save.journal?.moves.length).toBe(again.ctrl.state.resume!.save.room.seq);
     // A device with nothing: the link resumes with a journal that starts at the save.
     const fresh = device(w, 'Ann');
-    await run(w, fresh.ctrl.loadSaveText(link, 'link'));
+    await fresh.ctrl.loadSaveText(link, 'link');
     expect(fresh.ctrl.state.resume!.save.journal).toBeUndefined();
     await run(w, fresh.ctrl.hostResume());
     await until(w, () => !!fresh.ctrl.state.online?.client.journalCurrent);

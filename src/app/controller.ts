@@ -466,6 +466,11 @@ export class AppController {
   private onRoomChange(): void {
     const o = this.state.online;
     if (o && o.status === 'closed') this.stopAutoplay();
+    const undone = o?.client.takeRollback();
+    if (undone) {
+      const n = undone.from - undone.to;
+      this.notify(`The new host had not received the last ${n === 1 ? 'move' : `${n} moves`}, so the game goes on from move ${undone.to}. Make ${n === 1 ? 'it' : 'them'} again if still allowed.`);
+    }
     this.emit();
   }
 

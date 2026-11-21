@@ -73,6 +73,13 @@ export class ClientSession {
   /** The last move of ours the host refused in this session (for a rules-problem report). */
   lastRefused: RefusedMove | null = null;
   /**
+   * Set when a new host turned out to be behind this device: it never received the last moves this
+   * device saw (the old host closed while sending them), so the game goes on without them. The
+   * interface says so once (see takeRollback); nothing else is lost or applied twice.
+   */
+  rolledBack: { from: number; to: number } | null = null;
+  private seen: { seed: number; seq: number } | null = null;
+  /**
    * This device's copy of the game's moves (see journal.ts). It reaches room.seq, except
    * briefly while the missing part is being fetched from the host.
    */
@@ -133,6 +140,13 @@ export class ClientSession {
     this.flushJournal();
     this.attach(conn);
     this.emit();
+  }
+
+  /** The last undone moves, once (see rolledBack). */
+  takeRollback(): { from: number; to: number } | null {
+    const r = this.rolledBack;
+    this.rolledBack = null;
+    return r;
   }
 
   /** A copy of this device's journal of the current game, or null. */
@@ -277,6 +291,11 @@ export class ClientSession {
   }
 
   private setRoom(room: Room, hostNow: number, re: string | null, moves: MovesBlock | null): void {
+    const g = room.game;
+    if (g && this.seen && this.seen.seed === g.seed && room.seq < this.seen.seq) {
+      this.rolledBack = { from: this.seen.seq, to: room.seq };
+    }
+    this.seen = g ? { seed: g.seed, seq: room.seq } : null;
     this.room = room;
     this.offset = hostNow - this.clock();
     const p = this.pending;
