@@ -25,6 +25,8 @@ import { writeSave } from './store';
 import { memoryPair } from './memoryConn';
 import { normalizeAction } from './normalize';
 import { BOT_SPEEDS, botPauseMs, botSpeedOf, lastMoveOf, normalizeSettings } from './pacing';
+import type { Preview } from './preview';
+import { PREVIEW_INTERVAL_MS, mayPreview } from './preview';
 import type { JournalData } from './journal';
 import {
   capJournal, copyJournal, fullJournal, journalEnd, journalFrom, journalMatches, journalSeed, movesAfter, partialJournal,
@@ -77,6 +79,8 @@ type MoveResult = { ok: true } | { ok: false; error: WireError };
 type MoveSource = 'human' | 'bot' | 'auto';
 interface BotTurn { seat: number; pendingPieceId: string | null }
 interface Reply { conn: Conn; id: string | null }
+/** Previews from one connection: when the last was passed on, and the latest one held back meanwhile. */
+interface PeekRelay { last: number; next: { seq: number; p: Preview | null } | null; timer: unknown }
 
 /** Instant bots (delay 0) play at most this many moves before the room is sent and the page breathes. */
 const BOT_BATCH = 40;
@@ -124,6 +128,8 @@ export class HostSession {
   private roundEndKey: string | null = null;
   private botTimer: unknown = null;
   private readonly awayTimers = new Map<number, unknown>();
+  /** Previews being passed on, by the connection they came from (see preview.ts). */
+  private readonly peeks = new Map<Conn, PeekRelay>();
 
   private burst = false;                 // moves applied since the last broadcast
   private botStalledAt: number | null = null;
@@ -247,6 +253,7 @@ export class HostSession {
     this.clearTimer('bot');
     for (const h of this.awayTimers.values()) this.sched.clearTimeout(h);
     this.awayTimers.clear();
+    for (const conn of [...this.peeks.keys()]) this.dropPeeks(conn);
     for (const conn of [...this.conns.keys()]) {
       if (opts.notify) this.send(conn, { t: 'closed', why: 'ended' });
       conn.close();
@@ -300,6 +307,8 @@ export class HostSession {
   private handle(conn: Conn, raw: unknown, rawId: string | null): void {
     const info = this.conns.get(conn);
     if (!info) return;
+    // A preview is never answered: one that may not be shown is dropped without a word.
+    if (typeof raw === 'object' && raw !== null && (raw as { t?: unknown }).t === 'peek') { this.onPeek(conn, info, raw); return; }
     const msg = parseClientMsg(raw);
     if (!msg) { this.nope(conn, rawId, err('BAD_MESSAGE', 'That message was not understood.')); return; }
     if (msg.t === 'hello') { this.onHello(conn, info, msg); return; }
@@ -384,7 +393,66 @@ export class HostSession {
     return r.phase === 'lobby' ? firstOpenSeat(r) : null;
   }
 
+  // --- Previews (preview.ts): passed on, never stored ----------------------------------
+
+  /** True when the player on `conn` may show a preview for move number `seq` now. */
+  private peekAllowed(conn: Conn, info: ConnInfo, seq: number): boolean {
+    const r = this.room;
+    const seat = info.seat;
+    if (info.token === null || seat === null || this.seatConn.get(seat) !== conn) return false;
+    if (r.phase !== 'playing' || r.hold || !r.game || seq !== r.seq) return false;
+    const s = r.seats[seat];
+    if (!s || s.kind !== 'human' || s.autopilot) return false;
+    return mayPreview(r.game, seat);
+  }
+
+  private onPeek(conn: Conn, info: ConnInfo, raw: unknown): void {
+    const msg = parseClientMsg(raw);
+    if (!msg || msg.t !== 'peek' || !this.peekAllowed(conn, info, msg.seq)) return;
+    let relay = this.peeks.get(conn);
+    if (!relay) { relay = { last: -Infinity, next: null, timer: null }; this.peeks.set(conn, relay); }
+    relay.next = { seq: msg.seq, p: msg.p };
+    if (relay.timer !== null) return; // the latest goes when the timer fires
+    const wait = relay.last + PREVIEW_INTERVAL_MS - this.sched.now();
+    if (wait <= 0) { this.relayPeek(conn); return; }
+    relay.timer = this.timer(() => {
+      const r = this.peeks.get(conn);
+      if (!r) return;
+      r.timer = null;
+      this.relayPeek(conn);
+    }, wait);
+  }
+
+  /** Pass the held preview of `conn` on to everyone else, if it is still for the current move. */
+  private relayPeek(conn: Conn): void {
+    const relay = this.peeks.get(conn);
+    const info = this.conns.get(conn);
+    const next = relay?.next;
+    if (!relay || !next) return;
+    relay.next = null;
+    if (!info || info.seat === null || !this.peekAllowed(conn, info, next.seq)) return;
+    relay.last = this.sched.now();
+    const msg: HostMsg = { t: 'peek', seat: info.seat, seq: next.seq, p: next.p };
+    for (const [other, o] of this.conns) {
+      if (other !== conn && o.token !== null) this.send(other, msg);
+    }
+  }
+
+  private dropPeeks(conn: Conn): void {
+    const relay = this.peeks.get(conn);
+    if (relay?.timer != null) this.sched.clearTimeout(relay.timer);
+    this.peeks.delete(conn);
+  }
+
+  /** The move number moved on: previews held back for an older one are forgotten. */
+  private forgetOldPeeks(): void {
+    for (const relay of this.peeks.values()) {
+      if (relay.next && relay.next.seq !== this.room.seq) relay.next = null;
+    }
+  }
+
   private onClose(conn: Conn): void {
+    this.dropPeeks(conn);
     const info = this.conns.get(conn);
     this.conns.delete(conn);
     this.welcomes.delete(conn);
@@ -1024,6 +1092,7 @@ export class HostSession {
     this.welcomes.clear();
     this.broadcastSeq = this.moveJournal ? journalEnd(this.moveJournal) : null;
     this.broadcasts++;
+    this.forgetOldPeeks();
   }
 
   private sendRoom(conn: Conn, re: string | null): void {
@@ -1062,6 +1131,7 @@ export class HostSession {
 
   /** Tell a connection why it is being closed, then close it shortly after so the message gets out. */
   private closeWith(conn: Conn, why: ClosedWhy): void {
+    this.dropPeeks(conn);
     this.conns.delete(conn);
     this.welcomes.delete(conn);
     this.send(conn, { t: 'closed', why });

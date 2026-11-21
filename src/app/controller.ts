@@ -31,6 +31,7 @@ import type { RefusedMove } from '../session/clientSession';
 import type { ReplayCursor, ReplayFile } from '../session/replay';
 import { ReplayError, makeReplay, replayFileName, serializeReplay, verifyReplay } from '../session/replay';
 import type { ReportFile } from '../session/report';
+import type { Preview } from '../session/preview';
 import { makeReport, openPlaytestText, reportFileName, serializeReport } from '../session/report';
 
 export type Screen = 'menu' | 'lobby' | 'game' | 'resume-setup' | 'replay';
@@ -331,6 +332,10 @@ export class AppController {
   private readonly sched: Scheduler;
   private readonly listeners = new Set<() => void>();
   private offRoom: (() => void) | null = null;
+  private offPreview: (() => void) | null = null;
+  private readonly previewListeners = new Set<(seat: number, p: Preview | null) => void>();
+  /** Seats whose preview the listeners were last told is showing. */
+  private readonly livePreviews = new Set<number>();
   private stopAuto: (() => void) | null = null;
   private noticeTimer: unknown = null;
   private installer: (() => void) | null = null;
@@ -499,12 +504,17 @@ export class AppController {
   private attach(online: OnlineRoom, solo: boolean): void {
     this.detach();
     this.offRoom = online.subscribe(() => this.onRoomChange());
+    // The room's ClientSession stays the same across reconnects and a host change.
+    this.offPreview = online.client.onPreview((seat, p) => this.emitPreview(seat, p));
     this.set({ online, solo, busy: null, error: null, resume: null, moveError: null, autoplay: false });
   }
 
   private detach(): void {
     this.offRoom?.();
     this.offRoom = null;
+    this.offPreview?.();
+    this.offPreview = null;
+    for (const seat of [...this.livePreviews]) this.emitPreview(seat, null);
     this.stopAutoplay();
   }
 
@@ -589,6 +599,39 @@ export class AppController {
 
   backToMenu(): void {
     this.leave();
+  }
+
+  // ── Previews (what the active player is considering) ──────────────────────────────
+
+  /**
+   * Show the other players the piece, Mine or meeple this player is considering (null: nothing
+   * any more). Sent only when it is this player's turn to place one; never in a solo game or
+   * while the autopilot plays. Never throws.
+   */
+  sendPreview(p: Preview | null): void {
+    if (this.state.solo || this.state.autoplay) return;
+    this.client?.sendPreview(p);
+  }
+
+  /**
+   * Another player's preview: (seat, preview), or (seat, null) when it is gone (the move was made,
+   * the turn moved on, the connection changed, or the room was left). Follows whichever room is
+   * open; the returned function stops listening.
+   */
+  onPreview(fn: (seat: number, p: Preview | null) => void): () => void {
+    this.previewListeners.add(fn);
+    return () => { this.previewListeners.delete(fn); };
+  }
+
+  private emitPreview(seat: number, p: Preview | null): void {
+    if (p) this.livePreviews.add(seat);
+    else this.livePreviews.delete(seat);
+    for (const fn of [...this.previewListeners]) {
+      try { fn(seat, p); } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('AppController: preview listener failed', e);
+      }
+    }
   }
 
   // ── Lobby ───────────────────────────────────────────────────────────────────────

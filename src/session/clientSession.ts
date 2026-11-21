@@ -21,6 +21,8 @@ import {
 import type { HostOptions } from './hostSession';
 import { HostSession } from './hostSession';
 import { chooseSuccessor } from './seating';
+import type { Preview } from './preview';
+import { PREVIEW_INTERVAL_MS, mayPreview } from './preview';
 
 export { chooseSuccessor };
 
@@ -97,6 +99,8 @@ type CommandMsg = Exclude<ClientMsg, { t: 'hello' | 'act' }>;
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
 const closedError = (message: string): ActResult => ({ ok: false, error: { code: 'CLOSED', message } });
+/** Ids of previews start with this (other ids are hex), so an older host's refusal of one is recognised. */
+const PEEK_ID = 'pk-';
 
 export class ClientSession {
   status: 'connecting' | 'joined' | 'closed' = 'connecting';
@@ -144,6 +148,17 @@ export class ClientSession {
   private readonly commands = new Map<string, (r: ActResult) => void>();
   private readonly listeners = new Set<() => void>();
   private readonly hostLost = new Set<() => void>();
+  private readonly previewListeners = new Set<(seat: number, p: Preview | null) => void>();
+  /** Seats whose preview is showing here, with the move number it is for. */
+  private readonly livePreviews = new Map<number, number>();
+  /** Outgoing previews: the latest held back, when the last left, and the last sent (to skip repeats). */
+  private peekNext: { seq: number; p: Preview | null } | null = null;
+  private peekTimer: unknown = null;
+  private peekLast = -Infinity;
+  private peekSent: { seq: number; key: string } | null = null;
+  private peekCount = 0;
+  /** The connection whose host refused a preview (an older build): no more are sent on it. */
+  private peeksRefusedOn: Conn | null = null;
 
   constructor(conn: Conn, opts: ClientOptions) {
     this.name = opts.name;
@@ -180,6 +195,7 @@ export class ClientSession {
     this.closedWhy = null;
     this.journalAsk = null; // a request to the old connection will not be answered
     this.flushJournal();
+    this.resetPreviews();
     this.attach(conn);
     this.emit();
   }
@@ -223,8 +239,10 @@ export class ClientSession {
     this.failAll('This session was closed.', true);
     if (this.conn.open) this.conn.close();
     this.emit();
+    this.resetPreviews();
     this.listeners.clear();
     this.hostLost.clear();
+    this.previewListeners.clear();
   }
 
   /** Milliseconds until a host-clock deadline, corrected for the clock difference. */
@@ -261,6 +279,89 @@ export class ClientSession {
     }
   }
 
+  // --- Previews (preview.ts) ---------------------------------------------------------
+
+  /**
+   * Show the other players what this player is considering (null: nothing any more). Sent only
+   * while it is this seat's turn to place a piece, a Mine or the meeple, for the current move
+   * number, and at most one every PREVIEW_INTERVAL_MS (the latest wins). Never throws.
+   */
+  sendPreview(p: Preview | null): void {
+    try {
+      const room = this.room;
+      if (!room?.game || !this.mayPreviewNow()) return;
+      const key = JSON.stringify(p);
+      if (!this.peekNext && this.peekSent?.seq === room.seq && this.peekSent.key === key) return; // nothing new
+      this.peekNext = { seq: room.seq, p };
+      if (this.peekTimer !== null) return;
+      const wait = this.peekLast + PREVIEW_INTERVAL_MS - this.sched.now();
+      if (wait <= 0) { this.flushPreview(); return; }
+      this.peekTimer = this.sched.setTimeout(() => { this.peekTimer = null; this.flushPreview(); }, wait);
+    } catch {
+      // A preview is never worth an error.
+    }
+  }
+
+  /** Previews from other players: (seat, preview), or (seat, null) when that seat's preview is gone. */
+  onPreview(fn: (seat: number, p: Preview | null) => void): () => void {
+    this.previewListeners.add(fn);
+    return () => { this.previewListeners.delete(fn); };
+  }
+
+  private mayPreviewNow(): boolean {
+    const room = this.room;
+    if (this.status !== 'joined' || !this.conn.open || this.seat === null || this.peeksRefusedOn === this.conn) return false;
+    if (!room?.game || room.phase !== 'playing' || room.hold || this.pending || this.recovery) return false;
+    const s = room.seats[this.seat];
+    return !!s && s.kind === 'human' && !s.autopilot && mayPreview(room.game, this.seat);
+  }
+
+  private flushPreview(): void {
+    try {
+      const next = this.peekNext;
+      this.peekNext = null;
+      if (!next || next.seq !== this.room?.seq || !this.mayPreviewNow()) return;
+      this.peekLast = this.sched.now();
+      this.peekSent = { seq: next.seq, key: JSON.stringify(next.p) };
+      this.conn.send({ t: 'peek', seq: next.seq, p: next.p, id: PEEK_ID + String(++this.peekCount) } satisfies ClientMsg);
+    } catch {
+      // A preview that cannot leave is simply not shown.
+    }
+  }
+
+  private onPeek(msg: Extract<HostMsg, { t: 'peek' }>): void {
+    const room = this.room;
+    if (!room?.game || msg.seq !== room.seq || msg.seat === this.seat || msg.seat >= room.seats.length) return;
+    if (msg.p) this.livePreviews.set(msg.seat, msg.seq);
+    else if (!this.livePreviews.delete(msg.seat)) return; // nothing was showing
+    this.emitPreview(msg.seat, msg.p);
+  }
+
+  /** The previews showing are gone; listeners hear (seat, null) for each. */
+  private clearPreviews(): void {
+    for (const seat of [...this.livePreviews.keys()]) {
+      this.livePreviews.delete(seat);
+      this.emitPreview(seat, null);
+    }
+  }
+
+  /** A new or lost connection: nothing showing or waiting to leave carries over. */
+  private resetPreviews(): void {
+    if (this.peekTimer !== null) { this.sched.clearTimeout(this.peekTimer); this.peekTimer = null; }
+    this.peekNext = null;
+    this.peekSent = null;
+    this.clearPreviews();
+  }
+
+  private emitPreview(seat: number, p: Preview | null): void {
+    for (const fn of [...this.previewListeners]) {
+      try { fn(seat, p); } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('ClientSession: preview listener failed', e);
+      }
+    }
+  }
+
   // --- Commands --------------------------------------------------------------------
 
   setReady(ready: boolean): Promise<ActResult> { return this.command({ t: 'ready', ready }); }
@@ -290,6 +391,8 @@ export class ClientSession {
   private onMessage(raw: unknown): void {
     if (this.status === 'closed') return;
     const msg: HostMsg | null = parseHostMsg(raw);
+    if (msg?.t === 'peek') { this.onPeek(msg); return; } // not part of the room: no room listeners
+    if (msg?.t === 'nope' && msg.id?.startsWith(PEEK_ID)) { this.peeksRefusedOn = this.conn; return; } // an older host
     if (!msg) {
       // A journal answer that cannot be read must not leave the request open (and input held).
       if (typeof raw === 'object' && raw !== null && (raw as { t?: unknown }).t === 'journal' && this.journalAsk !== null) {
@@ -341,6 +444,7 @@ export class ClientSession {
         // A deliberate end (full, kicked, replaced, ...): not a lost host.
         this.status = 'closed';
         this.closedWhy = msg.why;
+        this.resetPreviews();
         this.failAll(`The room closed (${msg.why}).`, true);
         break;
     }
@@ -354,7 +458,11 @@ export class ClientSession {
     const behind = !!g && !!this.seen && this.seen.seed === g.seed && room.seq < this.seen.seq;
     if (g && (!this.seen || this.seen.seed !== g.seed || room.seq > this.seen.seq)) this.seen = { seed: g.seed, seq: room.seq };
     if (!g) this.seen = null;
+    const prev = this.room;
     this.room = room;
+    // Previews belong to one move number of one game; a new one ends them.
+    if (!g || prev?.game?.seed !== g.seed || prev.seq !== room.seq) this.clearPreviews();
+    if (this.peekNext && this.peekNext.seq !== room.seq) this.peekNext = null;
     this.offset = hostNow - this.clock();
     const p = this.pending;
     if (p && p.recovery !== 'wait' && (re === p.id || room.recent.some(r => r.id === p.id && r.seat === this.seat))) {
@@ -713,6 +821,7 @@ export class ClientSession {
   private onConnClose(): void {
     if (this.status === 'closed') return;
     this.status = 'connecting';
+    this.resetPreviews();
     this.failAll('Lost the connection to the host.', false);
     for (const fn of [...this.hostLost]) fn();
     this.emit();

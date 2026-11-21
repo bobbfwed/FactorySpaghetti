@@ -8,6 +8,8 @@ export {
 } from './room';
 export type { ClientMsg, ClosedWhy, HostMsg, SessionErrorCode, WireError } from './protocol';
 export { CLOSED_WHY, PROTOCOL } from './protocol';
+export type { Preview } from './preview';
+export { PREVIEW_INTERVAL_MS, PREVIEW_MAX_BYTES, mayPreview, normalizePreview } from './preview';
 export { chooseSuccessor } from './seating';
 export type { HostOptions } from './hostSession';
 export { HostSession, SessionError } from './hostSession';

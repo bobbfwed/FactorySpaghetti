@@ -12,6 +12,9 @@ import type { AppDeps, TransportKind } from '../controller';
 import { AppController, NAME_KEY, TOKEN_KEY, cleanCodeInput, joinErrorMessage, savedWhen } from '../controller';
 import { lobbyInfo } from '../lobby';
 import { optionGroups } from '../gameText';
+import { chooseAction as greedy } from '../../bots/greedyBot';
+import { activeSeat } from '../../session/room';
+import type { Preview } from '../../session/preview';
 
 interface World { hub: MemoryHub; clock: VirtualClock }
 
@@ -442,5 +445,32 @@ describe('connection trouble', () => {
     expect(b.ctrl.banner!.actions).toEqual(['menu']);
     b.ctrl.backToMenu();
     expect(b.ctrl.screen).toBe('menu');
+  }, 30_000);
+});
+
+describe('previews', () => {
+  it('pass through the controller to the other player, and end when the room is left', async () => {
+    const w = world();
+    const [a, b] = await twoPlayerGame(w);
+    const bySeat = (seat: number): Device => (a.ctrl.mySeat === seat ? a : b);
+    // Play until it is Bea's turn to place a piece.
+    for (let n = 0; n < 500; n++) {
+      const g = a.ctrl.room!.game!;
+      const seat = (g.pendingFactoryOps[0]?.ownerId ?? activeSeat(g))!;
+      if (seat === b.ctrl.mySeat && g.phase === 'placePiece' && g.pendingFactoryOps.length === 0) break;
+      const res = await run(w, bySeat(seat).ctrl.state.online!.client.act(greedy(g, seat)));
+      expect(res.ok).toBe(true);
+      await until(w, () => a.ctrl.room!.seq === b.ctrl.room!.seq);
+    }
+    const heard: Array<[number, Preview | null]> = [];
+    const stop = a.ctrl.onPreview((seat, p) => { heard.push([seat, p]); });
+    const p: Preview = { k: 'piece', q: 1, r: 1, rot: 5 };
+    a.ctrl.sendPreview(p); // not Ann's turn: nothing is sent
+    b.ctrl.sendPreview(p);
+    await until(w, () => heard.length > 0);
+    expect(heard).toEqual([[b.ctrl.mySeat, p]]);
+    a.ctrl.leave();
+    expect(heard).toEqual([[b.ctrl.mySeat, p], [b.ctrl.mySeat, null]]);
+    stop();
   }, 30_000);
 });

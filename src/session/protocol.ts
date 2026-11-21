@@ -6,6 +6,8 @@ import type { Room, RoomSettings, SeatColor } from './room';
 import { SEAT_COLORS } from './room';
 import type { ReplayStart } from './journal';
 import { parseMoves, parseStart } from './journal';
+import type { Preview } from './preview';
+import { jsonSize, normalizePreview, PREVIEW_MAX_BYTES } from './preview';
 
 // The move journal (N11) only added optional fields and one request/answer pair, which older
 // builds ignore or refuse with BAD_MESSAGE, so the protocol version did not change.
@@ -54,6 +56,10 @@ export type ClientMsg =
   // Ask for the moves this client's journal is missing. `have`: the move number its journal of
   // the game with this `seed` reaches, or null when it has none. Answered with `journal`.
   | { t: 'journal'; seed: number; have: number | null; id?: string }
+  // What the active player is considering (null: nothing any more), for move number `seq`. Not a
+  // command: the host never answers it, it only passes it on (see preview.ts). An older host
+  // refuses it with BAD_MESSAGE, echoing `id`, so the sender knows to stop sending them.
+  | { t: 'peek'; seq: number; p: Preview | null; id?: string }
   // host only
   | { t: 'cfg'; settings: Partial<RoomSettings>; id?: string }
   | { t: 'setSeat'; index: number; kind: 'bot' | 'open'; botId?: string; id?: string }
@@ -78,7 +84,9 @@ export type HostMsg =
   | { t: 'closed'; why: ClosedWhy }
   // The answer to `journal`. With `start`: the host's whole journal (the client's could not be
   // continued). Without: the moves after move number `from`. With neither: the host has none.
-  | { t: 'journal'; re?: string; from?: number; moves?: Action[]; start?: ReplayStart };
+  | { t: 'journal'; re?: string; from?: number; moves?: Action[]; start?: ReplayStart }
+  // A preview from the player in `seat`, for move number `seq` (older clients ignore this).
+  | { t: 'peek'; seat: number; seq: number; p: Preview | null };
 
 // ── Parsing (messages arrive from other browsers, so check their shape) ────────
 
@@ -109,6 +117,12 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return raw as ClientMsg;
     case 'journal':
       return isInt(raw.seed) && (raw.have === null || isInt(raw.have)) ? (raw as ClientMsg) : null;
+    case 'peek': {
+      if (jsonSize(raw) > PREVIEW_MAX_BYTES || !isInt(raw.seq)) return null;
+      const p = raw.p === null ? null : normalizePreview(raw.p);
+      if (raw.p !== null && !p) return null;
+      return { t: 'peek', seq: raw.seq, p, ...(typeof raw.id === 'string' ? { id: raw.id } : {}) };
+    }
     case 'cfg':
       return isObj(raw.settings) ? (raw as ClientMsg) : null;
     case 'setSeat':
@@ -159,6 +173,11 @@ export function parseHostMsg(raw: unknown): HostMsg | null {
         ? (raw as HostMsg) : null;
     case 'closed':
       return CLOSED_WHY.includes(raw.why as ClosedWhy) ? (raw as HostMsg) : null;
+    case 'peek': {
+      if (jsonSize(raw) > PREVIEW_MAX_BYTES || !isInt(raw.seat) || raw.seat < 0 || raw.seat > 3 || !isInt(raw.seq)) return null;
+      const p = raw.p === null ? null : normalizePreview(raw.p);
+      return raw.p !== null && !p ? null : { t: 'peek', seat: raw.seat, seq: raw.seq, p };
+    }
     default:
       return null;
   }
