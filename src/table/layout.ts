@@ -336,12 +336,18 @@ export function claimLayout(n: number): { readonly scale: number; readonly offse
 
 export interface BeltCurve { readonly p0: XZ; readonly c0: XZ; readonly c1: XZ; readonly p1: XZ }
 
-/** Smooth curve for a belt between two connection points of one tile: leaves each hole heading inwards. */
-export function beltCurve(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>, from: number, to: number): BeltCurve {
-  const p0 = pointWorld(piece, from);
-  const p1 = pointWorld(piece, to);
+/**
+ * Smooth curve for a belt between two connection points of one tile: leaves each hole heading
+ * inwards. `inset` starts and ends the curve that far in from the hole centres, along the inward
+ * normal (the straight, rigid end of a belt that holds its peg covers the first few millimetres).
+ */
+export function beltCurve(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>, from: number, to: number, inset = 0): BeltCurve {
   const n0 = edgeNormal(pointFrame(piece.type, piece.rotation ?? 0, from).ve);
   const n1 = edgeNormal(pointFrame(piece.type, piece.rotation ?? 0, to).ve);
+  const h0 = pointWorld(piece, from);
+  const h1 = pointWorld(piece, to);
+  const p0 = { x: h0.x - n0.x * inset, z: h0.z - n0.z * inset };
+  const p1 = { x: h1.x - n1.x * inset, z: h1.z - n1.z * inset };
   const d = Math.hypot(p1.x - p0.x, p1.z - p0.z);
   const k = d * 0.42;
   return {
@@ -350,6 +356,22 @@ export function beltCurve(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>
     c1: { x: p1.x - n1.x * k, z: p1.z - n1.z * k },
     p1,
   };
+}
+
+/**
+ * How far a belt's ends reach past the tile edge onto the neighbouring piece (mm). The print's belt
+ * reaches ~0.5 mm past the edge when its pegs sit in the holes; drawn a little longer so two belts
+ * meeting at a shared edge visibly overlap and read as one chain.
+ */
+export const BELT_SPILL = 1.6;
+/** The part of a belt end past the tile edge dips this far (mm) so it tucks under a belt it meets. */
+export const BELT_TUCK = 0.3;
+/** Thickness of the belt chain lying on a tile (measured from belt.glb; its pegs go down into the holes). */
+export const BELT_THICKNESS = 1.5;
+
+/** Outward edge normal at a connection point (the direction a belt end points). */
+export function pointNormal(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>, pos: number): XZ {
+  return edgeNormal(pointFrame(piece.type, piece.rotation ?? 0, pos).ve);
 }
 
 export function bezierAt(c: BeltCurve, t: number): XZ {
@@ -430,6 +452,10 @@ export function boardBounds(board: ReadonlyArray<Pick<BoardPiece, 'type' | 'coor
 /** Card size (standard poker card), for the Leverage deck and discard pile. */
 export const CARD = { w: 63, d: 88, thickness: 0.32 } as const;
 export const DIE_SIZE = 16;
+/** A mine is two hexes side by side: 137.7 mm long. */
+export const MINE_LENGTH = ACROSS_FLATS * 2;
+/** Space between the ends of two mines lying on neighbouring piles. */
+export const PILE_GAP = 14;
 
 export interface SideLayout {
   readonly stacks: readonly [XZ, XZ, XZ];
@@ -449,10 +475,11 @@ export function sideLayout(bounds: Bounds, diceCount: number, portrait = false):
   const left = bounds.minX - 22 - CARD.w / 2;
   const midZ = (bounds.minZ + bounds.maxZ) / 2;
   const midX = (bounds.minX + bounds.maxX) / 2;
-  // A locked stack carries its mine reaching one hex to the right, so stacks are two hexes apart.
-  const gapX = ACROSS_FLATS * 2 + 18;
+  // A locked stack carries its two-hex mine centred on it (half a hex overhanging on each side),
+  // so neighbouring stacks are a mine's length apart plus a gap.
+  const gapX = MINE_LENGTH + PILE_GAP;
   const rowZ = bounds.minZ - 24 - HEX_RADIUS;
-  const firstX = midX - gapX - APOTHEM;
+  const firstX = midX - gapX;
   const stacks: [XZ, XZ, XZ] = [
     { x: firstX, z: rowZ },
     { x: firstX + gapX, z: rowZ },
@@ -482,6 +509,56 @@ export function stackHeight(n: number): number {
   return n * TILE_TOP;
 }
 
+// ── Draw piles: which top piece is face-up ──────────────────────────────────────────────────────
+
+/** How far above its pile a drawn (face-up) piece floats, as if held in the hand. */
+export const REVEAL_LIFT = 16;
+
+/**
+ * The state fields revealedStack reads. `drawnStackIndex` is optional so this compiles whether or
+ * not the engine's GameState has the field yet.
+ */
+export interface RevealInput {
+  readonly phase: string;
+  readonly pendingMineIds: ReadonlyArray<string>;
+  readonly stacks: ReadonlyArray<{ readonly available: boolean; readonly pieces: ReadonlyArray<unknown> }>;
+  readonly drawnStackIndex?: number | null;
+}
+
+/**
+ * Which pile's top piece is face-up for everyone (the piece drawn this turn), or null when every
+ * pile is face-down. Only in the 'placePiece' phase with no mine waiting to be placed: the pile the
+ * player drew from (drawnStackIndex), otherwise the single open non-empty pile if there is exactly
+ * one. Mirrors the engine's revealedStack(state).
+ */
+export function revealedStack(state: RevealInput): 0 | 1 | 2 | null {
+  if (state.phase !== 'placePiece' || state.pendingMineIds.length > 0) return null;
+  const drawn = state.drawnStackIndex;
+  if (drawn === 0 || drawn === 1 || drawn === 2) return (state.stacks[drawn]?.pieces.length ?? 0) > 0 ? drawn : null;
+  const open: number[] = [];
+  state.stacks.forEach((s, i) => { if (s.available && s.pieces.length > 0) open.push(i); });
+  return open.length === 1 && open[0]! <= 2 ? open[0] as 0 | 1 | 2 : null;
+}
+
+/** A mine that has dropped but is not placed yet hovers this far above its pile. */
+export const PENDING_MINE_LIFT = 8;
+
+/**
+ * Where a mine lying on its pile sits (mine 2 on pile 2, mine 3 on pile 3): centred over the pile
+ * (model origin, between its two hexes, over the pile centre), y = top of the pile.
+ */
+export function minePileAt(side: SideLayout, game: Pick<GameState, 'stacks'>, mineId: string): { x: number; y: number; z: number } {
+  const idx = Math.min(2, Math.max(0, Number(/(\d+)$/.exec(mineId)?.[1] ?? '2') - 1));
+  const at = side.stacks[idx]!;
+  return { x: at.x, y: stackHeight(game.stacks[idx]?.pieces.length ?? 0), z: at.z };
+}
+
+/** Where the drawn piece floats: over pile `index` whose pile (including the drawn piece) holds n tiles. */
+export function revealedPose(side: SideLayout, index: number, n: number): { x: number; y: number; z: number } {
+  const at = side.stacks[index] ?? { x: 0, z: 0 };
+  return { x: at.x, y: stackHeight(Math.max(0, n - 1)) + REVEAL_LIFT, z: at.z };
+}
+
 /** Every piece on the board plus everything beside it, for framing the camera. */
 export function tableBounds(game: Pick<GameState, 'board' | 'mineCount'>, portrait = false): Bounds {
   const b = boardBounds(game.board);
@@ -493,9 +570,8 @@ export function tableBounds(game: Pick<GameState, 'board' | 'mineCount'>, portra
     out.minZ = Math.min(out.minZ, p.z - rz);
     out.maxZ = Math.max(out.maxZ, p.z + rz);
   };
-  // A locked stack carries its mine with the rayed hex over the stack, so the mine reaches one
-  // hex further right.
-  for (const s of side.stacks) grow({ x: s.x + APOTHEM, z: s.z }, ACROSS_FLATS * 1.05, HEX_RADIUS * 1.05);
+  // A locked stack carries its mine centred on it, reaching half a hex past the pile on each side.
+  for (const s of side.stacks) grow(s, MINE_LENGTH / 2 + 3, HEX_RADIUS * 1.05);
   grow(side.deck, CARD.w / 2, CARD.d / 2);
   grow(side.discard, CARD.w / 2, CARD.d / 2);
   for (const d of side.dice) grow(d, DIE_SIZE, DIE_SIZE);

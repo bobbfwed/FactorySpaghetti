@@ -3,14 +3,16 @@
 // instance buffers is cheap (a few hundred matrices), so each update rewrites them from the state.
 
 import * as THREE from 'three';
-import type { BoardPiece, GameState, Material, PlayerId } from '../engine/state';
+import type { BoardPiece, GameState, Material, PieceType, PlayerId } from '../engine/state';
 import { partsOf, type ModelLib, type ModelPart } from './models';
 import type { SceneFx } from './animator';
 import {
-  APOTHEM, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, TILE_MODEL, TILE_TOP,
+  BELT_SPILL, BELT_TUCK, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT,
+  POINT_INSET, REVEAL_LIFT, TILE_MODEL, TILE_TOP,
   beltCurve, boardBounds, bufferAnchorWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout,
-  curveFrameAt, mineModel, mineSlotWorld, modelToWorld, pieceCells, piecePlacement, sampleCurve,
-  sideLayout, stackHeight, axialToWorld, type ModelName, type SideLayout,
+  curveFrameAt, mineModel, minePileAt, mineSlotWorld, modelToWorld, pieceCells, piecePlacement, pointNormal,
+  pointWorld, revealedStack, sampleCurve, sideLayout, stackHeight, axialToWorld, type ModelName,
+  type SideLayout,
 } from './layout';
 import {
   cardBackTexture, cardFaceTexture, diceAtlas, diceCell, numeralAtlas, numeralCell,
@@ -18,6 +20,9 @@ import {
 } from './textures';
 
 const Y_AXIS = new THREE.Vector3(0, 1, 0);
+const X_AXIS = new THREE.Vector3(1, 0, 0);
+/** How long the drawn piece takes to flip face-up and rise off its pile. */
+const FLIP_MS = 520;
 const _m = new THREE.Matrix4();
 const _q = new THREE.Quaternion();
 const _p = new THREE.Vector3();
@@ -178,6 +183,9 @@ export class TableScene {
   private readonly diceMaterial: THREE.MeshStandardMaterial;
   private readonly appear = new Map<string, number>();
   private readonly known = new Set<string>();
+  /** Which pile's piece is drawn face-up ("index:pieceId", '' for none), and when it began to flip. */
+  private revealKey = '';
+  private revealAt: number | null = null;
   private colors: THREE.Color[] = [];
   private readonly textures: THREE.Texture[] = [];
 
@@ -303,6 +311,7 @@ export class TableScene {
     }
     this.game = game;
     this.updateSide();
+    this.updateReveal(now, prevKnown && !!game);
   }
 
   /** Narrow screens put the card piles in front of the board instead of beside it. */
@@ -313,7 +322,7 @@ export class TableScene {
   }
 
   /** True while pieces are still settling. */
-  get animating(): boolean { return this.appear.size > 0 || !!this.fx?.active; }
+  get animating(): boolean { return this.appear.size > 0 || !!this.fx?.active || this.revealAt !== null; }
 
   /** Pieces an animated transition places itself: no plain drop-in for them. */
   clearAppear(ids: Iterable<string>): void {
@@ -346,12 +355,13 @@ export class TableScene {
     for (const e of this.fx?.extras() ?? []) {
       if (e.s > 0.01) this.materialParts.get(e.material)!.push(mat4(e.x, e.y, e.z, e.yaw, e.s));
     }
+    // Piles (the drawn piece above its pile is one of the tile instances).
+    this.buildStacks(game, now);
     for (const parts of this.tileParts.values()) for (const p of parts) p.end();
     this.modules.end(); this.numerals.end(); this.meeples.end(); this.teleporters.end();
     for (const p of this.materialParts.values()) p.end();
     this.shadowCasters.end();
 
-    this.buildStacks(game);
     this.buildCards(game);
     this.buildDice(game);
     this.buildBelts(game);
@@ -439,36 +449,87 @@ export class TableScene {
     }
   }
 
-  private buildStacks(game: GameState | null): void {
+  /** The pile whose top piece is drawn face-up (see revealedStack), or null. */
+  revealed(): { index: number; type: PieceType; id: string; n: number } | null {
+    const game = this.game;
+    const i = game ? revealedStack(game) : null;
+    if (!game || i === null) return null;
+    const top = game.stacks[i].pieces[0];
+    if (!top || top.type === 'mine') return null;
+    return { index: i, type: top.type, id: top.id, n: game.stacks[i].pieces.length };
+  }
+
+  /** Set by the table while a preview shows the drawn piece (or the waiting mine) elsewhere. */
+  hidePileTop = false;
+  hideMineId: string | null = null;
+
+  private updateReveal(now: number, animate: boolean): void {
+    const r = this.revealed();
+    const key = r ? `${r.index}:${r.id}` : '';
+    if (key === this.revealKey) return;
+    this.revealKey = key;
+    this.revealAt = r && animate ? now : null;
+  }
+
+  /** The drawn piece flipping face-up and rising off its pile: 0 face-down on the pile, 1 lifted. */
+  private flip(now: number): number {
+    if (this.revealAt === null) return 1;
+    const t = (now - this.revealAt) / FLIP_MS;
+    if (t >= 1) { this.revealAt = null; return 1; }
+    return Math.max(0, t);
+  }
+
+  /** Where the drawn piece is drawn now (centre height, flip angle about X), or null. */
+  revealedPoseNow(now: number): { x: number; y: number; z: number; angle: number } | null {
+    const r = this.revealed();
+    if (!r) return null;
+    const at = this.side.stacks[r.index]!;
+    const p = this.flip(now);
+    const e = p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    const base = stackHeight(r.n - 1);
+    return { x: at.x, y: base + TILE_TOP / 2 + REVEAL_LIFT * e + 10 * Math.sin(Math.PI * e), z: at.z, angle: Math.PI * (1 - e) };
+  }
+
+  private buildStacks(game: GameState | null, now: number): void {
     this.stackLayers.begin();
     for (const t of this.stackTops) t.begin();
     const shade = [new THREE.Color(0xd6d3d3), new THREE.Color(0xc9c5c4)];
     if (game) {
+      const rev = this.revealed();
       game.stacks.forEach((stack, i) => {
         const at = this.side.stacks[i]!;
-        const n = stack.pieces.length;
+        // The drawn piece is not part of the face-down pile any more.
+        const n = stack.pieces.length - (rev?.index === i ? 1 : 0);
         for (let k = 0; k < n - 1; k++) this.stackLayers.push(mat4(at.x, k * TILE_TOP, at.z, 0), shade[k % 2]);
         if (n > 0) {
           // Flipped about X: occupies (n-1)*3 .. n*3 with its back face up.
-          _q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+          _q.setFromAxisAngle(X_AXIS, Math.PI);
           const m = _m.compose(_p.set(at.x, n * TILE_TOP, at.z), _q, _s.set(1, 1, 1));
           for (const t of this.stackTops) t.push(m);
         }
       });
-      // Mines 2 and 3 lie on the stacks they lock (rayed hex over the stack); a mine that has
-      // dropped but is not placed yet hovers there too, slightly raised.
+      // The drawn piece: face-up, held a little above its pile (flipping over as it is drawn).
+      const pose = rev && !this.hidePileTop ? this.revealedPoseNow(now) : null;
+      if (rev && pose) {
+        _q.setFromAxisAngle(X_AXIS, pose.angle);
+        const pivot = new THREE.Matrix4().makeTranslation(0, -TILE_TOP / 2, 0);
+        const m = new THREE.Matrix4().compose(_p.set(pose.x, pose.y, pose.z), _q, _s.set(1, 1, 1)).multiply(pivot);
+        for (const part of this.tileParts.get(TILE_MODEL[rev.type as Exclude<PieceType, 'mine'>])!) part.push(m);
+        this.shadowCasters.push(mat4(pose.x, pose.y - TILE_TOP / 2, pose.z, 0));
+      }
+      // Mines 2 and 3 lie centred on the stacks they lock; a mine that has dropped but is not
+      // placed yet hovers there too, slightly raised.
       const lying = [
         ...game.unplacedMines.map(m => ({ id: m.id, lift: 0 })),
-        ...game.pendingMineIds.map(id => ({ id, lift: 8 })),
+        ...game.pendingMineIds.map(id => ({ id, lift: PENDING_MINE_LIFT })),
       ];
       for (const m of lying) {
-        const idx = Number(/(\d+)$/.exec(m.id)?.[1] ?? '2') - 1;
-        const at = this.side.stacks[Math.min(2, Math.max(0, idx))]!;
-        const h = stackHeight(game.stacks[Math.min(2, Math.max(0, idx))]!.pieces.length);
+        if (m.id === this.hideMineId) continue;
+        const at = minePileAt(this.side, game, m.id);
         const g = this.mineGroups.get(mineModel(m.id));
         if (!g) continue;
         g.visible = true;
-        g.position.set(at.x + APOTHEM, h + m.lift, at.z);
+        g.position.set(at.x, at.y + m.lift, at.z);
         g.rotation.set(0, 0, 0);
       }
     }
@@ -476,9 +537,11 @@ export class TableScene {
     for (const t of this.stackTops) t.end();
   }
 
-  /** Height of the face-down stack i (for picking and glow). */
+  /** Height of the top of pile i, including a mine lying on it or the drawn piece above it (for picking and glow). */
   stackTopY(i: number): number {
     const n = this.game?.stacks[i]?.pieces.length ?? 0;
+    const rev = this.revealed();
+    if (rev?.index === i) return stackHeight(n - 1) + REVEAL_LIFT + TILE_TOP;
     const lockedBy = this.game ? [...this.game.unplacedMines.map(m => m.id), ...this.game.pendingMineIds].some(id => id.endsWith(String(i + 1))) : false;
     return stackHeight(n) + (lockedBy && i > 0 ? TILE_TOP : 0);
   }
@@ -620,43 +683,135 @@ export class TableScene {
   }
 }
 
+/**
+ * What the belt model looks like along its length (model space: length along Z, +Y up as printed).
+ * The chain is a flat strip (y 0 .. chainTop) with a D-shaped peg standing up from each end
+ * (chainTop .. pegTop): the pegs that clip into the tile holes. Measured from the geometry itself.
+ */
+export interface BeltShape {
+  readonly zMin: number;
+  readonly zMax: number;
+  readonly chainTop: number;
+  readonly pegTop: number;
+  /** Peg centre and half-length along Z, at the zMin end and at the zMax end. */
+  readonly pegs: readonly [{ readonly c: number; readonly half: number }, { readonly c: number; readonly half: number }];
+}
+
+const shapeCache = new WeakMap<THREE.BufferGeometry, BeltShape>();
+
+export function beltShape(g: THREE.BufferGeometry): BeltShape {
+  const hit = shapeCache.get(g);
+  if (hit) return hit;
+  const pos = g.getAttribute('position') as THREE.BufferAttribute;
+  let zMin = Infinity, zMax = -Infinity, yMax = -Infinity;
+  for (let i = 0; i < pos.count; i++) { zMin = Math.min(zMin, pos.getZ(i)); zMax = Math.max(zMax, pos.getZ(i)); yMax = Math.max(yMax, pos.getY(i)); }
+  const mid = (zMin + zMax) / 2, len = zMax - zMin;
+  let chainTop = 0;
+  for (let i = 0; i < pos.count; i++) if (Math.abs(pos.getZ(i) - mid) < len * 0.3) chainTop = Math.max(chainTop, pos.getY(i));
+  const lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getY(i) < chainTop + 0.2) continue;
+    const z = pos.getZ(i), e = z < mid ? 0 : 1;
+    lo[e] = Math.min(lo[e]!, z); hi[e] = Math.max(hi[e]!, z);
+  }
+  const peg = (e: 0 | 1): { c: number; half: number } => Number.isFinite(lo[e]!)
+    ? { c: (lo[e]! + hi[e]!) / 2, half: (hi[e]! - lo[e]!) / 2 }
+    : { c: e === 0 ? zMin + 5.1 : zMax - 5.1, half: 2.3 }; // no pegs: where the print has them
+  const shape: BeltShape = { zMin, zMax, chainTop: chainTop > 0 ? chainTop : yMax, pegTop: yMax, pegs: [peg(0), peg(1)] };
+  shapeCache.set(g, shape);
+  return shape;
+}
+
+/** One belt to draw: on `piece`, between connection points `from` and `to`, in `color`. */
+export interface BeltItem {
+  readonly piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>;
+  readonly from: number;
+  readonly to: number;
+  readonly color: THREE.Color;
+}
+
 /** Deform the belt model (length along Z) along every belt's curve; one merged geometry. */
 export function bendBelts(
   base: THREE.BufferGeometry,
   game: Pick<GameState, 'belts' | 'board'>,
   colorOf: (owner: PlayerId) => THREE.Color,
 ): THREE.BufferGeometry {
+  const items: BeltItem[] = [];
+  for (const b of game.belts) {
+    const piece = game.board.find(p => p.id === b.pieceId);
+    if (piece) items.push({ piece, from: b.fromPoint, to: b.toPoint, color: colorOf(b.ownerId) });
+  }
+  return bendBeltItems(base, items);
+}
+
+/**
+ * Lay the belt model on a tile as the printed belt lies: turned over so its pegs point down into
+ * the two holes and the chain face is up. Each end (the peg and the tab past it) stays rigid, its
+ * peg centred on the hole and pointing straight out across the edge; the tab reaches BELT_SPILL mm
+ * past the edge and dips a little there, so two belts meeting at a shared edge overlap without
+ * flicker. Only the chain between the pegs bends (and stretches) along the curve.
+ */
+export function bendBeltItems(base: THREE.BufferGeometry, items: readonly BeltItem[]): THREE.BufferGeometry {
   const pos = base.getAttribute('position') as THREE.BufferAttribute;
   const nor = base.getAttribute('normal') as THREE.BufferAttribute | undefined;
   const idx = base.getIndex();
   const vCount = pos.count;
   const indices = idx ? Array.from(idx.array as ArrayLike<number>) : Array.from({ length: vCount }, (_, i) => i);
-  let zMin = Infinity, zMax = -Infinity;
-  for (let i = 0; i < vCount; i++) { zMin = Math.min(zMin, pos.getZ(i)); zMax = Math.max(zMax, pos.getZ(i)); }
-  const belts = game.belts.filter(b => game.board.some(p => p.id === b.pieceId));
-  const P = new Float32Array(belts.length * vCount * 3);
-  const N = new Float32Array(belts.length * vCount * 3);
-  const C = new Float32Array(belts.length * vCount * 3);
-  const I = new Uint32Array(belts.length * indices.length);
-  belts.forEach((b, k) => {
-    const piece = game.board.find(p => p.id === b.pieceId)!;
-    const sample = sampleCurve(beltCurve(piece, b.fromPoint, b.toPoint), 48);
-    const col = colorOf(b.ownerId);
+  const shape = beltShape(base);
+  const [pa, pb] = shape.pegs;
+  // Rigid length on each side of a peg centre, towards the middle of the belt.
+  const rigid = Math.max(pa.half, pb.half) + 0.6;
+  // The outer tabs are stretched so their tips land BELT_SPILL past the edge.
+  const reach = POINT_INSET + BELT_SPILL;
+  const kA = (reach - pa.half) / Math.max(0.1, pa.c - pa.half - shape.zMin);
+  const kB = (reach - pb.half) / Math.max(0.1, shape.zMax - (pb.c + pb.half));
+  const pegScale = TILE_TOP / Math.max(0.1, shape.pegTop - shape.chainTop);
+  const P = new Float32Array(items.length * vCount * 3);
+  const N = new Float32Array(items.length * vCount * 3);
+  const C = new Float32Array(items.length * vCount * 3);
+  const I = new Uint32Array(items.length * indices.length);
+  items.forEach((b, k) => {
+    const h0 = pointWorld(b.piece, b.from), h1 = pointWorld(b.piece, b.to);
+    const n0 = pointNormal(b.piece, b.from), n1 = pointNormal(b.piece, b.to);
+    const h = Math.min(rigid, Math.hypot(h1.x - h0.x, h1.z - h0.z) * 0.3);
+    const sample = sampleCurve(beltCurve(b.piece, b.from, b.to, h), 48);
+    const zA = pa.c + h, zB = pb.c - h;
+    const col = b.color;
     const o = k * vCount;
     for (let i = 0; i < vCount; i++) {
       const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-      const f = curveFrameAt(sample, (z - zMin) / (zMax - zMin));
-      // Model X -> lateral (t.z, -t.x), Y -> up, Z -> tangent: a proper rotation, no mirroring.
-      const lx = f.t.z, lz = -f.t.x;
+      // Centre line point (cx, cz) and unit direction of model +Z there (tx, tz).
+      let cx: number, cz: number, tx: number, tz: number, past = 0;
+      if (z <= zA || z >= zB) {
+        const atA = z <= zA;
+        const peg = atA ? pa : pb;
+        // Outward distance from the peg centre (the hole centre), the outer tab stretched.
+        let e = atA ? peg.c - z : z - peg.c;
+        if (e > peg.half) e = peg.half + (e - peg.half) * (atA ? kA : kB);
+        const hc = atA ? h0 : h1, n = atA ? n0 : n1;
+        cx = hc.x + n.x * e; cz = hc.z + n.z * e;
+        // Model +Z runs inwards at the zMin end and outwards at the zMax end.
+        tx = atA ? -n.x : n.x; tz = atA ? -n.z : n.z;
+        past = e - POINT_INSET;
+      } else {
+        const f = curveFrameAt(sample, (z - zA) / (zB - zA));
+        cx = f.p.x; cz = f.p.z; tx = f.t.x; tz = f.t.z;
+      }
+      // Turned over about the length axis (a rotation, not a mirror): model X -> -lateral,
+      // model Y -> down. Lateral is (t.z, -t.x).
+      const lx = tz, lz = -tx;
       const j = (o + i) * 3;
-      P[j] = f.p.x + lx * x;
-      P[j + 1] = TILE_TOP + y;
-      P[j + 2] = f.p.z + lz * x;
+      P[j] = cx - lx * x;
+      P[j + 2] = cz - lz * x;
+      // Chain on the tile top; pegs squeezed into the tile's thickness, down to the table.
+      let wy = y <= shape.chainTop ? TILE_TOP + (shape.chainTop - y) : TILE_TOP - (y - shape.chainTop) * pegScale + 0.02;
+      if (past > 0) wy -= BELT_TUCK * Math.min(1, past / BELT_SPILL);
+      P[j + 1] = wy;
       if (nor) {
-        const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i);
-        N[j] = lx * nx + f.t.x * nz;
+        const nx = -nor.getX(i), ny = -nor.getY(i), nz = nor.getZ(i);
+        N[j] = lx * nx + tx * nz;
         N[j + 1] = ny;
-        N[j + 2] = lz * nx + f.t.z * nz;
+        N[j + 2] = lz * nx + tz * nz;
       }
       C[j] = col.r; C[j + 1] = col.g; C[j + 2] = col.b;
     }

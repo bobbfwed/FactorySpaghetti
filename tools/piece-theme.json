@@ -2,7 +2,6 @@
   "_comment": "Colour of every material name used in public/models/*.glb. Colours are the filament colours stored in 'Factory Speghetti AMS.3mf' (Metadata/project_settings.config, filament_colour; 'filament' is the 1-based slot number). The converter warns if the file's colour for that slot no longer matches. 'player' is tinted at runtime with the owner's colour; its colour here is a neutral placeholder (the file's slot 4 colour is #71D0FF).",
   "materials": {
     "body": { "color": "#D6D3D3", "filament": 2, "roughness": 0.85, "metalness": 0 },
-    "body-dark": { "color": "#A0A0A0", "filament": 10, "roughness": 0.85, "metalness": 0 },
     "inlay-black": { "color": "#000000", "filament": 1, "roughness": 0.6, "metalness": 0 },
     "black": { "color": "#000000", "filament": 1, "roughness": 0.7, "metalness": 0 },
     "icon-blue": { "color": "#0086D6", "filament": 3, "roughness": 0.6, "metalness": 0 },

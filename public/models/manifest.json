@@ -11,12 +11,6 @@
       "roughness": 0.85,
       "metalness": 0
     },
-    "body-dark": {
-      "color": "#A0A0A0",
-      "filament": 10,
-      "roughness": 0.85,
-      "metalness": 0
-    },
     "inlay-black": {
       "color": "#000000",
       "filament": 1,
@@ -71,7 +65,7 @@
       "metalness": 0
     }
   },
-  "totalBytes": 1231760,
+  "totalBytes": 1231756,
   "models": [
     {
       "name": "tile-blank",
@@ -363,7 +357,7 @@
       "colourParts": true,
       "parts": [
         {
-          "material": "body-dark",
+          "material": "body",
           "triangles": 4618,
           "vertices": 4726
         },
@@ -405,9 +399,9 @@
           78.262
         ]
       },
-      "bytes": 191752,
+      "bytes": 191748,
       "notes": [
-        "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
+        "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex). Its body is painted filament 10 (grey #A0A0A0) in the print file; the designer asked for it to be the same white as the other board pieces, so filament 10 maps to body."
       ]
     },
     {

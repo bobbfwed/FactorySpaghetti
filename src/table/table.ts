@@ -4,11 +4,12 @@
 
 import * as THREE from 'three';
 import type { GameState } from '../engine/state';
-import { farDetail, loadModels } from './models';
+import { farDetail, loadModels, partsOf } from './models';
 import { CameraRig } from './camera';
 import { TableScene } from './scene';
-import { Animator } from './animator';
+import { Animator, type PiecePose } from './animator';
 import { Overlay } from './overlay';
+import { PreviewLayer } from './preview';
 import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds } from './layout';
 import { BELT_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
@@ -17,7 +18,7 @@ import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableO
 const DEFAULT_COLORS: readonly PlayerColor[] = ['blue', 'red', 'orange', 'green'];
 const TAP_SLOP_PX = 7;
 /** Share of vertices kept in the far level of detail, per material (or model/material). */
-const FAR_KEEP: Readonly<Record<string, number>> = { 'body': 0.3, 'body-dark': 0.35, 'belt/player': 0.35 };
+const FAR_KEEP: Readonly<Record<string, number>> = { 'body': 0.3, 'mine-1/body': 0.35, 'belt/player': 0.35 };
 /** Zoomed out past this many millimetres per CSS pixel (a tile under ~115 px wide), use far detail. */
 const FAR_SCALE = 0.6;
 
@@ -66,6 +67,10 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   scene.add(table.root);
   const overlay = new Overlay(lib);
   scene.add(overlay.root);
+  const previews = new PreviewLayer(lib, partsOf(lib, 'belt')[0]!.geometry);
+  scene.add(previews.root);
+  /** Set when the piles must be redrawn on the next frame (a preview picked up or put back a piece). */
+  let pilesDirty = false;
   const animator = new Animator(table.root, (id) => table.colorOf(id));
   const animEndListeners = new Set<() => void>();
 
@@ -107,12 +112,17 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const wasAnimating = animator.active;
     animator.update(now);
     table.fx = animator.active ? animator : null;
+    // Previews first: they tell the piles whether the drawn piece (or a waiting mine) is elsewhere.
+    const hid = `${table.hidePileTop}|${table.hideMineId}`;
+    previews.update(now, rig.azimuth, table);
+    if (hid !== `${table.hidePileTop}|${table.hideMineId}`) pilesDirty = true;
     // The frame after a transition ends draws everything where the state says, once more.
     const settling = table.animating || wasAnimating;
     // Pieces only need rebuilding while they settle or while the view turns (modules face the viewer).
-    if (settling || rig.azimuth !== lastAz) {
+    if (settling || pilesDirty || rig.azimuth !== lastAz) {
       table.rebuild(now, rig.azimuth);
       lastAz = rig.azimuth;
+      pilesDirty = false;
     }
     const t0 = performance.now();
     renderer.render(scene, rig.camera);
@@ -124,7 +134,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     };
     for (const fn of [...frameListeners]) fn();
     if (wasAnimating && !animator.active) for (const fn of [...animEndListeners]) fn();
-    return camMoving || table.animating;
+    return camMoving || table.animating || previews.animating(now);
   }
 
   function frame(now: number): void {
@@ -315,9 +325,16 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       const prev = game;
       const now = performance.now();
       const placed = steps.filter(s => s.kind === 'place').map(s => (s as { pieceId: string }).pieceId);
+      // A piece placed where a player was previewing it starts from the preview, not its pile.
+      const from = new Map<string, PiecePose>();
+      for (const id of placed) {
+        const piece = next.board.find(p => p.id === id);
+        const pose = piece ? previews.piecePoseAt(piece.type, piece.coord.q, piece.coord.r, piece.rotation ?? 0, now, table) : null;
+        if (pose) from.set(id, { x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw });
+      }
       showGame(next);
       table.clearAppear(placed);
-      animator.start(prev, next, steps, scale, now, table.side);
+      animator.start(prev, next, steps, scale, now, table.side, from);
       table.fx = animator.active ? animator : null;
       if (animator.active) table.rebuild(now, rig.azimuth);
       invalidate();
@@ -349,6 +366,15 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     setGhost(next) {
       ghost = next ? { ...next } : null;
       overlay.setGhost(ghost, game);
+      invalidate();
+    },
+    setRoute(segments, color) {
+      previews.setRoute(segments, PLAYER_COLOR_HEX[color] ?? PLAYER_COLOR_HEX.blue);
+      invalidate();
+    },
+    setPreview(playerId, preview) {
+      previews.setPreview(playerId, preview ? { ...preview } : null, performance.now(), table, (id) => table.colorOf(id));
+      pilesDirty = true;
       invalidate();
     },
     onPick(fn) {
@@ -393,6 +419,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       pickers.clear();
       animEndListeners.clear();
       animator.dispose();
+      previews.dispose();
       table.dispose();
       overlay.dispose();
       wood.dispose();

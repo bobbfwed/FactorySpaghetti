@@ -24,6 +24,15 @@ export type Target =
 
 export interface ViewInsets { top: number; right: number; bottom: number; left: number }
 
+/** How a planned belt is drawn: 'own' solid (belts the player has), 'buy' translucent (could buy now), 'cant' translucent, fading in and out (cannot afford yet). */
+export type RouteTier = 'own' | 'buy' | 'cant';
+/** One belt of a planned route: on board piece `pieceId`, between connection points `from` and `to`. */
+export interface RouteSegment { pieceId: string; from: number; to: number; tier: RouteTier }
+/** A player's unconfirmed choice, shown to everyone in that player's colour. */
+export type Preview =
+  | { k: 'piece'; pieceType: PieceType; q: number; r: number; rotation: number }  // a board piece or mine a player is considering at a space
+  | { k: 'meeple'; pieceId: string; slot: 0 | 1 | null };                       // a meeple a player is considering on a building (slot null) or a mine slot
+
 export interface Ghost { pieceType: PieceType; q: number; r: number; rotation: number; valid: boolean }
 
 /** Numbers for performance checks (renderer.info of the last frame, and how long it took). */
@@ -59,6 +68,10 @@ export interface Table {
   setPlayerColors(colors: readonly PlayerColor[]): void;   // index = engine player id
   setTargets(targets: readonly Target[], color: PlayerColor): void;  // soft glow on everything the player may touch
   setGhost(ghost: Ghost | null): void;              // translucent preview of a tile about to be placed
+  /** A planned belt route in the player's colour. 'own' = solid (belts the player has); 'buy' = translucent (belts the player could buy now); 'cant' = translucent and slowly fading in and out (cannot afford yet). null clears it. */
+  setRoute(segments: readonly RouteSegment[] | null, color: PlayerColor): void;
+  /** A player's unconfirmed choice, shown to everyone in that player's colour. Changes are animated: a piece lifts from the revealed pile (or glides from where it was last previewed) to the space and turns to the rotation; a meeple drops in from above the first time (as if leaving the player's supply) and hops from its previous preview spot after that. null removes it (the piece returns to the pile; the meeple lifts away). playerId is the engine player id (same index as setPlayerColors). */
+  setPreview(playerId: number, preview: Preview | null): void;
   onPick(fn: (hit: Target | null, ev: { x: number; y: number }) => void): () => void;  // tap/click
   screenPosition(of: Target): { x: number; y: number } | null;      // canvas-relative CSS pixels, for HTML popovers
   rotateBy(steps: number): void;                    // 60-degree steps, animated

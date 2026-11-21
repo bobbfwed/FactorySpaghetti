@@ -8,8 +8,9 @@
 import * as THREE from 'three';
 import type { BoardPiece, GameState, Material } from '../engine/state';
 import {
-  APOTHEM, DIE_SIZE, HEX_RADIUS, TILE_TOP, axialToWorld, bufferSlotWorld,
-  buildingMeepleWorld, mineSlotWorld, piecePlacement, stackHeight, type SideLayout, type XZ,
+  DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT, TILE_TOP, axialToWorld, bufferSlotWorld,
+  buildingMeepleWorld, minePileAt, mineSlotWorld, piecePlacement, revealedPose, revealedStack,
+  stackHeight, type SideLayout, type XZ,
 } from './layout';
 import { pointAlong } from './flowPath';
 import { isTableStep, type AnimStep, type Buf } from './transition';
@@ -62,6 +63,7 @@ export class Animator implements SceneFx {
   private prev: GameState | null = null;
   private next: GameState | null = null;
   private side: SideLayout | null = null;
+  private fromPose: ReadonlyMap<string, PiecePose> = new Map();
   private endAt = 0;
   private now = 0;
   private extraList: ExtraMaterial[] = [];
@@ -76,11 +78,15 @@ export class Animator implements SceneFx {
 
   get active(): boolean { return this.steps.length > 0; }
 
-  /** Start a transition from `prev` to `next` (the scene already shows `next`). */
-  start(prev: GameState | null, next: GameState, steps: readonly AnimStep[], scale: number, now: number, side: SideLayout): void {
+  /**
+   * Start a transition from `prev` to `next` (the scene already shows `next`). `from`: pieces
+   * that were on show somewhere else (a preview) start their place step from there.
+   */
+  start(prev: GameState | null, next: GameState, steps: readonly AnimStep[], scale: number, now: number, side: SideLayout, from?: ReadonlyMap<string, PiecePose>): void {
     this.prev = prev;
     this.next = next;
     this.side = side;
+    this.fromPose = from ?? new Map();
     const k = Math.max(0, scale);
     this.steps = steps.filter(isTableStep).map(s => ({ ...s, t0: now + s.at * k, t1: now + (s.at + Math.max(1, s.dur)) * k }));
     this.endAt = this.steps.reduce((m, s) => Math.max(m, s.t1), now);
@@ -198,14 +204,27 @@ export class Animator implements SceneFx {
     return null;
   }
 
-  /** Where a placed piece starts: on top of its stack (a mine lies on its stack, rayed hex over it). */
+  /**
+   * Where a placed piece starts: where it was previewed, if it was (see start()); else the drawn
+   * piece held face-up above its pile, the top of a face-down pile, or a mine lying centred on its pile.
+   */
   private placeFrom(stack: number | null, piece: BoardPiece): PiecePose | null {
+    const shown = this.fromPose.get(piece.id);
+    if (shown) return shown;
     if (stack === null || !this.side || !this.prev) return null;
+    const prev = this.prev;
     const at = this.side.stacks[stack];
     if (!at) return null;
-    const n = this.prev.stacks[stack]?.pieces.length ?? 0;
-    if (piece.type === 'mine') return { x: at.x + APOTHEM, y: stackHeight(n) + 2, z: at.z, yaw: 0 };
-    return { x: at.x, y: stackHeight(n), z: at.z, yaw: 0 };
+    const n = prev.stacks[stack]?.pieces.length ?? 0;
+    if (piece.type === 'mine') {
+      const m = minePileAt(this.side, prev, piece.id);
+      return { x: m.x, y: m.y + (prev.pendingMineIds.includes(piece.id) ? PENDING_MINE_LIFT : 0), z: m.z, yaw: 0 };
+    }
+    if (revealedStack(prev) === stack && prev.stacks[stack]?.pieces[0]?.id === piece.id) {
+      const p = revealedPose(this.side, stack, n);
+      return { x: p.x, y: p.y, z: p.z, yaw: 0 };
+    }
+    return { x: at.x, y: stackHeight(Math.max(0, n - 1)), z: at.z, yaw: 0 };
   }
 
   private placing(pieceId: string): boolean {

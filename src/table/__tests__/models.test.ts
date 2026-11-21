@@ -150,10 +150,11 @@ describe('(d) model orientation table matches the measured models', () => {
     for (const type of ['blank', ...FACTORY_TYPES] as const) {
       for (const pos of positionsWithRole(type, 'belt')) expect(measured[type], `${type} #${pos}`).toContain(pos);
     }
-    // ...but some holes are positions the engine disables (reported to the designer).
+    // ...and every hole is a belt point (holes 2, 5, 8 and 11 on the buildings used to be disabled
+    // positions; the engine now enables them, as the designer asked).
     const extra = Object.fromEntries(Object.entries(measured).map(([t, hs]) =>
       [t, hs.filter(p => pointRole(t as PieceType, p) !== 'belt')]));
-    expect(extra).toEqual({ blank: [], plateFact: [2, 5, 8, 11], sphereFact: [5, 11], tesseractFact: [], powerPlant: [2, 5, 8, 11] });
+    expect(extra).toEqual({ blank: [], plateFact: [], sphereFact: [], tesseractFact: [], powerPlant: [] });
   });
 
   it('meeple-slot icons on the mines are where MINE_SLOT_MODEL says', () => {

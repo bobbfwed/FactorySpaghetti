@@ -4,15 +4,15 @@
 import type { BoardPiece, GameState } from '../engine/state';
 import type { Target } from './types';
 import {
-  CARD, HEX_RADIUS, APOTHEM, TILE_TOP, beltCurve, bezierAt, bufferAnchorWorld, bufferSlotWorld,
+  BELT_THICKNESS, CARD, HEX_RADIUS, APOTHEM, TILE_TOP, beltCurve, bezierAt, bufferAnchorWorld, bufferSlotWorld,
   distanceToCurve, mineSlotWorld, pieceCells, piecePlacement, pointCount, pointRole, pointWorld,
   worldToAxial, axialToWorld, type SideLayout,
 } from './layout';
 
 export interface V3 { readonly x: number; readonly y: number; readonly z: number }
 
-/** Height at which belts are hit-tested and anchored (belt model is 5.3 mm tall on a 3 mm tile). */
-export const BELT_PICK_Y = TILE_TOP + 3;
+/** Height at which belts are hit-tested and anchored (the chain lies 1.5 mm thick on the tile; its pegs are in the holes). */
+export const BELT_PICK_Y = TILE_TOP + BELT_THICKNESS;
 
 /** Heights of things beside the board (they change with the state). */
 export interface SideHeights {

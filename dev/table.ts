@@ -6,10 +6,11 @@
 // topdown=1, rotate=N (60-degree steps), hud=0 (hide the controls), zoom=F (zoom in by F),
 // focus=pieceId (centre on a piece). Sets window.__ready when the requested view is drawn.
 
-import { createTable, type Target, type Ghost, type PlayerColor } from '../src/table';
+import { createTable, planTransition, revealedStack, type Target, type Ghost, type PlayerColor, type Preview, type RouteSegment, type RouteTier } from '../src/table';
 import { createBotGame, playUntil, type BotGame, type BotKind } from '../src/table/botGame';
+import { pointCount, pointWorld } from '../src/table/layout';
 import { legalActions } from '../src/engine/reducer';
-import type { GameState, PlayerId } from '../src/engine/state';
+import type { BoardPiece, GameState, PlayerId } from '../src/engine/state';
 import type { Action } from '../src/engine/actions';
 
 declare global {
@@ -55,6 +56,8 @@ function legalTargets(s: GameState): Target[] {
     switch (a.type) {
       case 'PLACE_PIECE':
         add(`c${a.coord.q},${a.coord.r}`, { kind: 'cell', q: a.coord.q, r: a.coord.r });
+        break;
+      case 'DRAW_PIECE':
         add(`s${a.stackIndex}`, { kind: 'stack', index: a.stackIndex });
         break;
       case 'PLACE_MINE': case 'PLACE_OVERSTOCK_PIECE': case 'BUY_MINE':
@@ -142,8 +145,105 @@ function newGame(): void {
 }
 
 function step(n = 1): void {
+  const before = game.state;
   for (let i = 0; i < n; i++) if (!game.step()) { setPlaying(false); break; }
+  // anim=1: play the change as an animated transition (one action per step reads best).
+  if (params.get('anim') === '1' && n === 1) {
+    table.animateTo(game.state, planTransition(before, game.state, []).steps);
+    table.setTargets(showTargets ? legalTargets(game.state) : [], COLORS[activeId(game.state)] ?? 'blue');
+    return;
+  }
   refresh();
+}
+
+// ── Belt chains, routes and previews for checking the table without the game interface ─────────
+
+/**
+ * A chain of `n` belts across neighbouring tiles, each running straight across its tile and
+ * meeting the next at a shared edge (connection points that touch). `skip` picks a later chain.
+ */
+function beltChain(s: GameState, n: number, skip = 0): Array<{ pieceId: string; from: number; to: number }> {
+  // Blank tiles where there are enough of them (a belt across a factory crosses its module square).
+  const blanks = s.board.filter(p => p.type === 'blank');
+  const tiles = blanks.length >= n + 2 ? blanks : s.board.filter(p => p.type !== 'mine');
+  const touching = (p: BoardPiece, pos: number): { piece: BoardPiece; pos: number } | null => {
+    const a = pointWorld(p, pos, 0);
+    for (const q of tiles) {
+      if (q.id === p.id) continue;
+      for (let k = 0; k < pointCount(q.type); k++) {
+        const b = pointWorld(q, k, 0);
+        if (Math.hypot(a.x - b.x, a.z - b.z) < 0.05) return { piece: q, pos: k };
+      }
+    }
+    return null;
+  };
+  let found = 0;
+  for (const start of tiles) {
+    for (let entry = 0; entry < 12; entry++) {
+      const out: Array<{ pieceId: string; from: number; to: number }> = [];
+      const seen = new Set<string>();
+      let cur: BoardPiece = start, e = entry;
+      while (out.length < n) {
+        seen.add(cur.id);
+        const a = pointWorld(cur, e);
+        let best: { to: number; next: { piece: BoardPiece; pos: number }; d: number } | null = null;
+        for (let x = 0; x < 12; x++) {
+          if (x === e) continue;
+          const t = touching(cur, x);
+          if (!t || seen.has(t.piece.id)) continue;
+          const b = pointWorld(cur, x);
+          const d = Math.hypot(a.x - b.x, a.z - b.z);
+          if (!best || d > best.d) best = { to: x, next: t, d };
+        }
+        if (!best || best.d < 50) break;
+        out.push({ pieceId: cur.id, from: e, to: best.to });
+        cur = best.next.piece;
+        e = best.next.pos;
+      }
+      if (out.length === n && found++ === skip) return out;
+    }
+  }
+  return [];
+}
+
+/** Show the state with a chain of belts laid by `owner` (rendering only; the game is not changed). */
+function showChain(n: number, owner: PlayerId = 0, skip = 0): Array<{ pieceId: string; from: number; to: number }> {
+  const s = game.state;
+  const chain = beltChain(s, n, skip);
+  const on = new Set(chain.map(c => c.pieceId));
+  const belts = [...s.belts.filter(b => !on.has(b.pieceId)), ...chain.map((c, i) => ({ id: `demo-${i}`, ownerId: owner, pieceId: c.pieceId, fromPoint: c.from, toPoint: c.to }))];
+  table.setGame({ ...s, belts });
+  return chain;
+}
+
+/** A planned route of `n` belts with the tiers given in order (cycled). */
+function showRoute(n: number, tiers: readonly RouteTier[] = ['own', 'own', 'buy', 'cant'], color: PlayerColor = 'red', skip = 3): RouteSegment[] {
+  const s = game.state;
+  const segs = beltChain(s, n, skip).map((c, i) => ({ ...c, tier: tiers[i % tiers.length]! }));
+  // Shown on tiles with no belts yet (rendering only), as a real route would be.
+  const on = new Set(segs.map(c => c.pieceId));
+  table.setGame({ ...s, belts: s.belts.filter(b => !on.has(b.pieceId)) });
+  table.setRoute(segs, color);
+  return segs;
+}
+
+/** A piece preview at the first legal cell (or the given one), from the drawn pile. */
+function previewPiece(player?: number, cell?: { q: number; r: number }, rotation = 1): Preview | null {
+  const s = game.state;
+  const id: PlayerId = (player as PlayerId | undefined) ?? activeId(s);
+  const places = legalActions(s, id).filter((a): a is Extract<Action, { type: 'PLACE_PIECE' }> => a.type === 'PLACE_PIECE');
+  const r = revealedStack(s);
+  const type = r !== null ? s.stacks[r].pieces[0]?.type : places[0] ? s.stacks[places[0].stackIndex].pieces[0]?.type : undefined;
+  const at = cell ?? places[0]?.coord;
+  if (!type || !at) return null;
+  const p: Preview = { k: 'piece', pieceType: type, q: at.q, r: at.r, rotation };
+  table.setPreview(id, p);
+  return p;
+}
+
+/** A meeple preview on the given building or mine slot. */
+function previewMeeple(player: number, pieceId: string, slot: 0 | 1 | null): void {
+  table.setPreview(player, { k: 'meeple', pieceId, slot });
 }
 
 function setPlaying(on: boolean): void {
@@ -178,6 +278,25 @@ $('top').onclick = (): void => { topDown = !topDown; toggle('top', topDown); tab
 $('targets').onclick = (): void => { showTargets = !showTargets; toggle('targets', showTargets); refresh(); };
 $('ghost').onclick = (): void => { showGhost = !showGhost; toggle('ghost', showGhost); refresh(); };
 $('debug').onclick = (): void => { debug = !debug; toggle('debug', debug); table.setDebugPoints(debug); };
+let routeOn = false;
+let previewMode: 'none' | 'piece' | 'meeple' = 'none';
+$('route').onclick = (): void => {
+  routeOn = !routeOn;
+  toggle('route', routeOn);
+  if (routeOn) showRoute(4); else table.setRoute(null, 'red');
+};
+$('preview').onclick = (): void => {
+  const s = game.state;
+  const id = activeId(s);
+  previewMode = previewMode === 'none' ? 'piece' : previewMode === 'piece' ? 'meeple' : 'none';
+  if (previewMode === 'piece' && !previewPiece(id)) previewMode = 'meeple';
+  if (previewMode === 'meeple') {
+    const b = s.board.find(p => p.type !== 'mine' && p.type !== 'blank') ?? s.board[0];
+    if (b) previewMeeple(id, b.id, b.type === 'mine' ? 0 : null);
+  }
+  if (previewMode === 'none') table.setPreview(id, null);
+  $('preview').textContent = `Preview: ${previewMode}`;
+};
 addEventListener('keydown', (e) => {
   if (e.key === 'r' && showGhost) { ghostRotation++; refresh(); }
 });
@@ -223,7 +342,11 @@ function zoomOn(target: Target, factor: number): void {
   canvas.dispatchEvent(new WheelEvent('wheel', { clientX: x, clientY: y, deltaY: -Math.log(factor) / 0.0015, cancelable: true }));
 }
 
-window.__harness = { table, get game() { return game; }, refresh, step, legalTargets, zoomOn };
+window.__harness = {
+  table, get game() { return game; }, refresh, step, legalTargets, zoomOn, playUntil: (f: (s: GameState) => boolean) => { playUntil(game, f); refresh(); },
+  beltChain: (n: number, skip = 0) => beltChain(game.state, n, skip), showChain, showRoute, previewPiece, previewMeeple, revealedStack,
+  planTransition, legalActions,
+};
 // Let the camera animations finish, apply any zoom, then report ready.
 setTimeout(() => {
   const zoom = Number(params.get('zoom') ?? '0');

@@ -40,6 +40,7 @@ To see the result: `npx vite`, then open `/tools/gallery/index.html` (views: `?v
 - **Units:** 1 unit = 1 mm. **Origin:** centre of the footprint, bottom face at Y = 0.
 - **Hex tiles** lie in the XZ plane, pointy-top: flat sides face ±X (68.8 mm across flats), corners at ±Z. **Mines** are two hexes side by side along X; the hex centres are at x = −34.4 (the rayed hex) and x = +34.4.
 - **One mesh primitive per colour**, each with a named material. Normals are split at edges sharper than 35°, so flat faces and engraved edges stay crisp.
+- **Belt:** the file has it as printed: a flat chain 1.5 mm thick along Z (arrowhead at −Z, notched tail at +Z), with a D-shaped peg 3.8 mm tall standing *up* from each end (peg centres at z ≈ −31.9 and +31.7). On the table the game turns it over (a rotation about its length, not a mirror), so the pegs point down into the D-shaped holes of the tile it lies on and the chain face is up. Each end (peg and tab) stays rigid with its peg centred on the hole; only the chain between the pegs bends along the curve. The tabs are drawn reaching 1.6 mm past the tile edge (the print reaches about 0.5 mm) so belts meeting at a shared edge overlap and read as one chain (`scene.ts` `bendBeltItems`, `layout.ts` `BELT_SPILL`).
 - **`player` material:** belts, meeple and Control Module tile. The game tints it with the owner's colour; the file holds a neutral grey placeholder.
 - No compression extensions are used, so `GLTFLoader` loads the files with no extra decoders.
 
@@ -54,7 +55,7 @@ All 18 models come from **`Factory Speghetti AMS.3mf`**, which the designer says
 | tile-sphere-factory | body, inlay-black, icon-green-light, bolt-yellow | 3,148 → 2,500 | 2,500 | 71.5 | 68.8 × 3.0 × 78.3 | triangles 3148 |
 | tile-tesseract-factory | body, inlay-black, icon-green-light, bolt-yellow | 3,372 → 2,500 | 2,500 | 74.3 | 68.8 × 3.0 × 78.3 | triangles 3372 |
 | tile-power-plant | body, inlay-black, bolt-yellow | 2,604 → 2,500 | 2,500 | 67.5 | 68.8 × 3.0 × 78.3 | triangles 2604 |
-| mine-1 | body-dark, inlay-black, icon-blue, icon-green-light | 7,816 → 6,000 | 6,000 | 187.3 | 137.7 × 3.0 × 78.3 | name "Mine 1 AMS v3" |
+| mine-1 | body, inlay-black, icon-blue, icon-green-light | 7,816 → 6,000 | 6,000 | 187.3 | 137.7 × 3.0 × 78.3 | name "Mine 1 AMS v3" |
 | mine-2 | body, inlay-black, icon-blue, icon-green | 14,140 → 6,000 | 6,000 | 180.7 | 137.7 × 3.0 × 78.3 | name "Mine 2 AMS v2" |
 | mine-3 | body, inlay-black, icon-blue, lime-green | 15,004 → 6,000 | 6,000 | 185.0 | 137.7 × 3.0 × 78.3 | name "Mine 3 AMS v2" |
 | belt | player | 5,516 → 1,500 | 1,500 | 51.0 | 6.6 × 5.3 × 74.1 | triangles 5516 |
@@ -68,7 +69,7 @@ All 18 models come from **`Factory Speghetti AMS.3mf`**, which the designer says
 | control-module | player | 4,100 → 120 | 120 | 5.0 | 16.0 × 2.0 × 16.0 | "Number Tiles AMS", part Body12 |
 | control-module-tray | black | 69,026 → 3,000 | 3,000 | 127.7 | 80.9 × 10.4 × 141.6 | tray assembly (triangles 83682), second part |
 
-Every model is within its budget (tiles ≤ 2,500, mines ≤ 6,000, small pieces ≤ 800, Control Module tile 120; the tray and belt had no budget in the brief and were set to 3,000 and 1,500). The `.glb` files total **1,231,760 bytes (1.17 MB)**; with the manifest the folder is about 1.25 MB, under the 1.5 MB limit.
+Every model is within its budget (tiles ≤ 2,500, mines ≤ 6,000, small pieces ≤ 800, Control Module tile 120; the tray and belt had no budget in the brief and were set to 3,000 and 1,500). The `.glb` files total **1,231,756 bytes (1.17 MB)**; with the manifest the folder is about 1.25 MB, under the 1.5 MB limit.
 
 "Item in the AMS file" says how the config finds the piece on the print plate: by the triangle count of the whole build item, by the object name Bambu Studio shows, or by taking one copy out of an assembly of copies (`partIndex`).
 
@@ -79,7 +80,7 @@ All colours come from the AMS file itself (`Metadata/project_settings.config` �
 | Filament | Colour | Material name | Used for |
 |---|---|---|---|
 | 1 | #000000 | `inlay-black`, `black` | outlines, belt stubs, mine rays, disc and tracks, "+" marks, bolt on the power token (`inlay-black`); the Control Module tray (`black`) |
-| 2 | #D6D3D3 | `body` | tiles, mines 2 and 3 |
+| 2 | #D6D3D3 | `body` | tiles and all three mines |
 | 3 | #0086D6 | `icon-blue` | the stacked-square "+" icons on the mines |
 | 3 / 4 | #0086D6 / #71D0FF | `player` | meeple and Control Module tile (3), belt (4); tinted at runtime |
 | 5 | #B7EC00 | `yellow-green` | tesseract, starting-player piece |
@@ -87,12 +88,13 @@ All colours come from the AMS file itself (`Metadata/project_settings.config` �
 | 7 | #6BFA27 | `icon-green` | plate, parallelogram icon on mine 2 |
 | 8 | #A4FFA6 | `icon-green-light` | ore, material icons on the factory tiles, double-triangle icon on mine 1 |
 | 9 | #F9FF09 | `bolt-yellow` | lightning bolts on the factory and power-plant tiles, power token |
-| 10 | #A0A0A0 | `body-dark` | Mine 1 body (painted this grey in the file) |
+| 10 | #A0A0A0 | `body` (drawn #D6D3D3) | Mine 1 body: painted this grey in the file, drawn white like the other board pieces (see below) |
 
 Nothing was guessed by eye. Some choices were made on top of the file's data:
 
 - The blue "+" icons on the mines use filament 3. That is the same slot as the meeple and Control Modules, but a mine belongs to nobody, so the icons are a fixed `icon-blue` and are not tinted.
 - The colours are Bambu Studio's filament-slot colours. They match the designer's current renders in `docs/reference/`. They are not the colours seen in the older photos (for example, the tesseracts there are black glitter).
+- Mine 1's body is painted grey (filament 10, #A0A0A0) in the print file. The designer asked for the starting mine to be the same white as the other board pieces, so filament 10 maps to `body` (#D6D3D3). Its black tracks and coloured symbols are unchanged.
 - Pure black (#000000) is used as given. In the gallery, black parts only show their shape through lighting.
 
 ## What was not converted, and why
