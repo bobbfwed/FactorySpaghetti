@@ -1,0 +1,116 @@
+> Authored by Brandon Nimon. This reflects v0.61 **with all confirmed changes applied.** Where a value is "tunable," it lives in `config.ts`.
+
+## Components (per player)
+- 18 **Control Modules** (numbered 1–18) — *formerly "Number Tiles."*
+- 1 meeple, 3 Power Tokens, 5 belts, **4 teleporters**.
+
+## Board pieces & stacks
+99 pieces: 3 Mines (double-size), 19 Plate factories, 13 Sphere factories, 9 Tesseract factories, 12 Power Plants, 43 blank/belt pieces. Split into three face-down stacks; stacks 2 and 3 sit under mines 2 and 3 and are unavailable until that mine is in play. **Stack composition is a tunable config table** (the v0.61 numbers are the starting point; see `RULES_CHANGES.md` #13).
+
+## Materials & values
+Ore 1 · Plate 3 · Sphere 7 · Tesseract 23. Inventory cap: 6 per material; Power Tokens cap 10.
+
+## Turn structure
+1. Place a board piece (adjacent to existing; from any *available* stack).
+2. Roll dice — **one die per mine on the board.**
+3. Actions: buy/place belts, buy cards/mines, place teleporters, exchange with bank.
+4. Place meeple (on an owned building, or a mine point).
+Cards may be played anytime on your turn (max 2/turn); any number may be purchased.
+At **round end**, each player takes a turn to claim buildings / upgrade Control Modules / operate their meeple building. This turn is time-limited (host-adjustable, default **20 s**, resets on each action) so an idle player can't stall the table; on timeout it auto-ends.
+
+## Production
+- A roll activates **all** buildings (any owner) whose Control Module equals the dice sum — on **anyone's** turn (this is what lets teleporters and cross-turn play work). **(OQ-1 resolved.)**
+- **Operating an activated factory is the OWNER's choice, not automatic.** When your factory is activated (even on another player's turn), you are prompted to **operate** (pay the power + consume the inputs) or **skip** — so a roll can never spend your power/materials without consent. In multiplayer there is a host-adjustable timeout (default **8 s**); if you don't respond it defaults to **operate** when affordable, else skip. Power Plants are exempt — they auto-operate (there's no downside to gaining tokens).
+- To operate a factory: required inputs present in input buffer + pay **1 Power Token per input consumed** (Plate=1, Sphere=2, Tesseract=3). All inputs consumed; product goes to **output buffer** (holds 1 at a time).
+- Power Plants: no power cost; rolling their number yields ≥1 Power Token. If a material sits in input, it's consumed for more tokens per the 1/2/5/10 chart (Tesseracts may **not** be used in a Power Plant).
+- Output buffer full + same number rolled again = no new production.
+- Produced material **stays in the output buffer** — it is never automatically banked. It is inaccessible to the owner **unless** they have their meeple on that building this round **or** a teleporter on its output (see below).
+- With a meeple on the building this round, collecting the output buffer into inventory is **optional**: the player may collect it (respecting caps), only load inputs from inventory, or do neither. Uncollected output remains in the buffer (and may flow to a connected building's input). Input buffers are never "collected" — only the output buffer is.
+
+## Factories (recipes)
+The exact valid input sets (the single source of truth is `config.FACTORY_RECIPES`; the
+same table governs both what may be **loaded** into an input buffer and what allows a
+factory to **operate**):
+- **Plate:** Ore → 1 Plate.
+- **Sphere:** (Ore + Plate) or (Plate + Plate) → 1 Sphere.
+- **Tesseract:** (Ore + Plate + Sphere) or (Ore + Sphere + Sphere) or (Plate + Sphere + Sphere) or (Sphere + Sphere + Sphere) or (Plate + Plate + Sphere) → 1 Tesseract.
+- Input slots are interchangeable (order doesn't matter; inputs are matched as a set).
+- A material may only be **loaded** into an input if doing so keeps a valid recipe reachable
+  (e.g. you cannot load a second Ore into a Sphere Factory — there is no Ore+Ore recipe).
+
+## Material flow
+- **Direct adjacency:** output of one piece touching the input of another moves material for free.
+- **Belts:** link two connection points *within a single piece* (don't bridge pieces); chain to span distance. Must run mine→input or output→input. Valid placement requires start/end separated by **more than two** connection points. A belt endpoint may **not** connect across a shared edge to **another player's belt**, nor **block another player's building input** (sit on the point feeding it). A placed point is locked to its owner. One belt to a mine per turn. Belts are purchasable (cost 1) and freely removable by their owner (returned to bank). One player's belt cannot feed another player's building.
+- **Teleporters (NEW):** 4 per player, placed on a buffer of a building **you own**. **Permanent — never removable; a fixture of that building.** One teleporter per buffer (both buffers of a building = 2 teleporters).
+  - On an **input** buffer: your inventory may feed that building's required inputs **when the building needs them to operate, at any point during anyone's turn.**
+  - On an **output** buffer: material in that buffer goes to your inventory (bypasses the meeple-access rule), respecting the 6-per-material cap. This happens the instant it's produced **and** continuously drains the buffer whenever your inventory has room — so material never sits stuck under a teleporter (e.g. produced before you placed it, or overflow from when you were at cap). Only true overflow (inventory at cap) stays in the buffer, until room opens up.
+  - **Cost = (teleporters already on the board, all players) + 1.** (Because they're non-removable, "on the board" = "ever placed.") So 1, 2, 3, … globally.
+
+## Buildings: claiming & upgrading
+- **Control Module upgrades are a currency** earned only from meeple on mine upgrade points, the end-of-round free upgrades (**= #mines**, usable only to raise one in-play module), or cards (e.g. Production Increase). **Upgrades are never bought with materials** — there is no mechanism to exchange ore (or any material) for module upgrades.
+- **Upgrade:** swap a building's module for a higher available one; cost = numeric difference, paid from upgrade-currency.
+- **Claim:** place an available module on an unclaimed building; initial value = **#mines** (so "1" is unusable at 2 mines, etc.). Claiming and upgrading combine: placing module *M* costs **(M − #mines + 1)** upgrade-units. A building may be claimed up to **3 times** by the same player.
+
+## Mines (CHANGED)
+- Mine count drives: dice count, card price, claim floor, end-of-round upgrades, and card scaling.
+- A mine may still be **purchased** (2nd = 6, 3rd = 18 — *price tunable*) and placed immediately.
+- **NEW:** the next mine **auto-drops when the current stack is exhausted**, which also unlocks that mine's stack. Either path (buy or auto-drop) advances mine count identically.
+- A mine is a double-hex piece (a rich hex + a lean hex sharing one internal edge). Ore exits at its **ore-output** points: the rich hex has outputs on both points of all 5 external edges; the **lean hex has 3 outputs** — one on every-other external edge (see `RULES_CHANGES.md` #17). Belts never attach to a mine; ore flows from an ore-output to a directly-adjacent (or belt-connected) input.
+
+## Purchases & costs
+- Belt: 1. Teleporter: global count + 1. Mine: 6 / 18 (tunable). **Card: #mines + 1** (formula tunable — see `RULES_CHANGES.md` #14).
+- Exchange materials *down* with the bank only. Trade Power Tokens player-to-player freely (no bank market). Material trades between players discouraged, not enforced.
+
+## Leverage cards
+Max 2 played per turn; buy any number. Some are **play-on-draw** (resolve immediately on purchase). Counts are tunable in config.
+
+| Card | Effect | Copies |
+|---|---|---|
+| Scouting Drone | Look through the draw pile, choose a piece, add it now. | 6 |
+| Short Sale | Claim a building with your **lowest available** Control Module (not below the mine floor). | 4 |
+| Embezzlement *(nerfed — pending)* | Take a **Sphere** from the bank regardless of mine count. *(Default nerf; see OQ-2.)* | 2 |
+| Sink Hole | Discard any unclaimed board piece (not mines); its belts return to bank. | 6 |
+| Overstock Supplies *(play-on-draw)* | Draw 3 pieces and place them per normal placement rules. | 6 |
+| Net Surplus Sell Off | Each player gives you 3 Power Tokens (or all they have); clockwise; stop once you hit the 10 cap. | 4 |
+| Changing Priorities | Move a Control Module from one of your claimed buildings to another (≤3/building). A tile-less building becomes claimable by anyone. | 6 |
+| Production Increase | Play 4 upgrades per claim/upgrade rules; may claim, but only 1 building claimed per turn. | 6 |
+| Mine Inspection *(play-on-draw)* | Take 1 Plate from the bank per mine in play. | 6 |
+| **Personal Jet Pack** *(NEW)* | Collect material from **all your factories' output buffers** into inventory (respects caps). | 4 |
+| **Asset Forfeiture** *(NEW)* | Remove **all Plates from every output buffer (yours and opponents')**; you keep up to your cap, the rest go to the bank. | 4 |
+| **R&D Tax Write-Off** *(NEW)* | Place a teleporter on one of your buildings for free. *(Counts toward your 4-limit and ticks the global cost counter — see OQ-3.)* | 4 |
+| **Solar Flare** *(NEW, play-on-draw)* | All players receive 2 Power Tokens (respects 10 cap). | 4 |
+
+*Removed: Eminent Domain.*
+
+## Bonus Tesseracts (behind `config.bonusesEnabled`)
+Each grants 1 Tesseract **toward winning only** (not tradable/usable as a resource). Only one player holds each; it moves the instant someone surpasses the holder.
+- **The Investor:** highest claiming Control Module, must be ≥10.
+- **Belt Weaver:** longest continuous valid belt chain connecting ≥2 buildings (or a mine + building); passes through but doesn't include claimed factories; ≥8 belts.
+- **Factory Empire:** most buildings claimed (multi-claims don't count); ≥6.
+- **CLARIFIED (#7/#10):** a bonus counts **only while its card is face-up in front of you.** If you haven't claimed it, you don't have it — no retroactive "I had it the whole time." This is the punishment for not claiming at the right time.
+
+## Winning (CLARIFIED #7/#10)
+- **You may declare victory only on your own turn**, by showing **4 Tesseracts** (real + face-up bonuses). Turn order therefore makes "simultaneous" wins impossible — the first player to *prove* it during their turn wins.
+- **Board-exhaustion ending:** if all pieces are played, finish the round; winner = **most resource points**. Tiebreak ladder: most Tesseracts → Spheres → Plates → Ore → earliest in turn order (else shared win). Reads correctly with bonuses on or off.
+
+## Setup (runs once before Turn 1)
+
+All randomness uses the seeded RNG so `createGame(seed, playerCount)` is fully deterministic.
+
+**S1 — Components.** Each player receives: 18 Control Modules (1–18, all in tray), 1 meeple, 3 Power Tokens, 5 belts, 4 teleporters.
+
+**S2 — Leverage deck.** Assemble per card-count config, shuffle (seeded), set as draw pile.
+
+**S3 — Three stacks.** Build from `STACK_COMPOSITION[playerCount]` and shuffle each (seeded). Stacks 2 and 3 are **locked** until their mine enters play (purchase or auto-drop).
+
+**S4 — Place Mine 1.** Board origin, rotation 0, fixed deterministically.
+
+**S5 — Starting pieces.** Pull from stack 1 per player: 1 Power Plant + 1 Plate Factory + 2 blanks (= 4 × playerCount pieces total). Shuffle together (seeded), assign random rotations (seeded), then place them clockwise around the mine footprint. Remainder of stack 1 becomes the active draw pile.
+
+**S6 — Starting player.** Determined by a seeded roll.
+
+**S7 — Initial claims (two passes, no ore cost, fixed Control Modules).**
+- **Phase A — Plate Factories, round-robin** (starting player first, forward turn order): each claims a Plate Factory with their **"3"** module.
+- **Phase B — Power Plants, reverse round-robin** (last player first, reverse turn order): each claims a Power Plant with their **"2"** module.
+
+*Flags still open: stack-count labels may be swapped for 2p/3p (FLAG-1); starting-player may be passed explicitly (FLAG-4); clockwise-ring geometry ties to the M1 hex system (FLAG-3).*

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(node -e ' *)",
+      "Bash(npx tsx -e ' *)",
+      "Bash(npx vite *)",
+      "Bash(npx eslint *)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(sed -n '1,40p' src/sim/runGames.ts)",
+      "Bash(ls src/sim)",
+      "Bash(xargs grep -l \"runGame\\\\|randomBot\\\\|fuzz\")",
+      "PowerShell(npx vite build 2>&1)"
+    ]
+  }
+}
