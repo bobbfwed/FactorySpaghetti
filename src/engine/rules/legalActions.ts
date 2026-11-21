@@ -4,12 +4,12 @@
 // bots and the sim generate them externally and pass them as ROLL_DICE actions.
 
 import type { GameState, PlayerId, HexCoord } from '../state';
-import type { Action } from '../actions';
+import type { Action, OperateBuildingAction } from '../actions';
 import type { CardType } from '../config';
-import { MINE_COSTS, cardCost, PIECE_TEMPLATES, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP } from '../config';
+import { MINE_COSTS, cardCost, PIECE_TEMPLATES, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
 import type { Material } from '../config';
 import { tryPayExact, beltEndpointFacesMine, beltEndpointBlocked } from './flow';
-import { factoryCanOperate, canLoadMaterial } from './production';
+import { applyOperateBuilding, canLoadMaterial } from './production';
 import {
   hexNeighbours,
   isCoordsOccupied,
@@ -32,7 +32,11 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
   if (myPending.length > 0) {
     const acts: Action[] = [];
     for (const e of myPending) {
-      acts.push({ type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: playerId });
+      // Operating is offered only while the engine would accept it: an entry can go stale
+      // (e.g. a co-owner already operated the same building, so its output buffer is full).
+      // Skipping is always accepted for a pending entry.
+      const operate: OperateBuildingAction = { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: playerId };
+      if (canOperate(state, operate)) acts.push(operate);
       acts.push({ type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: playerId });
     }
     return acts;
@@ -51,7 +55,24 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
   }
 }
 
+// Probe the engine's own OPERATE_BUILDING check, so the list can never disagree with it
+// (output buffer, recipe, power, input-teleporter completion, once-per-round-end meeple use).
+function canOperate(state: GameState, action: OperateBuildingAction): boolean {
+  return applyOperateBuilding(state, action).ok;
+}
+
 // ── Hex helpers ───────────────────────────────────────────────────────────────
+
+// Every (cell, rotation) a single-hex tile may be put down at: any free cell adjacent to the
+// board, any of the six rotations. Shared by PLACE_PIECE, PLACE_OVERSTOCK_PIECE and the
+// Scouting Drone, which the engine all validate the same way (free + adjacent).
+function tilePlacements(state: GameState): Array<{ coord: HexCoord; rotation: number }> {
+  const out: Array<{ coord: HexCoord; rotation: number }> = [];
+  for (const coord of adjacentFreeCoords(state)) {
+    for (const rotation of ROTATIONS) out.push({ coord, rotation });
+  }
+  return out;
+}
 
 // All unoccupied hexes adjacent to any currently occupied board coord.
 function adjacentFreeCoords(state: GameState): HexCoord[] {
@@ -88,15 +109,13 @@ function computePlacePiece(state: GameState): Action[] {
   if (state.pendingMineIds.length > 0) return computePlaceMineActions(state);
 
   const actions: Action[] = [];
-  const coords = adjacentFreeCoords(state);
+  const placements = tilePlacements(state);
 
   for (let si = 0; si <= 2; si++) {
     const stack = state.stacks[si as 0 | 1 | 2];
     if (!stack.available || stack.pieces.length === 0) continue;
-    for (const coord of coords) {
-      for (const r of ROTATIONS) {
-        actions.push({ type: 'PLACE_PIECE', stackIndex: si as 0 | 1 | 2, coord, rotation: r });
-      }
+    for (const { coord, rotation } of placements) {
+      actions.push({ type: 'PLACE_PIECE', stackIndex: si as 0 | 1 | 2, coord, rotation });
     }
   }
   return actions;
@@ -132,7 +151,7 @@ function computeActions(state: GameState, playerId: PlayerId): Action[] {
     addOverstockPlacements(state, actions);
   }
 
-  if (state.cardsPlayedThisTurn < 2) addCardPlays(state, playerId, actions);
+  if (state.cardsPlayedThisTurn < MAX_CARDS_PLAYED_PER_TURN) addCardPlays(state, playerId, actions);
 
   addBuyCard(state, playerId, actions);
   addBuyBelt(state, playerId, actions);
@@ -166,11 +185,8 @@ function computeActions(state: GameState, playerId: PlayerId): Action[] {
 // ── actions phase helpers ─────────────────────────────────────────────────────
 
 function addOverstockPlacements(state: GameState, out: Action[]) {
-  const coords = adjacentFreeCoords(state);
-  for (const coord of coords) {
-    for (const r of ROTATIONS) {
-      out.push({ type: 'PLACE_OVERSTOCK_PIECE', coord, rotation: r });
-    }
+  for (const { coord, rotation } of tilePlacements(state)) {
+    out.push({ type: 'PLACE_OVERSTOCK_PIECE', coord, rotation });
   }
 }
 
@@ -210,7 +226,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       if (!hasValidModule) break;
       for (const piece of state.board) {
         if (piece.type === 'blank' || piece.type === 'mine') continue;
-        if (piece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+        if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
         out.push({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId: piece.id });
       }
       break;
@@ -233,7 +249,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
           for (const toPiece of state.board) {
             if (toPiece.type === 'mine' || toPiece.type === 'blank') continue;
             if (toPiece.id === fromPiece.id) continue;
-            if (toPiece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+            if (toPiece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
             out.push({
               type: 'PLAY_CARD', cardType: 'changingPriorities',
               pieceId: fromPiece.id, toPieceId: toPiece.id, controlModule: claim.controlModule,
@@ -260,17 +276,19 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
     }
 
     case 'scoutingDrone': {
-      const coords = adjacentFreeCoords(state);
-      if (coords.length === 0) break;
-      const coord = coords[0]!;
+      // The chosen piece goes down exactly like a normally placed tile: any free cell
+      // adjacent to the board, any rotation (resolveScoutingDrone checks the same).
+      const placements = tilePlacements(state);
       for (let si = 0; si <= 2; si++) {
         const stack = state.stacks[si as 0 | 1 | 2];
         if (!stack.available) continue;
         for (let pi = 0; pi < Math.min(stack.pieces.length, 5); pi++) {
-          out.push({
-            type: 'PLAY_CARD', cardType: 'scoutingDrone',
-            stackIndex: si as 0 | 1 | 2, pieceIndex: pi, coord, rotation: 0,
-          });
+          for (const { coord, rotation } of placements) {
+            out.push({
+              type: 'PLAY_CARD', cardType: 'scoutingDrone',
+              stackIndex: si as 0 | 1 | 2, pieceIndex: pi, coord, rotation,
+            });
+          }
         }
       }
       break;
@@ -293,7 +311,7 @@ function addClaimBuilding(
     if (piece.type === 'blank' || piece.type === 'mine') continue;
     // Only one player may claim a building
     if (piece.claims.length > 0 && piece.claims[0]!.ownerId !== playerId) continue;
-    if (piece.claims.filter(c => c.ownerId === playerId).length >= 3) continue;
+    if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
     for (const module of validModules) {
       // Claiming never costs materials. Placing module M draws (M − mineCount + 1)
       // upgrade-units from whichever budget funds this claim (mine credits or PI).
@@ -391,8 +409,11 @@ function computeRoundEnd(state: GameState, playerId: PlayerId): Action[] {
       }
       // Operate building if it can currently produce — but only ONCE per round end.
       // (Loading input before/after operating is still allowed via LOAD_BUILDING_INPUT.)
-      if (!player.meepleOperatedThisRound && factoryCanOperate(piece, player)) {
-        actions.push({ type: 'OPERATE_BUILDING', pieceId: piece.id });
+      // Probed against the engine, so an input teleporter that completes the recipe from
+      // inventory counts exactly as applyOperateBuilding allows.
+      const operate: OperateBuildingAction = { type: 'OPERATE_BUILDING', pieceId: piece.id };
+      if (!player.meepleOperatedThisRound && canOperate(state, operate)) {
+        actions.push(operate);
       }
       // Collect output buffer → inventory (optional; only the building's own output).
       if (piece.output && piece.output.slots.some(s => s !== null && player.inventory[s] < INVENTORY_CAP)) {
@@ -489,7 +510,7 @@ function addRemoveBelt(state: GameState, playerId: PlayerId, out: Action[]) {
 function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[]) {
   const player = state.players[playerId];
   if (!player || player.teleportersRemaining <= 0) return;
-  if (tryPayExact(player.inventory, state.globalTeleporterCount + 1) === null) return;
+  if (tryPayExact(player.inventory, teleporterCost(state.globalTeleporterCount)) === null) return;
 
   for (const piece of state.board) {
     if (!piece.claims.some(c => c.ownerId === playerId)) continue;

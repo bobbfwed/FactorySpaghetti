@@ -1,0 +1,646 @@
+/* The table game screen: the 3D table fills the window and the interface floats over it.
+   Design language from docs/mockups (ui.css, desktop.css, phone.css): matte black printed-tray
+   panels, off-white text, gold primary, player colours, heavy numerals. */
+
+html.tg-active, html.tg-active body { height: 100%; overflow: hidden; overscroll-behavior: none; }
+html.tg-active body { position: fixed; inset: 0; width: 100%; }
+html.tg-active #app { min-height: 0; height: 100%; }
+
+.tg {
+  position: fixed; inset: 0; overflow: hidden; background: #1d130c; color: var(--text);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --bottom-h: 260px;
+}
+.tg-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+/* The HUD keeps to the safe area (notch, rounded corners, gesture bar); every panel inside follows. */
+.tg-hud {
+  position: absolute; pointer-events: none;
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+}
+.tg-slot { display: contents; }
+.tg-slot > * { pointer-events: auto; }
+.tg-seats, .tg-cam, .tg-toprow, .tg-chips, .tg-edgetabs { pointer-events: none !important; }
+.tg-seats > *, .tg-cam > *, .tg-toprow > *, .tg-chips > *, .tg-edgetabs > * { pointer-events: auto; }
+.tg-flash { pointer-events: none !important; }
+.tg button { touch-action: manipulation; }
+.tg .grow { flex: 1; }
+.tg .ic.small { width: 16px; height: 16px; }
+.tg .ic.gold { color: var(--gold); }
+.tg .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.tg .label.gold { color: var(--gold); }
+.tg-loading {
+  position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%); display: flex; gap: 10px; align-items: center;
+  padding: 12px 16px; border-radius: 12px; background: rgba(20, 20, 22, 0.9); color: var(--text-2); font-size: 14px;
+}
+
+/* ---- shared buttons ---- */
+.tg .round {
+  width: 44px; height: 44px; border-radius: 50%; display: inline-grid; place-items: center; flex: none;
+  background: rgba(20, 20, 22, 0.9); color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 6px 16px rgba(0, 0, 0, 0.45);
+}
+.tg .round .ic { width: 20px; height: 20px; }
+.tg .round.on, .tg .round.open { box-shadow: 0 0 0 2px var(--gold), 0 6px 16px rgba(0, 0, 0, 0.45); color: var(--gold); }
+.tg .round.small { width: 34px; height: 34px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12); background: #1f1f23; }
+.tg .round.small .ic { width: 16px; height: 16px; }
+.tg .btn.is-disabled { opacity: 0.5; filter: saturate(0.4); }
+.tg-btnrow { display: flex; gap: 10px; align-items: center; }
+.tg-btnrow .btn { flex: 1 1 0; min-width: 0; }
+
+/* ---- pips, counts, modules, cards ---- */
+.tg-pips { display: inline-flex; gap: 3px; align-items: center; flex: none; }
+.tg-pip { display: inline-block; width: 15px; height: 15px; }
+.tg-pip svg { width: 100%; height: 100%; display: block; }
+.tg-count { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; white-space: nowrap; }
+.tg-count .ic { width: 17px; height: 17px; }
+.tg-count .num { font-size: 15px; }
+.tg-count.zero { opacity: 0.55; }
+.tg-counts { display: flex; flex-wrap: wrap; gap: 2px 12px; min-width: 0; }
+
+.tg-modwrap { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.tg-modtray {
+  display: grid; grid-template-columns: repeat(3, var(--m, 22px)); gap: var(--mg, 4px); padding: 6px; background: #0b0b0c; border-radius: 8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), inset 0 2px 5px rgba(0, 0, 0, 0.9);
+}
+.tg-modwrap.desk .tg-modtray { --m: 19px; --mg: 3px; padding: 5px; }
+.tg-modwrap.phone .tg-modtray { --m: 44px; --mg: 5px; padding: 7px; border-radius: 10px; }
+.tg-modtray.has-lit { box-shadow: 0 0 0 2px rgba(232, 183, 48, 0.55), inset 0 2px 5px rgba(0, 0, 0, 0.9); }
+.tg-mod {
+  position: relative; width: var(--m); height: var(--m); border-radius: calc(var(--m) * 0.18);
+  display: grid; place-items: center; color: #0d0d0d; font-weight: 900; font-size: calc(var(--m) * 0.5);
+  font-family: var(--heavy); letter-spacing: -0.04em; padding: 0;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+.tg-mod.u .n { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 1px; }
+.tg-modtray.has-lit .tg-mod:not(.lit):not(.empty) { opacity: 0.35; }
+.tg-mod.empty {
+  background: #151517; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  background-image: linear-gradient(135deg, transparent 0 18%, rgba(255, 255, 255, 0.10) 18% 23%, transparent 23% 77%, rgba(255, 255, 255, 0.10) 77% 82%, transparent 82%);
+}
+.tg-mod.lit { outline: 2px solid var(--gold); outline-offset: 2px; box-shadow: 0 0 14px rgba(232, 183, 48, 0.7); cursor: pointer; animation: tg-glow 1.4s ease-in-out infinite alternate; }
+.tg-mod .cost {
+  position: absolute; right: -6px; top: -7px; min-width: 15px; height: 15px; padding: 0 3px; border-radius: 8px;
+  background: var(--gold); color: var(--ink); font: 900 10px/15px system-ui, sans-serif; letter-spacing: 0;
+}
+.tg-modwrap.phone .tg-mod .cost { min-width: 20px; height: 20px; font-size: 12px; line-height: 20px; border-radius: 10px; }
+.tg-modnote { font-size: 11px; color: var(--gold); }
+@keyframes tg-glow { from { box-shadow: 0 0 6px rgba(232, 183, 48, 0.45); } to { box-shadow: 0 0 16px rgba(232, 183, 48, 0.9); } }
+
+.tg-card {
+  width: 112px; height: 156px; border-radius: 9px; background: #f6f3ec; color: #1d1b18; position: relative; overflow: hidden;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.4); flex: none; display: flex; flex-direction: column; text-align: left;
+}
+.tg-card::after { content: ""; position: absolute; inset: 4px; border: 1.5px solid #d9ab3c; border-radius: 6px; pointer-events: none; }
+.tg-card .top { background: var(--ink); color: var(--gold); font-size: 8px; font-weight: 800; letter-spacing: 0.12em; padding: 9px 10px 4px; }
+.tg-card .band { background: var(--gold); padding: 5px 10px 6px; font-weight: 900; font-size: 12.5px; line-height: 1.1; color: var(--ink); display: flex; gap: 4px; justify-content: space-between; }
+.tg-card .band .x { font-size: 11px; }
+.tg-card .txt { padding: 7px 10px 0; font-size: 10px; line-height: 1.3; color: #3a3631; flex: 1; overflow: hidden; }
+.tg-card .foot { background: var(--ink); color: var(--gold); font-size: 8px; font-weight: 700; padding: 6px 10px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-card.off { filter: saturate(0.5) brightness(0.8); }
+.tg-card.big { width: min(280px, 78vw); height: auto; min-height: 330px; border-radius: 16px; }
+.tg-card.big::after { inset: 7px; border-width: 2px; border-radius: 11px; }
+.tg-card.big .top { font-size: 12px; padding: 16px 18px 6px; }
+.tg-card.big .band { font-size: 24px; padding: 10px 18px 12px; }
+.tg-card.big .band .x { font-size: 18px; }
+.tg-card.big .txt { font-size: 17px; line-height: 1.45; padding: 16px 18px; }
+.tg-card.big .foot { font-size: 12px; padding: 11px 18px 13px; }
+
+.tg-die { position: relative; width: 22px; height: 22px; border-radius: 5px; background: #f4f1ea; display: inline-block; flex: none; box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.2); }
+.tg-die i { position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #111; }
+
+.tg-sechd { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+.tg-sechd .muted { font-size: 12px; }
+
+/* ---- top left: menu ---- */
+.tg-menubtn { position: absolute; top: 16px; left: 16px; }
+.tg-menu { position: absolute; top: 68px; left: 16px; width: 270px; padding: 6px; z-index: 30; display: flex; flex-direction: column; }
+.tg-menu .item { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 10px; font-size: 14.5px; font-weight: 600; width: 100%; text-align: left; }
+.tg-menu .item:hover { background: #232327; }
+.tg-menu .item .ic { width: 18px; height: 18px; color: var(--text-2); }
+.tg-menu .item.danger, .tg-menu .item.danger .ic { color: #ff8a8f; }
+.tg-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 6px; width: calc(100% - 12px); }
+.tg-menu .switch-item .knob { margin-left: auto; width: 38px; height: 22px; border-radius: 11px; background: #2a2a2e; position: relative; flex: none; }
+.tg-menu .switch-item .knob::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transition: left 0.15s; }
+.tg-menu .switch-item.on .knob { background: var(--gold); }
+.tg-menu .switch-item.on .knob::after { left: 19px; background: var(--ink); }
+
+/* ---- opponents: plates ---- */
+.tg-seats { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; width: calc(100% - 360px); max-width: 1240px; justify-content: center; }
+.tg-plate { display: flex; align-items: stretch; overflow: hidden; min-height: 70px; flex: 1 1 0; max-width: 400px; min-width: 0; text-align: left; padding: 0; }
+.tg-plate .stripe, .tg-chip .stripe { width: 8px; flex: none; background: var(--seat); }
+.tg-plate .body { padding: 9px 14px 9px 12px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; flex: 1; min-width: 0; }
+.tg-plate .row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tg-plate .name { font-weight: 800; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.tg-plate .status { font-size: 12px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+.tg-plate .status.is-warn, .tg-chip .st.is-warn { color: var(--warn); }
+.tg-plate.turn, .tg-chip.turn { box-shadow: 0 0 0 2px var(--seat), 0 12px 32px rgba(0, 0, 0, 0.5); }
+.tg-plate.open { box-shadow: 0 0 0 2px var(--text-2), 0 12px 32px rgba(0, 0, 0, 0.5); }
+.tg-cd-inline { font-variant-numeric: tabular-nums; font-weight: 800; color: #ffd27a; }
+
+.tg-seatpop { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: min(420px, calc(100% - 32px)); padding: 12px 14px; z-index: 25; }
+.tg-seatpop .hd { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 16px; }
+.tg-seatpop .sw { background: var(--seat); }
+.tg-kvs { display: flex; flex-direction: column; }
+.tg-kv { display: flex; gap: 12px; justify-content: space-between; align-items: baseline; padding: 7px 2px; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.tg-kv:last-child { border-bottom: 0; }
+.tg-kv .k { color: var(--text-2); flex: none; }
+.tg-kv .v { text-align: right; overflow-wrap: anywhere; min-width: 0; }
+
+/* ---- camera ---- */
+.tg-cam { position: absolute; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 2; }
+
+/* ---- bank ---- */
+.tg-bank { position: absolute; top: 72px; right: 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 8px 10px 10px; width: 300px; }
+.tg-bank .label { grid-column: 1 / -1; padding: 0 4px 2px; }
+.tg-bchip {
+  display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border-radius: 9px; background: #1f1f23;
+  font-size: 13.5px; font-weight: 650; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); text-align: left;
+}
+.tg-bchip:hover:not(.off) { background: #2a2a2f; box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.5); }
+.tg-bchip .num, .tg-brow .num { margin-left: auto; font-size: 16px; }
+.tg-bchip.wide { grid-column: 1 / -1; }
+.tg-bchip.off, .tg-brow.off { opacity: 0.5; }
+
+/* ---- right edge: reference panel ---- */
+.tg-edgetabs { position: absolute; right: 0; top: 250px; display: flex; flex-direction: column; gap: 6px; }
+.tg-edgetabs button {
+  writing-mode: vertical-rl; transform: rotate(180deg); padding: 14px 10px; min-height: 64px; width: 40px;
+  border-radius: 0 12px 12px 0; background: rgba(20, 20, 22, 0.92); color: var(--text-2); font-weight: 700; font-size: 13px; letter-spacing: 0.04em;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.tg-edgetabs button.on { color: var(--ink); background: var(--gold); }
+.tg-edgetabs.shifted { right: 384px; }
+.tg-side { position: absolute; top: 72px; right: 16px; width: 360px; bottom: calc(var(--bottom-h) + 8px); z-index: 20; display: flex; flex-direction: column; padding: 12px 6px 12px 14px; }
+.tg-side .hd { display: flex; align-items: center; justify-content: space-between; padding: 0 8px 8px 0; font-size: 15px; }
+.tg-side .body { overflow-y: auto; padding-right: 8px; touch-action: pan-y; overscroll-behavior: contain; user-select: text; -webkit-user-select: text; }
+
+.tg-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--text-2); }
+.tg-log li { display: flex; gap: 8px; align-items: baseline; }
+.tg-log .sw { width: 9px; height: 9px; border-radius: 2px; transform: translateY(1px); }
+
+.tg-rules h3, .tg-sheetbody h3 { margin: 16px 0 8px; font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 800; }
+.tg-rules h3:first-child { margin-top: 2px; }
+.tg-rules p { font-size: 13.5px; line-height: 1.45; margin: 6px 0; }
+.tg-turnlist { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; line-height: 1.45; }
+.tg-rrow { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+.tg-rrow .k { display: inline-flex; align-items: center; gap: 8px; color: var(--text-2); }
+.tg-rrow .k .ic { width: 18px; height: 18px; }
+.tg-rrow .v { text-align: right; font-weight: 700; }
+.tg-values { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 10px 0 4px; font-size: 13px; color: var(--text-2); }
+.tg-values b { color: var(--text); }
+.tg-recipe { padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; }
+.tg-recipe b { grid-column: 1 / -1; }
+.tg-recipe .ins { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.tg-recipe .set { display: inline-flex; align-items: center; gap: 3px; }
+.tg-recipe .or { color: var(--text-3); font-size: 12px; margin-right: 5px; }
+.tg-recipe .plus { color: var(--text-3); font-size: 12px; }
+.tg-recipe .out { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; white-space: nowrap; }
+.tg-bonuses > p { font-size: 13.5px; line-height: 1.45; margin: 0 0 10px; }
+.tg-bonus { padding: 10px 12px; margin-bottom: 8px; }
+.tg-bonus .hd { display: flex; align-items: center; gap: 8px; }
+.tg-bonus .who { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.tg-bonus .who .sw { background: var(--seat); }
+.tg-bonus p { margin: 6px 0 0; font-size: 13px; line-height: 1.4; color: var(--text-2); }
+
+/* ---- roll chip and flashes ---- */
+.tg-roll { position: absolute; bottom: calc(var(--bottom-h) + 16px); left: 16px; display: flex; align-items: center; gap: 8px; padding: 7px 14px 7px 10px; font-weight: 800; font-size: 15px; z-index: 4; }
+.tg-roll .sw { background: var(--seat); }
+.tg-roll .big { font-size: 22px; color: var(--gold); }
+.tg-hud.desk .tg-slot.seatpop:not(:empty) ~ .tg-slot.roll .tg-roll { display: none; }
+.tg-flash { position: absolute; left: 0; top: 0; width: 72px; height: 72px; display: grid; place-items: center; z-index: 3; }
+.tg-flash .ring { position: absolute; inset: 0; border-radius: 50%; border: 4px solid var(--seat); box-shadow: 0 0 18px var(--seat); animation: tg-pulse 0.9s ease-out 3; }
+.tg-flash .lbl { position: absolute; top: 78px; white-space: nowrap; font-size: 11.5px; font-weight: 800; padding: 2px 7px; border-radius: 6px; background: rgba(20, 20, 22, 0.9); color: var(--text); }
+@keyframes tg-pulse { from { transform: scale(0.6); opacity: 1; } to { transform: scale(1.25); opacity: 0.2; } }
+@media (prefers-reduced-motion: reduce) { .tg-flash .ring, .tg-mod.lit { animation: none; } }
+
+/* ---- anchored popovers ---- */
+.tg-pop, .tg-prompt, .tg-confirm.anchored { position: absolute; left: 0; top: 0; z-index: 16; }
+.tg-ptr { position: absolute; width: 18px; height: 18px; background: var(--panel); transform: rotate(45deg); left: -8px; top: 24px; }
+.tg-pop { width: 330px; padding: 8px; }
+.tg-pop .hd { display: flex; align-items: flex-start; gap: 8px; padding: 4px 4px 10px 8px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.tg-pop .hd .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.tg-pop .hd .t { font-weight: 800; font-size: 15.5px; }
+.tg-pop .hd .sub { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+.tg-pop .item, .tg-choices .item {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 48px; padding: 7px 12px;
+  border-radius: 10px; font-size: 14px; font-weight: 650; width: 100%; text-align: left;
+}
+.tg-pop .item:hover:not(.off), .tg-choices .item:hover:not(.off) { background: #232327; box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.45); }
+.tg-pop .item .dt, .tg-choices .item .dt { font-size: 12.5px; color: var(--text-2); font-weight: 500; line-height: 1.35; }
+.tg-pop .item.off, .tg-choices .item.off { color: var(--text-3); }
+.tg-pop .item.off .dt, .tg-choices .item.off .dt { color: #c9a26a; }
+.tg-pop .item.danger, .tg-choices .item.danger { box-shadow: inset 3px 0 0 #ff8a8f; }
+.tg-pop .item .warnline { font-size: 11.5px; color: #ff9a9f; font-weight: 700; }
+
+.tg-prompt { width: 340px; padding: 12px; box-shadow: 0 0 0 2px var(--gold), 0 0 40px rgba(232, 183, 48, 0.28), 0 18px 40px rgba(0, 0, 0, 0.6); }
+.tg-prompt .tg-ptr { box-shadow: -2px 2px 0 0 var(--gold); }
+.tg-prompt[data-side="left"] .tg-ptr { box-shadow: 2px -2px 0 0 var(--gold); }
+.tg-prompt[data-side="below"] .tg-ptr { box-shadow: -2px -2px 0 0 var(--gold); }
+.tg-prompt[data-side="above"] .tg-ptr { box-shadow: 2px 2px 0 0 var(--gold); }
+.tg-prompt .t { font-weight: 850; font-size: 15.5px; line-height: 1.25; }
+.tg-prompt .recipe { padding: 9px 12px; margin: 10px 0; font-size: 13.5px; line-height: 1.35; }
+.tg-prompt .tg-btnrow .btn { height: 50px; font-size: 16px; }
+.tg-prompt.compact { width: min(300px, calc(100vw - 16px)); padding: 10px; }
+.tg-prompt.compact .t { font-size: 13.5px; margin-bottom: 8px; }
+.tg-prompt.compact .tg-btnrow .btn { height: 46px; }
+.tg-ring { position: relative; width: 50px; height: 50px; flex: none; }
+.tg-ring svg { width: 50px; height: 50px; transform: rotate(-90deg); display: block; }
+.tg-ring .v { position: absolute; inset: 0; display: grid; place-items: center; font-weight: 900; font-size: 17px; font-variant-numeric: tabular-nums; }
+.tg-also { margin-top: 10px; font-size: 11.5px; color: var(--text-2); display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.tg-also .tag { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 7px; border-radius: 6px; background: #222226; color: var(--text); font-weight: 650; }
+.tg-also .sw { width: 9px; height: 9px; background: var(--seat); }
+
+/* ---- confirm bar ---- */
+.tg-confirm { display: flex; align-items: center; gap: 12px; padding: 4px; }
+.tg-confirm .tg-sel { display: none; }
+.tg-confirm.docked { padding: 8px; border-radius: 40px; background: rgba(12, 12, 14, 0.8); position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--bottom-h) + 18px); z-index: 12; }
+.tg-confirm.docked .tg-sel { display: inline; padding: 0 6px 0 10px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+.tg .tg-cbtn { width: 58px; height: 58px; background: rgba(20, 20, 22, 0.95); }
+.tg .tg-cbtn .ic { width: 24px; height: 24px; }
+.tg .tg-cbtn.ok { background: linear-gradient(180deg, var(--gold-hi), var(--gold) 60%, #d6a524); color: var(--ink); box-shadow: 0 0 0 3px rgba(20, 20, 22, 0.6), 0 6px 18px rgba(232, 183, 48, 0.35); }
+
+/* ---- choices ---- */
+.tg-choices { position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--bottom-h) + 16px); width: min(460px, calc(100% - 32px)); max-height: 46vh; display: flex; flex-direction: column; padding: 10px; z-index: 14; }
+.tg-choices .hd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px 6px; font-size: 15px; }
+.tg-choices .list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
+
+/* ---- turn bar ---- */
+.tg-turnbar { position: absolute; left: 16px; right: 16px; bottom: 208px; display: flex; align-items: center; gap: 10px; padding: 0 14px 0 8px; height: 52px; }
+.tg-whose { display: inline-flex; align-items: center; gap: 7px; font-weight: 800; font-size: 14px; white-space: nowrap; padding: 0 4px; }
+.tg-whose .sw { background: var(--seat); }
+.tg-whose.mine { color: var(--gold); }
+.tg-steps { display: flex; gap: 4px; flex: none; }
+.tg-step { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px 0 6px; border-radius: 10px; color: var(--text-2); font-weight: 650; font-size: 14px; white-space: nowrap; }
+.tg-step .n { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; font-size: 13px; background: #2a2a2e; color: var(--text-2); }
+.tg-step.done { color: var(--text-3); }
+.tg-step.done .n { background: #222225; color: var(--text-3); }
+.tg-step.now { background: var(--gold); color: var(--ink); box-shadow: 0 4px 14px rgba(232, 183, 48, 0.25); padding-left: 12px; }
+.tg-step.now .n { background: var(--ink); color: var(--gold); margin-left: -6px; }
+.tg-step.now.other { background: var(--seat); color: #fff; box-shadow: none; }
+.tg-step.now.other .n { background: #fff; color: #222; }
+.tg-instr { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.tg-countdown { display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border-radius: 13px; background: rgba(232, 165, 58, 0.16); color: #ffd27a; font-size: 12.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tg-round { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; color: var(--text-2); font-size: 13px; white-space: nowrap; }
+.tg-round .num { color: var(--text); font-size: 20px; }
+
+/* ---- your area (desktop) ---- */
+.tg-yours { position: absolute; left: 16px; right: 16px; bottom: 14px; height: 184px; display: flex; align-items: stretch; gap: 14px; padding: 12px 14px; }
+.tg-yours .vr { width: 1px; background: var(--line); margin: 4px 0; flex: none; }
+.tg-sec { display: flex; flex-direction: column; gap: 6px; flex: none; min-width: 0; }
+.tg-sec.who { width: 186px; }
+.tg-sec.comps { width: 176px; justify-content: center; }
+.tg-sec.mats { width: 228px; justify-content: center; }
+.tg-sec.handsec { flex: 1 1 auto; min-width: 150px; }
+.tg-who { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 17px; min-width: 0; }
+.tg-who .sw { width: 14px; height: 14px; background: var(--seat); }
+.tg-who .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-who .muted { font-weight: 600; font-size: 13px; }
+.tg-kv2 { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); min-width: 0; }
+.tg-kv2 .v { margin-left: auto; color: var(--text); font-size: 12px; line-height: 1.25; text-align: right; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; min-width: 0; }
+.tg-kv2 .tg-pips { margin-left: auto; }
+.tg-kv2 .ic { width: 18px; height: 18px; }
+.tg-bonuschips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tg-bonuschip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: 6px; background: rgba(232, 183, 48, 0.14); color: var(--gold); font-size: 11.5px; font-weight: 800; }
+.tg-comp { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 8px; font-size: 13.5px; color: var(--text-2); text-align: left; width: 100%; }
+.tg-comp .ic { width: 22px; height: 22px; }
+.tg-comp .num { color: var(--text); font-size: 20px; }
+.tg-comp .num small { font-size: 11px; color: var(--text-3); font-weight: 700; }
+.tg-beltbtn.lit { box-shadow: inset 0 0 0 2px rgba(232, 183, 48, 0.65), inset 0 2px 6px rgba(0, 0, 0, 0.8); color: var(--text); }
+.tg-beltbtn.lit:hover { background: #17171a; }
+.tg-mats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tg-mat { display: flex; align-items: center; gap: 8px; height: 62px; padding: 0 12px; position: relative; }
+.tg-mat .ic { width: 28px; height: 28px; }
+.tg-mat .num { font-size: 24px; margin-left: auto; font-weight: 900; font-variant-numeric: tabular-nums; }
+.tg-mat .nm { font-size: 12px; color: var(--text-2); }
+.tg-mat.zero .num, .tg-mat.zero .nm { color: var(--text-3); }
+.tg-mat.zero .ic { opacity: 0.5; }
+.tg-mat.full { box-shadow: inset 0 0 0 2px rgba(232, 183, 48, 0.6), inset 0 2px 6px rgba(0, 0, 0, 0.8); }
+.tg-mat .cap { position: absolute; top: 4px; right: 8px; font-size: 10px; font-weight: 900; color: var(--gold); text-transform: uppercase; letter-spacing: 0.06em; }
+.tg-mat.small { height: 44px; padding: 0 10px; gap: 6px; }
+.tg-mat.small .nm { display: none; }
+.tg-mat.small .ic { width: 22px; height: 22px; }
+.tg-mat.small .num { font-size: 19px; }
+.tg-mat.small .cap { top: 2px; right: 6px; font-size: 9px; }
+
+.tg-hand { position: relative; }
+.tg-hand.fan { flex: 1; min-height: 130px; }
+.tg-hand.empty p { font-size: 13px; margin: 6px 0 0; line-height: 1.4; }
+.tg-handcard { padding: 0; border-radius: 9px; transition: transform 0.15s ease; }
+.tg-hand.fan .tg-handcard {
+  position: absolute; bottom: -6px; transform-origin: 50% 120%;
+  left: calc((100% - 112px) * var(--i) / max(1, calc(var(--n) - 1)));
+  transform: rotate(var(--rot));
+  max-width: 112px;
+}
+.tg-hand.fan .tg-handcard:hover, .tg-hand.fan .tg-handcard:focus-visible { transform: rotate(0deg) translateY(-26px); z-index: 2; }
+.tg-handcard.playable .tg-card { box-shadow: 0 10px 24px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(232, 183, 48, 0.85); }
+.tg-hand.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; }
+.tg-hand.grid .tg-card { width: 100%; height: auto; min-height: 150px; }
+.tg-hand.grid .tg-card .txt { overflow: visible; padding-bottom: 8px; }
+.tg-hand.grid .tg-handcard { display: flex; }
+.tg-act { margin-left: auto; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; gap: 8px; width: 236px; flex: none; }
+.tg-primary { width: 100%; }
+.tg-primary.tg-wait { background: #1c1c1f; color: var(--text-2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; }
+.tg-act .tg-undo, .tg-act .tg-auto { width: 100%; }
+.tg-auto.on { box-shadow: inset 0 0 0 2px var(--gold); color: var(--gold); }
+
+@media (max-width: 1240px) {
+  .tg-sec.who { width: 150px; }
+  .tg-sec.comps { width: 150px; }
+  .tg-sec.mats { width: 170px; }
+  .tg-mat { height: 56px; padding: 0 10px; }
+  .tg-mat .nm { display: none; }
+  .tg-act { width: 196px; }
+  .tg-yours { gap: 10px; }
+  .tg-step { padding: 0 9px 0 5px; font-size: 13px; }
+  .tg-seats { left: 76px; right: 172px; width: auto; transform: none; gap: 8px; }
+  .tg-bank { top: auto; bottom: calc(var(--bottom-h) + 16px); right: 56px; }
+  .tg-hud.desk .tg-roll { bottom: calc(var(--bottom-h) + 16px); }
+}
+@media (max-width: 1000px) {
+  .tg-yours .vr { display: none; }
+  .tg-sec.comps { width: 132px; }
+  .tg-hud.desk .tg-comp { grid-template-columns: 22px auto; }
+  .tg-hud.desk .tg-comp .nm { display: none; }
+  .tg-step:not(.now) { font-size: 0; gap: 0; padding: 0 4px; }
+  .tg-step:not(.now) .n { font-size: 13px; }
+  .tg-bank { width: 240px; }
+}
+
+/* ---- game over ---- */
+.tg-over { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px)); padding: 20px; z-index: 40; box-shadow: 0 0 0 2px var(--gold), 0 24px 60px rgba(0, 0, 0, 0.7); }
+.tg-over .words { font-size: 24px; font-weight: 900; margin: 6px 0 14px; letter-spacing: 0; text-transform: none; color: var(--text); line-height: 1.2; }
+.tg-standings { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tg-standings li { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: #0c0c0e; flex-wrap: wrap; font-size: 15px; }
+.tg-standings li.won { box-shadow: inset 0 0 0 2px var(--gold); }
+.tg-standings .pos { font-weight: 900; color: var(--text-3); width: 16px; }
+.tg-standings .sw { background: var(--seat); }
+.tg-standings .muted { margin-left: auto; font-size: 13px; }
+.tg-overpill { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); z-index: 40; }
+
+/* ---- modal, toast, banners ---- */
+.tg-veil { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.62); display: grid; place-items: center; padding: 16px; z-index: 60; }
+.tg-cardmodal { display: flex; flex-direction: column; align-items: center; gap: 14px; width: min(340px, 100%); }
+.tg-cardmodal .reason { margin: 0; padding: 10px 14px; border-radius: 10px; background: rgba(232, 165, 58, 0.14); color: #ffd9a0; font-size: 14px; text-align: center; line-height: 1.4; }
+.tg-cardmodal .tg-btnrow { width: 100%; }
+.tg-toast {
+  position: absolute; left: 50%; bottom: calc(var(--bottom-h) + 90px); transform: translateX(-50%); z-index: 70; max-width: min(560px, calc(100% - 24px));
+  padding: 11px 16px; border-radius: 12px; background: rgba(20, 20, 22, 0.96); color: var(--text); font-size: 14.5px; line-height: 1.4; text-align: center;
+  box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.45), 0 10px 30px rgba(0, 0, 0, 0.5); pointer-events: none;
+}
+.tg-toast[hidden] { display: none; }
+.tg-toast.show { animation: tg-toast 4.5s ease forwards; }
+@keyframes tg-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 6% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+.tg-slot.banner .banner { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: min(680px, calc(100% - 24px)); z-index: 50; margin: 0; }
+.tg-error { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); z-index: 50; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px; }
+
+/* ════════════════ Phone ════════════════ */
+.tg-hud.phone .tg-toprow { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; gap: 6px; align-items: center; }
+.tg-hud.phone .tg-menubtn { position: static; width: 48px; height: 48px; }
+.tg-chips { display: flex; gap: 6px; flex: 1; min-width: 0; }
+.tg-chip { display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 8px 0 0; border-radius: 12px; min-width: 0; flex: 1 1 0; overflow: hidden; text-align: left; }
+.tg-chip .stripe { width: 5px; height: 30px; border-radius: 3px; margin-left: 6px; }
+.tg-chip .col { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.tg-chip .nm { font-weight: 800; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-chip .st { font-size: 11px; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tg-chip .tg-pip { width: 11px; height: 11px; }
+.tg-chip .tg-pips { gap: 1px; }
+.tg-hud.phone .tg-chips:has(.tg-chip:nth-child(3)) .tg-chip .tg-pips { display: none; }
+.tg-hud.phone .tg-menu { top: 64px; left: 8px; right: 8px; width: auto; }
+.tg-hud.phone .tg-menu .item { min-height: 48px; }
+.tg-hud.phone .tg-seatpop { top: 64px; left: 8px; right: 8px; width: auto; transform: none; }
+.tg-hud.phone .tg-cam { top: 66px; right: 8px; flex-direction: column; }
+.tg-hud.phone .tg-roll { top: 66px; bottom: auto; left: 8px; padding: 5px 10px 5px 8px; font-size: 13.5px; }
+.tg-hud.phone .tg-roll .big { font-size: 18px; }
+.tg-hud.phone .tg-roll .tg-die { width: 18px; height: 18px; }
+.tg-hud.phone .tg-overpill { top: 66px; left: 8px; transform: none; }
+.tg-hud.phone .round.small { width: 44px; height: 44px; }
+.tg-hud.phone .tg-pop { width: min(340px, calc(100vw - 16px)); }
+.tg-hud.phone .tg-confirm.docked { bottom: calc(var(--bottom-h) + 14px); }
+.tg-hud.phone .tg-choices { width: calc(100% - 16px); bottom: calc(var(--bottom-h) + 12px); max-height: 48vh; }
+.tg-hud.phone .tg-over { top: 64px; transform: translateX(-50%); }
+.tg-hud.phone .tg-slot.banner .banner { top: 64px; }
+.tg-hud.phone .tg-error { top: 120px; }
+.tg.phone .tg-toast { bottom: auto; top: 122px; }
+
+.tg-sheet {
+  position: absolute; left: 0; right: 0; bottom: calc(-1 * env(safe-area-inset-bottom, 0px)); border-radius: 22px 22px 0 0; padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
+  display: flex; flex-direction: column; max-height: calc(100% - 100px); z-index: 10; /* keeps a clear gap below the menu button */
+}
+.tg-grab { display: grid; place-items: center; height: 44px; margin-bottom: -12px; width: 100%; flex: none; touch-action: none; }
+.tg-grab .bar { width: 48px; height: 5px; border-radius: 3px; background: #57544f; }
+.tg-sheet.open .tg-grab .bar { background: var(--gold); }
+.tg-stepline { display: flex; align-items: center; gap: 8px; }
+.tg-stepline .tg-step { height: 34px; font-size: 14.5px; font-weight: 800; }
+.tg-dots { display: inline-flex; gap: 4px; margin-left: 2px; }
+.tg-dots i { width: 6px; height: 6px; border-radius: 50%; background: #3a3936; display: inline-block; }
+.tg-dots i.done { background: #6b6862; }
+.tg-dots i.on { background: var(--gold); width: 16px; border-radius: 3px; }
+.tg-stepline .tg-round b { color: var(--text); font-weight: 900; font-size: 15px; }
+.tg-instr2 { font-size: 15px; margin: 8px 2px 10px; color: var(--text); line-height: 1.35; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.tg-instr2 .tg-whose { font-size: 13px; padding: 0; }
+.tg-instr2 .tg-whose.mine { display: none; }
+.tg-strip { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 12px; margin-bottom: 10px; flex: none; }
+.tg-strip .tg-count { gap: 5px; }
+.tg-strip .tg-count .num { font-size: 16px; }
+.tg-strip .sep { width: 1px; height: 22px; background: var(--line); }
+.tg-sheetact { display: flex; flex-direction: column; gap: 8px; flex: none; padding-top: 2px; }
+.tg-sheetact .tg-primary { height: 56px; font-size: 17px; }
+.tg-sheetact .btn-dark { height: 44px; }
+.tg-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; border-radius: 12px; margin-bottom: 10px; flex: none; }
+.tg-tabs button { height: 44px; border-radius: 9px; font-weight: 700; font-size: 14px; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.tg-tabs button.on { background: #2a2a2e; color: var(--text); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.tg-tabs .badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: var(--gold); color: var(--ink); font-size: 11px; font-weight: 900; padding: 0 4px; }
+.tg-sheetbody { overflow-y: auto; min-height: 0; flex: 1 1 auto; margin: 0 -14px 10px; padding: 0 14px 6px; touch-action: pan-y; overscroll-behavior: contain; }
+.tg-traytab { display: flex; flex-direction: column; gap: 14px; }
+.tg-trayrow { display: flex; gap: 12px; }
+.tg-trayrow .side { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tg-trayrow .side .tg-sechd { margin-bottom: 2px; }
+.tg-trayrow .tg-comp { height: 44px; }
+.tg-trayrow .tg-mats { gap: 6px; }
+.tg-bankrows { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tg-brow { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 0 12px; font-size: 14px; font-weight: 650; text-align: left; }
+.tg-brow.wide { grid-column: 1 / -1; }
+.tg-promptlist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; flex: none; }
+.tg-pitem { padding: 10px; box-shadow: inset 0 0 0 2px rgba(232, 183, 48, 0.7); }
+.tg-pitem .t { font-weight: 800; font-size: 14px; line-height: 1.3; }
+.tg-pitem .d { font-size: 13px; margin: 4px 0 8px; line-height: 1.35; }
+.tg-pitem .btn { height: 48px; }
+.tg-hud.phone .tg-prompt.compact .tg-ring, .tg-hud.phone .tg-pitem .tg-ring { width: 44px; height: 44px; }
+.tg-hud.phone .tg-prompt.compact .tg-ring svg, .tg-hud.phone .tg-pitem .tg-ring svg { width: 44px; height: 44px; }
+@media (max-width: 360px) {
+  .tg-strip { padding: 0 8px; }
+  .tg-strip .tg-count .ic { width: 15px; height: 15px; }
+  .tg-modwrap.phone .tg-modtray { --m: 44px; --mg: 3px; padding: 5px; }
+}
+
+/* ---- phone held sideways: the sheet is a full-height panel on the right ---- */
+.tg.landscape { --side-w: min(380px, 46vw); }
+.tg.landscape .tg-sheet { left: auto; top: calc(-1 * env(safe-area-inset-top, 0px)); right: calc(-1 * env(safe-area-inset-right, 0px)); bottom: calc(-1 * env(safe-area-inset-bottom, 0px)); width: calc(var(--side-w) + env(safe-area-inset-right, 0px)); max-height: none; border-radius: 22px 0 0 22px; padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-right: calc(14px + env(safe-area-inset-right, 0px)); }
+.tg.landscape .tg-sheet .tg-instr2 { margin: 6px 2px 8px; font-size: 14px; }
+.tg.landscape .tg-hud.phone .tg-toprow { right: calc(var(--side-w) + 8px); }
+.tg.landscape .tg-hud.phone .tg-cam { right: calc(var(--side-w) + 8px); }
+.tg.landscape .tg-hud.phone .tg-menu, .tg.landscape .tg-hud.phone .tg-seatpop { right: calc(var(--side-w) + 8px); }
+.tg.landscape .tg-hud.phone .tg-choices { left: calc((100% - var(--side-w)) / 2); width: calc(100% - var(--side-w) - 24px); max-height: 70vh; }
+.tg.landscape .tg-hud.phone .tg-confirm.docked { left: calc((100% - var(--side-w)) / 2); }
+.tg.landscape .tg-hud.phone .tg-over { left: calc((100% - var(--side-w)) / 2); width: calc(100% - var(--side-w) - 24px); top: 56px; max-height: calc(100% - 64px); overflow-y: auto; }
+.tg.landscape.phone .tg-toast { left: calc((100% - var(--side-w)) / 2); top: auto; bottom: 16px; }
+/* ---- N8: animation and feel ---- */
+/* Effects over the table: flights between the table and the players, the "Your turn" cue. */
+.tg-fx { position: absolute; inset: 0; pointer-events: none; z-index: 45; overflow: hidden; }
+.tg-fly { position: absolute; left: 0; top: 0; width: 30px; height: 30px; display: grid; place-items: center; opacity: 0; will-change: transform, opacity; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6)); }
+.tg-fly .ic { width: 28px; height: 28px; }
+.tg-fly.card { width: 34px; height: 46px; border-radius: 5px; background: #f3ecd9; box-shadow: 0 0 0 3px var(--seat, var(--gold)), 0 4px 10px rgba(0, 0, 0, 0.55); filter: none; }
+.tg-fly.card .ic { width: 24px; height: 24px; color: #222; }
+.tg-fly b { position: absolute; top: -14px; right: -18px; font-size: 12px; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: rgba(20, 20, 22, 0.92); color: var(--text); }
+.tg-yourturn {
+  position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); opacity: 0;
+  display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-radius: 40px;
+  font-size: 28px; font-weight: 900; letter-spacing: 0.01em; color: #fff; white-space: nowrap;
+  background: rgba(16, 16, 18, 0.88); box-shadow: 0 0 0 3px var(--seat), 0 0 34px var(--seat), 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+.tg-yourturn .sw { width: 18px; height: 18px; border-radius: 50%; background: var(--seat); box-shadow: 0 0 12px var(--seat); }
+.tg.phone .tg-yourturn { font-size: 22px; top: 32%; padding: 12px 22px; }
+
+/* Skip: shown while the table still plays earlier moves (fades in, so short animations do not flash it). */
+.tg-skip {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: calc(var(--bottom-h) + 18px); z-index: 13;
+  min-height: 44px; min-width: 96px; padding: 0 18px; border-radius: 22px; gap: 6px; font-weight: 800;
+  opacity: 0; animation: tg-skip-in 0.2s ease 0.35s forwards; pointer-events: auto;
+}
+.tg-skip .chev { font-size: 20px; line-height: 1; }
+@keyframes tg-skip-in { to { opacity: 0.94; } }
+.tg-hud.phone .tg-skip { bottom: calc(var(--bottom-h) + 14px); }
+
+/* Settings in the game menu: animation speed as three buttons, then switches. */
+.tg-menu .tg-feel { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 4px 6px 4px 12px; font-size: 14.5px; font-weight: 600; }
+.tg-menu .tg-feel .lbl { flex: none; }
+.tg-seg { margin-left: auto; display: flex; background: #1c1c20; border-radius: 12px; padding: 3px; gap: 2px; }
+.tg-seg .seg { min-height: 44px; min-width: 52px; padding: 0 8px; border-radius: 9px; font-size: 13.5px; font-weight: 700; color: var(--text-2); display: inline-flex; align-items: center; justify-content: center; }
+.tg-seg .seg.on { background: var(--gold); color: var(--ink); }
+@media (prefers-reduced-motion: reduce) { .tg-skip { animation: none; opacity: 0.94; } }
+
+/* The game menu has grown (feel and playtest entries): keep it inside short windows. */
+.tg-menu { max-height: calc(100% - 84px); overflow-y: auto; }
+
+/* ---- list items around buttons (a button keeps its role; the wrapper is the list item) ---- */
+.tg-seats > .tg-li { display: flex; flex: 1 1 0; max-width: 400px; min-width: 0; }
+.tg-seats > .tg-li > .tg-plate { flex: 1 1 auto; max-width: none; }
+.tg-chips > .tg-li { display: flex; flex: 1 1 0; min-width: 0; }
+.tg-chips > .tg-li > .tg-chip { flex: 1 1 auto; }
+.tg-hand.fan > .tg-li {
+  position: absolute; bottom: -6px; transform-origin: 50% 120%;
+  left: calc((100% - 112px) * var(--i) / max(1, calc(var(--n) - 1)));
+  transform: rotate(var(--rot)); max-width: 112px; transition: transform 0.15s ease;
+}
+.tg-hand.fan > .tg-li > .tg-handcard { position: static; transform: none; max-width: none; }
+.tg-hand.fan > .tg-li:hover, .tg-hand.fan > .tg-li:focus-within { transform: rotate(0deg) translateY(-26px); z-index: 2; }
+.tg-hand.grid > .tg-li { display: flex; }
+
+/* ---- a move on its way to the host: the pressed control says so ---- */
+.tg-hud [data-sending] { position: relative; color: transparent !important; }
+.tg-hud [data-sending] > * { visibility: hidden; }
+.tg-hud [data-sending]::after { content: 'Sending…'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--text); font-size: 14px; font-weight: 700; }
+.tg-hud .btn-gold[data-sending]::after, .tg-hud .tg-cbtn.ok[data-sending]::after { color: var(--ink); font-size: 12px; }
+
+/* ---- bot speed, read-only for players who are not hosting ---- */
+.tg-menu .tg-feel.ro .v { margin-left: auto; color: var(--text-2); font-size: 13.5px; }
+
+/* ---- touch screens (also a landscape tablet that gets the desktop layout) and very narrow phones:
+   everything pressable is at least 44 px ---- */
+@media (any-pointer: coarse), (max-width: 360px) {
+  .tg .round.small { width: 44px; height: 44px; }
+  .tg-bchip { height: 44px; }
+  .tg-comp { height: 44px; }
+  .tg-edgetabs button { min-width: 44px; }
+  .tg-hud button { min-height: 44px; min-width: 44px; }
+  .tg-hud .tg-li > button, .tg-hud .tg-handcard { min-width: 0; }
+}
+@media (any-pointer: coarse) {
+  /* The desktop Control Module tray: full-size cells, laid out six wide so the panel keeps its height. */
+  .tg-modwrap.desk .tg-modtray { --m: 44px; --mg: 4px; grid-template-columns: repeat(6, var(--m)); }
+}
+
+/* "Leverage card" may wrap inside a bank chip. */
+.tg-bchip .lb { line-height: 1.1; }
+
+/* Touch screens with the desktop layout (landscape tablets): the touch-size module tray is wider,
+   so the other sections of your area take their compact widths and the hand gives way. */
+@media (any-pointer: coarse) {
+  .tg-hud.desk .tg-sec.who { width: 150px; }
+  .tg-hud.desk .tg-sec.comps { width: 150px; }
+  .tg-hud.desk .tg-sec.mats { width: 170px; }
+  .tg-hud.desk .tg-mat { height: 56px; padding: 0 10px; }
+  .tg-hud.desk .tg-mat .nm { display: none; }
+  .tg-hud.desk .tg-act { width: 196px; }
+  .tg-hud.desk .tg-yours { gap: 10px; }
+  .tg-hud.desk .tg-sec.handsec { min-width: 0; }
+}
+@media (any-pointer: coarse) and (max-width: 1100px) {
+  .tg-hud.desk .tg-yours .vr { display: none; }
+  .tg-hud.desk .tg-sec.who { width: 124px; }
+  .tg-hud.desk .tg-sec.comps { width: 132px; }
+  .tg-hud.desk .tg-sec.mats { width: 150px; }
+  .tg-hud.desk .tg-act { width: 172px; }
+  .tg-hud.desk .tg-hand.empty p { display: none; }
+}
+
+/* Room for the three-way settings (Animation, Bot speed) in the game menu. */
+.tg-menu { width: 304px; }
+.tg-menu .tg-feel { gap: 8px; }
+.tg-seg .seg { padding: 0 9px; }
+
+/* ---- notices at the top of the table (failed command, storage warning), stacked, inside the safe area ---- */
+.tg-notes { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); z-index: 50; display: flex; flex-direction: column; gap: 8px; }
+.tg-hud.phone .tg-notes { top: 120px; width: calc(100% - 16px); }
+.tg-notes .tg-error { position: static; transform: none; width: auto; }
+.tg-store {
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: rgba(38, 29, 14, 0.96); box-shadow: inset 0 0 0 1px rgba(232, 165, 58, 0.5), 0 10px 26px rgba(0, 0, 0, 0.5); color: #f6deb2;
+  font-size: 13.5px; line-height: 1.35;
+}
+.tg-store .tx { flex: 1; min-width: 0; }
+.tg-store .tg-storebtn { flex: none; min-height: 44px; padding: 0 12px; gap: 6px; white-space: nowrap; }
+.tg-store .tg-storebtn .ic { width: 16px; height: 16px; }
+.tg-hud.phone .tg-store { flex-wrap: wrap; }
+.tg-hud.phone .tg-store .tx { flex-basis: calc(100% - 60px); }
+
+/* The tray caption under the small desktop tray wraps instead of widening the panel. */
+.tg-modwrap.desk .tg-modnote { max-width: 120px; line-height: 1.25; }
+/* A greyed big button says why it cannot be pressed yet. */
+.tg-primary.has-why { flex-direction: column; gap: 2px; line-height: 1.15; padding-top: 6px; padding-bottom: 6px; }
+.tg-primary .why { font-size: 12px; font-weight: 600; opacity: 0.95; white-space: normal; }
+/* The roll chip with what the roll produced. */
+.tg-roll.has-line { flex-direction: column; align-items: stretch; gap: 6px; max-width: min(520px, calc(100% - 32px)); }
+.tg-roll.has-line .top { display: flex; align-items: center; gap: 8px; }
+.tg-roll .line { font-size: 13px; font-weight: 600; line-height: 1.35; color: var(--text); }
+.tg-log li.note { color: var(--text-2); font-style: italic; }
+
+/* Between 1240 and 1380 px the full-width sections of your area do not fit with the action
+   button: use the compact widths there too (the rest of the layout stays as it is). */
+@media (max-width: 1380px) {
+  .tg-sec.who { width: 150px; }
+  .tg-sec.comps { width: 150px; }
+  .tg-sec.mats { width: 170px; }
+  .tg-mat { height: 56px; padding: 0 10px; }
+  .tg-mat .nm { display: none; }
+  .tg-act { width: 196px; }
+  .tg-yours { gap: 10px; }
+}
+
+/* A long instruction (the end of the round) wraps onto a second line instead of being cut off. */
+.tg-instr { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.22; font-size: 14.5px; }
+/* Narrow desktop windows: the dividers go and the hand gives way, so the action button stays inside. */
+@media (max-width: 1100px) {
+  .tg-yours .vr { display: none; }
+  .tg-sec.handsec { min-width: 0; }
+  .tg-hand.empty p { display: none; }
+  .tg-roll.has-line { max-width: min(440px, calc(50% - 24px)); }
+}
+
+/* Phone: the storage notice inside the sheet; the roll line kept to three lines (the log has it whole). */
+.tg-sheet .tg-store { margin: 14px 0 4px; box-shadow: inset 0 0 0 1px rgba(232, 165, 58, 0.5); flex-wrap: wrap; }
+.tg-sheet .tg-store .tx { flex-basis: calc(100% - 60px); }
+.tg-hud.phone .tg-roll.has-line { max-width: calc(100% - 80px); }
+.tg-hud.phone .tg-roll .line { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; }

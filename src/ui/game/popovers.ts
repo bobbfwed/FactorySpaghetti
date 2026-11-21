@@ -1,0 +1,72 @@
+// Popovers over the table: the building (or belt) menu anchored to its piece, the floating list of
+// choices a flow needs (Scouting Drone's pile, exchange options, …), and the enlarged hand card.
+
+import { CARD_NAME } from '../../play/words';
+import { h } from '../dom';
+import { icon } from '../icons';
+import type { Ctx } from './context';
+import { cardFace } from './pieces';
+
+/** The building menu: title, subtitle, items with detail; greyed items show their reason. */
+export function buildingMenu(ctx: Ctx): HTMLElement | null {
+  const m = ctx.view.menu;
+  if (!m) return null;
+  return h('div', {
+    class: 'tg-pop tray', attrs: { 'data-anchor': JSON.stringify(m.anchor), 'data-place': 'side', role: 'menu', 'aria-label': m.title },
+  },
+  h('span', { class: 'tg-ptr' }),
+  h('div', { class: 'hd' },
+    h('div', { class: 'tt' }, h('span', { class: 't', text: m.title }), m.subtitle ? h('span', { class: 'sub', text: m.subtitle }) : null),
+    h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close', 'data-close': 'menu' }, onclick: () => ctx.play.cancel() }, icon('cross'))),
+  m.items.map(it => h('button', {
+    class: `item${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
+    title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,
+    attrs: { role: 'menuitem', 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': `${JSON.stringify(m.anchor)}|${it.id}` },
+    onclick: () => ctx.play.choose(it.id),
+  },
+  h('span', { class: 'lb', text: it.label }),
+  it.enabled ? (it.detail ? h('span', { class: 'dt', text: it.detail }) : null) : h('span', { class: 'dt', text: it.reason ?? '' }),
+  it.danger && it.enabled ? h('span', { class: 'warnline', text: 'Permanent: it cannot be taken back.' }) : null)));
+}
+
+/** The list a flow is waiting on; it floats, so the table stays usable around it. */
+export function choicesPanel(ctx: Ctx): HTMLElement | null {
+  const c = ctx.view.choices;
+  if (!c) return null;
+  return h('div', { class: 'tg-choices tray', attrs: { role: 'dialog', 'aria-label': c.title } },
+    h('div', { class: 'hd' }, h('b', { text: c.title }),
+      h('button', { class: 'x round small', title: 'Cancel', attrs: { 'aria-label': 'Cancel', 'data-close': 'choices' }, onclick: () => ctx.play.cancel() }, icon('cross'))),
+    h('div', { class: 'list' }, c.items.map(it => h('button', {
+      class: `item well${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
+      title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,
+      attrs: { 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': `${c.title}|${it.id}` },
+      onclick: () => ctx.play.choose(it.id),
+    },
+    h('span', { class: 'lb', text: it.label }),
+    it.enabled ? (it.detail ? h('span', { class: 'dt', text: it.detail }) : null) : h('span', { class: 'dt', text: it.reason ?? '' })))));
+}
+
+/** A hand card shown large, with its rules text and Play (or why it cannot be played now). */
+export function cardModal(ctx: Ctx): HTMLElement | null {
+  const card = ctx.ui.card;
+  if (card === null) return null;
+  const it = ctx.view.hand.find(c => c.card === card);
+  const close = (): void => { ctx.ui.card = null; ctx.redraw(); };
+  if (!it) { ctx.ui.card = null; return null; }
+  const cnt = it.count ?? 1;
+  const veil = h('div', {
+    class: 'tg-veil', attrs: { 'data-veil': 'card' },
+    onclick: (e) => { if (e.target === veil) close(); },
+  },
+  h('div', { class: 'tg-cardmodal', attrs: { role: 'dialog', 'aria-modal': 'true', 'aria-label': CARD_NAME[card] } },
+    cardFace(card, { big: true, count: cnt }),
+    it.enabled ? null : h('p', { class: 'reason', text: it.reason ?? '' }),
+    h('div', { class: 'tg-btnrow' },
+      h('button', { class: 'btn btn-dark btn-lg', attrs: { 'data-close': 'card' }, onclick: close }, 'Close'),
+      h('button', {
+        class: `btn btn-gold btn-lg${it.enabled ? '' : ' is-disabled'}`,
+        attrs: { 'aria-disabled': String(!it.enabled), 'data-play': card, 'data-act': `play:${card}` },
+        onclick: () => { if (it.enabled) { ctx.ui.card = null; if (ctx.phone) ctx.ui.sheetOpen = false; } ctx.play.choose(it.id); },
+      }, icon('play'), 'Play'))));
+  return veil;
+}

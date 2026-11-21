@@ -101,6 +101,12 @@ export const BELT_COUNT = 5;
 export const TELEPORTER_COUNT = 4;
 export const CONTROL_MODULE_MAX = 18; // modules numbered 1–18
 
+// ── Limits and goal ───────────────────────────────────────────────────────────
+
+export const MAX_CARDS_PLAYED_PER_TURN = 2;  // Leverage cards played per turn (play-on-draw cards excepted)
+export const MAX_CLAIMS_PER_BUILDING = 3;    // one player's Control Modules on one building
+export const TESSERACTS_TO_WIN = 4;          // Tesseracts (bonus cards count) shown on your own turn
+
 // Pieces pulled from stack 0 for each player during S5 of setup.
 export const STARTING_PIECES_PER_PLAYER: Partial<Record<PieceType, number>> = {
   powerPlant: 1,
@@ -116,6 +122,9 @@ export const BELT_COST = 1;
 
 // Card price: #mines currently on board + 1 (formula tunable — RULES_CHANGES.md #14).
 export const cardCost = (mineCount: number): number => mineCount + 1;
+
+// Teleporter price: teleporters ever placed (all players) + 1, paid exactly.
+export const teleporterCost = (placedSoFar: number): number => placedSoFar + 1;
 
 // Production Increase grants this many Control Module upgrade-units to spend this turn
 // (claims and upgrades draw from this budget; never paid with materials). Tunable.

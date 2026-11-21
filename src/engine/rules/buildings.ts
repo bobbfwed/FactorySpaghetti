@@ -16,7 +16,7 @@ import type {
   PlaceMineAction,
   RulesError,
 } from '../actions';
-import { MINE_COSTS } from '../config';
+import { MINE_COSTS, MAX_CLAIMS_PER_BUILDING } from '../config';
 import { tryPayFlexible } from './flow';
 import { hexEqual, isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord } from './pieces';
 
@@ -130,7 +130,7 @@ export function applyClaimBuilding(
 
   // At most 3 claims per player per building
   const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
-  if (myClaimsOnPiece.length >= 3) {
+  if (myClaimsOnPiece.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on this building');
   }
 

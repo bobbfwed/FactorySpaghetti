@@ -13,6 +13,7 @@ import {
   PIECE_TEMPLATES,
   BELT_COST,
   INVENTORY_CAP,
+  teleporterCost,
 } from '../config';
 import type { Material, PointRole } from '../config';
 import { hexNeighbours, mineSecondaryCoord } from './pieces';
@@ -289,7 +290,7 @@ export function applyPlaceTeleporter(
   }
 
   // Cost = globalTeleporterCount + 1 value-units
-  const cost = state.globalTeleporterCount + 1;
+  const cost = teleporterCost(state.globalTeleporterCount);
   const newInv = tryPayExact(player.inventory, cost);
   if (!newInv) {
     return err(

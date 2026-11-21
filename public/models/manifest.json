@@ -1,0 +1,1000 @@
+{
+  "generatedBy": "tools/convert-3mf.mjs",
+  "units": "millimetres",
+  "up": "+Y",
+  "origin": "centre of the footprint, bottom face at Y = 0",
+  "hexTiles": "pointy-top in the XZ plane: flat sides face +X and -X (68.8 mm across flats), corners at +Z and -Z",
+  "materials": {
+    "body": {
+      "color": "#D6D3D3",
+      "filament": 2,
+      "roughness": 0.85,
+      "metalness": 0
+    },
+    "body-dark": {
+      "color": "#A0A0A0",
+      "filament": 10,
+      "roughness": 0.85,
+      "metalness": 0
+    },
+    "inlay-black": {
+      "color": "#000000",
+      "filament": 1,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "black": {
+      "color": "#000000",
+      "filament": 1,
+      "roughness": 0.7,
+      "metalness": 0
+    },
+    "icon-blue": {
+      "color": "#0086D6",
+      "filament": 3,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "icon-green": {
+      "color": "#6BFA27",
+      "filament": 7,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "icon-green-light": {
+      "color": "#A4FFA6",
+      "filament": 8,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "lime-green": {
+      "color": "#9DFB20",
+      "filament": 6,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "yellow-green": {
+      "color": "#B7EC00",
+      "filament": 5,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "bolt-yellow": {
+      "color": "#F9FF09",
+      "filament": 9,
+      "roughness": 0.6,
+      "metalness": 0
+    },
+    "player": {
+      "color": "#B8B8B8",
+      "roughness": 0.7,
+      "metalness": 0
+    }
+  },
+  "totalBytes": 1231760,
+  "models": [
+    {
+      "name": "tile-blank",
+      "file": "tile-blank.glb",
+      "title": "Blank tile",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 4676
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 2500,
+          "vertices": 2064
+        }
+      ],
+      "trianglesBefore": 4676,
+      "trianglesAfter": 2500,
+      "budget": 2500,
+      "withinBudget": true,
+      "simplifyError": 0.014,
+      "bbox": {
+        "min": [
+          -34.425,
+          0,
+          -39.127
+        ],
+        "max": [
+          34.425,
+          3,
+          39.127
+        ],
+        "size": [
+          68.849,
+          3,
+          78.253
+        ]
+      },
+      "bytes": 65556
+    },
+    {
+      "name": "tile-plate-factory",
+      "file": "tile-plate-factory.glb",
+      "title": "Plate Factory",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 2764
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 2306,
+          "vertices": 1935
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 100,
+          "vertices": 108
+        },
+        {
+          "material": "icon-green-light",
+          "triangles": 52,
+          "vertices": 56
+        },
+        {
+          "material": "bolt-yellow",
+          "triangles": 42,
+          "vertices": 44
+        }
+      ],
+      "trianglesBefore": 2764,
+      "trianglesAfter": 2500,
+      "budget": 2500,
+      "withinBudget": true,
+      "simplifyError": 0.002,
+      "bbox": {
+        "min": [
+          -34.425,
+          0,
+          -39.131
+        ],
+        "max": [
+          34.425,
+          3,
+          39.131
+        ],
+        "size": [
+          68.849,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 69432
+    },
+    {
+      "name": "tile-sphere-factory",
+      "file": "tile-sphere-factory.glb",
+      "title": "Sphere Factory",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 3148
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 2204,
+          "vertices": 1985
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 147,
+          "vertices": 159
+        },
+        {
+          "material": "icon-green-light",
+          "triangles": 77,
+          "vertices": 81
+        },
+        {
+          "material": "bolt-yellow",
+          "triangles": 72,
+          "vertices": 76
+        }
+      ],
+      "trianglesBefore": 3148,
+      "trianglesAfter": 2500,
+      "budget": 2500,
+      "withinBudget": true,
+      "simplifyError": 0.006,
+      "bbox": {
+        "min": [
+          -34.425,
+          0,
+          -39.131
+        ],
+        "max": [
+          34.425,
+          3,
+          39.131
+        ],
+        "size": [
+          68.849,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 73248
+    },
+    {
+      "name": "tile-tesseract-factory",
+      "file": "tile-tesseract-factory.glb",
+      "title": "Tesseract Factory",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 3372
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 2151,
+          "vertices": 2049
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 165,
+          "vertices": 177
+        },
+        {
+          "material": "icon-green-light",
+          "triangles": 86,
+          "vertices": 88
+        },
+        {
+          "material": "bolt-yellow",
+          "triangles": 98,
+          "vertices": 104
+        }
+      ],
+      "trianglesBefore": 3372,
+      "trianglesAfter": 2500,
+      "budget": 2500,
+      "withinBudget": true,
+      "simplifyError": 0.007,
+      "bbox": {
+        "min": [
+          -34.425,
+          0,
+          -39.131
+        ],
+        "max": [
+          34.425,
+          3,
+          39.131
+        ],
+        "size": [
+          68.849,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 76064
+    },
+    {
+      "name": "tile-power-plant",
+      "file": "tile-power-plant.glb",
+      "title": "Power Plant",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 2604
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 2334,
+          "vertices": 1998
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 119,
+          "vertices": 111
+        },
+        {
+          "material": "bolt-yellow",
+          "triangles": 47,
+          "vertices": 49
+        }
+      ],
+      "trianglesBefore": 2604,
+      "trianglesAfter": 2500,
+      "budget": 2500,
+      "withinBudget": true,
+      "simplifyError": 0,
+      "bbox": {
+        "min": [
+          -34.425,
+          0,
+          -39.131
+        ],
+        "max": [
+          34.425,
+          3,
+          39.131
+        ],
+        "size": [
+          68.849,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 69136
+    },
+    {
+      "name": "mine-1",
+      "file": "mine-1.glb",
+      "title": "Mine 1 (starting mine)",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "name": "Mine 1 AMS v3"
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body-dark",
+          "triangles": 4618,
+          "vertices": 4726
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 1261,
+          "vertices": 1523
+        },
+        {
+          "material": "icon-blue",
+          "triangles": 62,
+          "vertices": 62
+        },
+        {
+          "material": "icon-green-light",
+          "triangles": 59,
+          "vertices": 59
+        }
+      ],
+      "trianglesBefore": 7816,
+      "trianglesAfter": 6000,
+      "budget": 6000,
+      "withinBudget": true,
+      "simplifyError": 0.024,
+      "bbox": {
+        "min": [
+          -68.849,
+          0,
+          -39.131
+        ],
+        "max": [
+          68.849,
+          3,
+          39.131
+        ],
+        "size": [
+          137.698,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 191752,
+      "notes": [
+        "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
+      ]
+    },
+    {
+      "name": "mine-2",
+      "file": "mine-2.glb",
+      "title": "Mine 2",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "name": "Mine 2 AMS v2"
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 4664,
+          "vertices": 4518
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 834,
+          "vertices": 1012
+        },
+        {
+          "material": "icon-blue",
+          "triangles": 368,
+          "vertices": 400
+        },
+        {
+          "material": "icon-green",
+          "triangles": 134,
+          "vertices": 158
+        }
+      ],
+      "trianglesBefore": 14140,
+      "trianglesAfter": 6000,
+      "budget": 6000,
+      "withinBudget": true,
+      "simplifyError": 0.017,
+      "bbox": {
+        "min": [
+          -68.838,
+          0,
+          -39.131
+        ],
+        "max": [
+          68.849,
+          3,
+          39.131
+        ],
+        "size": [
+          137.687,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 185032,
+      "notes": [
+        "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
+      ]
+    },
+    {
+      "name": "mine-3",
+      "file": "mine-3.glb",
+      "title": "Mine 3",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "name": "Mine 3 AMS v2"
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "body",
+          "triangles": 4400,
+          "vertices": 4435
+        },
+        {
+          "material": "inlay-black",
+          "triangles": 780,
+          "vertices": 958
+        },
+        {
+          "material": "icon-blue",
+          "triangles": 566,
+          "vertices": 602
+        },
+        {
+          "material": "lime-green",
+          "triangles": 254,
+          "vertices": 278
+        }
+      ],
+      "trianglesBefore": 15004,
+      "trianglesAfter": 6000,
+      "budget": 6000,
+      "withinBudget": true,
+      "simplifyError": 0.021,
+      "bbox": {
+        "min": [
+          -68.838,
+          0,
+          -39.131
+        ],
+        "max": [
+          68.849,
+          3,
+          39.131
+        ],
+        "size": [
+          137.687,
+          3,
+          78.262
+        ]
+      },
+      "bytes": 189488,
+      "notes": [
+        "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
+      ]
+    },
+    {
+      "name": "belt",
+      "file": "belt.glb",
+      "title": "Belt",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 5516
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "player",
+          "triangles": 1500,
+          "vertices": 1758
+        }
+      ],
+      "trianglesBefore": 5516,
+      "trianglesAfter": 1500,
+      "budget": 1500,
+      "withinBudget": true,
+      "simplifyError": 0.034,
+      "bbox": {
+        "min": [
+          -3.321,
+          0,
+          -37.053
+        ],
+        "max": [
+          3.321,
+          5.3,
+          37.053
+        ],
+        "size": [
+          6.642,
+          5.3,
+          74.107
+        ]
+      },
+      "bytes": 52208,
+      "notes": [
+        "The chain is one closed mesh (the links are joined), so it is exported whole; no separate link or arrowhead models."
+      ]
+    },
+    {
+      "name": "meeple",
+      "file": "meeple.glb",
+      "title": "Meeple",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 1996
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "player",
+          "triangles": 800,
+          "vertices": 737
+        }
+      ],
+      "trianglesBefore": 1996,
+      "trianglesAfter": 800,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0.005,
+      "bbox": {
+        "min": [
+          -9,
+          0,
+          -8.991
+        ],
+        "max": [
+          9,
+          5.871,
+          8.991
+        ],
+        "size": [
+          18,
+          5.871,
+          17.982
+        ]
+      },
+      "bytes": 23476
+    },
+    {
+      "name": "ore",
+      "file": "ore.glb",
+      "title": "Ore",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 23120,
+            "partIndex": 0
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "icon-green-light",
+          "triangles": 578,
+          "vertices": 489
+        }
+      ],
+      "trianglesBefore": 578,
+      "trianglesAfter": 578,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0,
+      "bbox": {
+        "min": [
+          -5.83,
+          0,
+          -5.25
+        ],
+        "max": [
+          5.83,
+          3.5,
+          5.25
+        ],
+        "size": [
+          11.66,
+          3.5,
+          10.5
+        ]
+      },
+      "bytes": 16180
+    },
+    {
+      "name": "plate",
+      "file": "plate.glb",
+      "title": "Plate",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 11520,
+            "partIndex": 0
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "icon-green",
+          "triangles": 480,
+          "vertices": 394
+        }
+      ],
+      "trianglesBefore": 480,
+      "trianglesAfter": 480,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0,
+      "bbox": {
+        "min": [
+          -8.228,
+          0,
+          -6
+        ],
+        "max": [
+          8.228,
+          4,
+          6
+        ],
+        "size": [
+          16.456,
+          4,
+          12
+        ]
+      },
+      "bytes": 13308
+    },
+    {
+      "name": "sphere",
+      "file": "sphere.glb",
+      "title": "Sphere",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 204880,
+            "partIndex": 0
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "lime-green",
+          "triangles": 800,
+          "vertices": 455
+        }
+      ],
+      "trianglesBefore": 10244,
+      "trianglesAfter": 800,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0.032,
+      "bbox": {
+        "min": [
+          -6.983,
+          0,
+          -6.994
+        ],
+        "max": [
+          6.985,
+          4.5,
+          6.994
+        ],
+        "size": [
+          13.968,
+          4.5,
+          13.988
+        ]
+      },
+      "bytes": 16732
+    },
+    {
+      "name": "tesseract",
+      "file": "tesseract.glb",
+      "title": "Tesseract",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 2860,
+            "partIndex": 0
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "yellow-green",
+          "triangles": 220,
+          "vertices": 352
+        }
+      ],
+      "trianglesBefore": 220,
+      "trianglesAfter": 220,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0,
+      "bbox": {
+        "min": [
+          -4.773,
+          0,
+          -4.773
+        ],
+        "max": [
+          4.773,
+          11.5,
+          4.773
+        ],
+        "size": [
+          9.546,
+          11.5,
+          9.546
+        ]
+      },
+      "bytes": 10780
+    },
+    {
+      "name": "power-token",
+      "file": "power-token.glb",
+      "title": "Power token",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "name": "Power Tile AMS"
+          }
+        ]
+      },
+      "colourParts": true,
+      "parts": [
+        {
+          "material": "inlay-black",
+          "triangles": 56,
+          "vertices": 98
+        },
+        {
+          "material": "bolt-yellow",
+          "triangles": 744,
+          "vertices": 545
+        }
+      ],
+      "trianglesBefore": 10752,
+      "trianglesAfter": 800,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0.099,
+      "bbox": {
+        "min": [
+          -10.981,
+          0,
+          -10.991
+        ],
+        "max": [
+          10.981,
+          2.444,
+          10.981
+        ],
+        "size": [
+          21.963,
+          2.444,
+          21.972
+        ]
+      },
+      "bytes": 21908
+    },
+    {
+      "name": "starting-player",
+      "file": "starting-player.glb",
+      "title": "Starting-player piece",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 6668
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "yellow-green",
+          "triangles": 800,
+          "vertices": 653
+        }
+      ],
+      "trianglesBefore": 6668,
+      "trianglesAfter": 800,
+      "budget": 800,
+      "withinBudget": true,
+      "simplifyError": 0.046,
+      "bbox": {
+        "min": [
+          -16.437,
+          0,
+          -16.437
+        ],
+        "max": [
+          16.426,
+          41.4,
+          16.426
+        ],
+        "size": [
+          32.863,
+          41.4,
+          32.863
+        ]
+      },
+      "bytes": 21524
+    },
+    {
+      "name": "control-module",
+      "file": "control-module.glb",
+      "title": "Control Module tile",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "name": "Number Tiles AMS"
+          }
+        ],
+        "parts": [
+          "Body12"
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "player",
+          "triangles": 120,
+          "vertices": 141
+        }
+      ],
+      "trianglesBefore": 4100,
+      "trianglesAfter": 120,
+      "budget": 120,
+      "withinBudget": true,
+      "simplifyError": 0.074,
+      "bbox": {
+        "min": [
+          -7.997,
+          0,
+          -7.997
+        ],
+        "max": [
+          7.997,
+          2,
+          7.997
+        ],
+        "size": [
+          15.994,
+          2,
+          15.994
+        ]
+      },
+      "bytes": 5124,
+      "notes": [
+        "One tile body (part Body12) of the Number Tiles AMS set, turned face up (it prints face down); the engraved numeral is filled flat (numerals are meant to be textures)."
+      ]
+    },
+    {
+      "name": "control-module-tray",
+      "file": "control-module-tray.glb",
+      "title": "Control Module tray",
+      "source": {
+        "file": "Factory Speghetti AMS.3mf",
+        "items": [
+          {
+            "triangles": 83682,
+            "partIndex": 1
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "black",
+          "triangles": 3000,
+          "vertices": 4657
+        }
+      ],
+      "trianglesBefore": 69026,
+      "trianglesAfter": 3000,
+      "budget": 3000,
+      "withinBudget": true,
+      "simplifyError": 0.188,
+      "bbox": {
+        "min": [
+          -40.45,
+          0,
+          -70.784
+        ],
+        "max": [
+          40.438,
+          10.427,
+          70.797
+        ],
+        "size": [
+          80.888,
+          10.427,
+          141.581
+        ]
+      },
+      "bytes": 130812,
+      "notes": [
+        "The 3 x 6 pocket half of the two-part tray assembly (the other half, a flat lid-like panel, is not exported). Turned square to the axes: it sits at 45 degrees on the print plate."
+      ]
+    }
+  ]
+}

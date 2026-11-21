@@ -1,0 +1,385 @@
+// What to show between two game states: a list of timed animation steps, worked out from the
+// table events the host sent with the move (the dice, which buildings activated, what was
+// operated, collected, bought, played) and from the difference between the two states.
+// Pure and DOM-free. It decides nothing about the rules; the engine already applied the move.
+//
+// Times are milliseconds at Normal speed. The playback queue scales them (Fast, compression).
+// Steps fall in phases that follow the physical turn: dice -> activation pulses -> pieces placed
+// -> modules, belts, teleporters, meeples -> operating (power in, inputs used, product out) ->
+// material flowing along belts -> material, Power Tokens and cards going to the players.
+
+import type { CardType, Material } from '../engine/config';
+import type { GameState } from '../engine/state';
+import type { TableEvent } from '../session/room';
+import { traceFlow, pathLength, sourceWorld, type FlowSource } from './flowPath';
+import { bufferSlotWorld, type XZ } from './layout';
+import type { Target } from './types';
+
+export type Buf = 'input' | 'output';
+/** Something carried to or from a player's area (drawn over the table as a small token). */
+export type Carried = Material | 'power' | 'card';
+
+export type StepBody =
+  /** Dice tumble onto the table and land on these values (one die per mine). */
+  | { kind: 'dice'; values: readonly number[] }
+  /** A ring pulses on a piece the roll activated, in the owner's colour (null: no owner, e.g. a mine). */
+  | { kind: 'pulse'; pieceId: string; owner: number | null }
+  /** A new piece travels from its stack (null: from above the board) to its cell, turning into its rotation. */
+  | { kind: 'place'; pieceId: string; stack: number | null }
+  /** A belt is laid (drops onto its tile). */
+  | { kind: 'belt'; beltId: string }
+  /** A Control Module drops onto a building: claim (new) or upgrade (number changed). */
+  | { kind: 'module'; pieceId: string; index: number; owner: number; upgrade: boolean }
+  /** A teleporter ring appears on a buffer. */
+  | { kind: 'teleporter'; pieceId: string; buffer: Buf; owner: number }
+  /** A meeple walks (or drops) onto its piece. */
+  | { kind: 'meeple'; player: number; fromPieceId: string | null; fromSlot: number | null }
+  /** A material travels along `path` (world mm) into input `slot` of `toPieceId`. */
+  | { kind: 'flow'; material: Material; path: readonly XZ[]; toPieceId: string; slot: number; fromPieceId: string | null }
+  /** A material in a buffer is used up (shrinks away). */
+  | { kind: 'consume'; pieceId: string; buffer: Buf; slot: number; material: Material }
+  /** A material appears in a buffer (a product, or anything whose source is not known). */
+  | { kind: 'appear'; pieceId: string; buffer: Buf; slot: number; material: Material }
+  /** Tokens fly from the table to a player's area (drawn by the interface over the canvas). */
+  | { kind: 'toPlayer'; player: number; item: Carried; count: number; from: Target | null; card?: CardType | null }
+  /** Tokens fly from a player's area onto the table. */
+  | { kind: 'fromPlayer'; player: number; item: Carried; count: number; to: Target | null; card?: CardType | null };
+
+export type AnimStep = StepBody & { readonly at: number; readonly dur: number };
+
+export interface TransitionPlan {
+  readonly steps: readonly AnimStep[];
+  /** Length of the whole transition at Normal speed. */
+  readonly baseMs: number;
+  /** The transition includes a dice roll (its values). */
+  readonly roll: readonly number[] | null;
+}
+
+/** Steps the 3D table draws; the rest (toPlayer, fromPlayer) are drawn by the interface. */
+export function isTableStep(s: AnimStep): boolean {
+  return s.kind !== 'toPlayer' && s.kind !== 'fromPlayer';
+}
+
+// ── Durations at Normal speed (ms) ─────────────────────────────────────────────────────────────
+export const DUR = {
+  dice: 760,
+  pulse: 560,
+  place: 520,
+  belt: 260,
+  beltGap: 150,
+  module: 420,
+  teleporter: 380,
+  meeple: 450,
+  consume: 300,
+  appear: 320,
+  flowMin: 380,
+  flowMax: 760,
+  flight: 560,
+  flightGap: 90,
+  /** Phases overlap by this much so the table never sits still between them. */
+  overlap: 80,
+  /** A phase with many items spreads them over at most this long. */
+  spread: 700,
+} as const;
+
+const MATS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
+const MAX_TOKENS = 6;
+
+interface Slot { pieceId: string; buffer: Buf; slot: number; material: Material }
+
+/** Plan the animation of one accepted move (or a burst of them) from `prev` to `next`. */
+export function planTransition(prev: GameState, next: GameState, events: readonly TableEvent[]): TransitionPlan {
+  const phases: StepBody[][] = [[], [], [], [], [], [], []];
+  const [P_DICE, P_PULSE, P_PLACE, P_BUILD, P_OPERATE, P_FLOW, P_PLAYER] = [0, 1, 2, 3, 4, 5, 6] as const;
+
+  // ── Dice and activation ──
+  let roll: number[] | null = null;
+  for (const e of events) if (e.kind === 'roll') roll = [...e.dice];
+  if (!roll && prev.phase === 'roll' && next.lastRoll && JSON.stringify(next.lastRoll) !== JSON.stringify(prev.lastRoll)) {
+    roll = [...next.lastRoll];
+  }
+  if (roll) phases[P_DICE]!.push({ kind: 'dice', values: roll });
+  const pulsed = new Set<string>();
+  const usedPower = new Map<number, number>();
+  for (const e of events) {
+    if (e.kind !== 'activated') continue;
+    const key = `${e.pieceId}:${e.seat}`;
+    if (pulsed.has(key)) continue;
+    pulsed.add(key);
+    phases[P_PULSE]!.push({ kind: 'pulse', pieceId: e.pieceId, owner: e.seat });
+    if (e.outcome === 'power' && e.amount > 0) {
+      phases[P_PLAYER]!.push({ kind: 'toPlayer', player: e.seat, item: 'power', count: e.amount, from: { kind: 'piece', pieceId: e.pieceId } });
+      usedPower.set(e.seat, (usedPower.get(e.seat) ?? 0) + e.amount);
+    }
+  }
+
+  // ── Pieces placed ──
+  const before = new Map(prev.board.map(p => [p.id, p]));
+  for (const p of next.board) {
+    if (before.has(p.id)) continue;
+    let stack: number | null = null;
+    prev.stacks.forEach((s, i) => { if (s.pieces.some(x => x.id === p.id)) stack = i; });
+    if (p.type === 'mine') {
+      const n = Number(/(\d+)$/.exec(p.id)?.[1] ?? '0');
+      if (n >= 2 && n <= 3) stack = n - 1;
+    }
+    phases[P_PLACE]!.push({ kind: 'place', pieceId: p.id, stack });
+  }
+
+  // ── Modules, teleporters, meeples, belts ──
+  for (const p of next.board) {
+    const old = before.get(p.id);
+    p.claims.forEach((c, i) => {
+      const o = old?.claims[i];
+      if (o && o.ownerId === c.ownerId && o.controlModule === c.controlModule) return;
+      phases[P_BUILD]!.push({ kind: 'module', pieceId: p.id, index: i, owner: c.ownerId, upgrade: !!o && o.ownerId === c.ownerId });
+    });
+    for (const b of ['input', 'output'] as const) {
+      const now = p[b]?.teleporterOwner ?? null;
+      const was = old?.[b]?.teleporterOwner ?? null;
+      if (now !== null && now !== was) phases[P_BUILD]!.push({ kind: 'teleporter', pieceId: p.id, buffer: b, owner: now });
+    }
+  }
+  for (const pl of next.players) {
+    const was = prev.players[pl.id];
+    if (!pl.meepleOnPieceId) continue;
+    if (was && was.meepleOnPieceId === pl.meepleOnPieceId && was.meepleSlotIndex === pl.meepleSlotIndex) continue;
+    phases[P_BUILD]!.push({ kind: 'meeple', player: pl.id, fromPieceId: was?.meepleOnPieceId ?? null, fromSlot: was?.meepleSlotIndex ?? null });
+  }
+  const oldBelts = new Set(prev.belts.map(b => b.id));
+  for (const b of next.belts) if (!oldBelts.has(b.id)) phases[P_BUILD]!.push({ kind: 'belt', beltId: b.id });
+
+  // ── Materials in buffers, inventories, power ──
+  const filled: Slot[] = [];
+  const emptied: Slot[] = [];
+  // Buildings that used their inputs: those may be refilled with the same material at once
+  // (ore from a mine), which the state difference alone would hide.
+  const used = new Set<string>();
+  for (const e of events) {
+    if (e.kind === 'operated' || (e.kind === 'activated' && e.outcome === 'power')) used.add(e.pieceId);
+  }
+  for (const p of next.board) {
+    const old = before.get(p.id);
+    for (const b of ['input', 'output'] as const) {
+      const a = old?.[b]?.slots ?? [];
+      const z = p[b]?.slots ?? [];
+      for (let i = 0; i < Math.max(a.length, z.length); i++) {
+        const was = a[i] ?? null, now = z[i] ?? null;
+        if (was === now && !(b === 'input' && used.has(p.id))) continue;
+        if (was) emptied.push({ pieceId: p.id, buffer: b, slot: i, material: was });
+        if (now) filled.push({ pieceId: p.id, buffer: b, slot: i, material: now });
+      }
+    }
+  }
+  // Inventory change per player and material (positive: gained), and power.
+  const inv = next.players.map(pl => {
+    const was = prev.players[pl.id];
+    const d: Record<Material, number> = { ore: 0, plate: 0, sphere: 0, tesseract: 0 };
+    for (const m of MATS) d[m] = pl.inventory[m] - (was?.inventory[m] ?? 0);
+    return { d, power: pl.powerTokens - (was?.powerTokens ?? 0) - (usedPower.get(pl.id) ?? 0) };
+  });
+  const take = (player: number, m: Material, n: number): boolean => {
+    const d = inv[player]?.d;
+    if (!d || Math.sign(d[m]) !== Math.sign(n) || Math.abs(d[m]) < Math.abs(n)) return false;
+    d[m] -= n;
+    return true;
+  };
+  const takeSlot = (list: Slot[], fn: (s: Slot) => boolean): Slot | null => {
+    const i = list.findIndex(fn);
+    return i < 0 ? null : list.splice(i, 1)[0]!;
+  };
+
+  // Operated buildings: power goes in, inputs are used, the product appears (or is teleported).
+  for (const e of events) {
+    if (e.kind !== 'operated') continue;
+    const piece = { kind: 'piece' as const, pieceId: e.pieceId };
+    if (e.powerChange < 0) {
+      phases[P_OPERATE]!.push({ kind: 'fromPlayer', player: e.seat, item: 'power', count: -e.powerChange, to: piece });
+      const x = inv[e.seat];
+      if (x) x.power -= e.powerChange;
+    }
+    for (let s = takeSlot(emptied, x => x.pieceId === e.pieceId && x.buffer === 'input'); s; s = takeSlot(emptied, x => x.pieceId === e.pieceId && x.buffer === 'input')) {
+      phases[P_OPERATE]!.push({ kind: 'consume', ...s });
+    }
+    // Inputs completed from the operator's own materials through an input teleporter.
+    for (const m of MATS) {
+      const lost = inv[e.seat]?.d[m] ?? 0;
+      if (lost < 0 && take(e.seat, m, lost)) {
+        phases[P_OPERATE]!.push({ kind: 'fromPlayer', player: e.seat, item: m, count: -lost, to: { kind: 'buffer', pieceId: e.pieceId, buffer: 'input' } });
+      }
+    }
+    if (e.product) {
+      if (e.teleported) {
+        const owner = next.board.find(p => p.id === e.pieceId)?.output?.teleporterOwner ?? e.seat;
+        if (take(owner, e.product, 1)) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: owner, item: e.product, count: 1, from: piece });
+      } else {
+        const s = takeSlot(filled, x => x.pieceId === e.pieceId && x.buffer === 'output');
+        if (s) phases[P_OPERATE]!.push({ kind: 'appear', ...s });
+      }
+    }
+  }
+  // Collected output goes to the player.
+  for (const e of events) {
+    if (e.kind !== 'collected') continue;
+    for (const m of e.materials) {
+      takeSlot(emptied, x => x.pieceId === e.pieceId && x.buffer === 'output' && x.material === m);
+      if (take(e.seat, m, 1)) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: e.seat, item: m, count: 1, from: { kind: 'piece', pieceId: e.pieceId } });
+    }
+  }
+  // Inputs filled: along belts from an emptied output or a mine, or from a player's materials.
+  const mines = next.board.filter(p => p.type === 'mine');
+  const flowFrom = (s: Slot, sources: readonly FlowSource[], straight: boolean): boolean => {
+    if (sources.length === 0) return false;
+    const trace = traceFlow(next, s.pieceId, s.slot, sources);
+    if (!trace && !straight) return false;
+    const source = sources[trace?.source ?? nearest(next, sources, s)]!;
+    const from = sourceWorld(next, source);
+    const dest = next.board.find(p => p.id === s.pieceId);
+    const path = trace?.points ?? (from && dest ? [from, bufferSlotWorld(dest, 'input', s.slot)] : []);
+    if (path.length < 2) return false;
+    takeSlot(filled, x => x === s);
+    phases[P_FLOW]!.push({ kind: 'flow', material: s.material, path, toPieceId: s.pieceId, slot: s.slot, fromPieceId: source.pieceId });
+    return true;
+  };
+  const mineSources: FlowSource[] = mines.map(m => ({ pieceId: m.id, kind: 'mine' as const, slot: 0 }));
+  for (const s of [...filled]) {
+    if (s.buffer !== 'input') continue;
+    // From another building's output that emptied: the material clearly moved from there.
+    const src = emptied.find(x => x.buffer === 'output' && x.material === s.material && x.pieceId !== s.pieceId);
+    if (src && flowFrom(s, [{ pieceId: src.pieceId, kind: 'output', slot: src.slot }], true)) {
+      takeSlot(emptied, x => x === src);
+      continue;
+    }
+    // Ore from a mine that touches the input, directly or by belts.
+    if (s.material === 'ore' && flowFrom(s, mineSources, false)) continue;
+    // Loaded from a player's materials.
+    const loader = next.players.find(pl => (inv[pl.id]?.d[s.material] ?? 0) < 0);
+    if (loader && take(loader.id, s.material, -1)) {
+      takeSlot(filled, x => x === s);
+      phases[P_OPERATE]!.push({ kind: 'fromPlayer', player: loader.id, item: s.material, count: 1, to: { kind: 'buffer', pieceId: s.pieceId, buffer: 'input' } });
+      continue;
+    }
+    // Ore from somewhere unseen: from the nearest mine.
+    if (s.material === 'ore') flowFrom(s, mineSources, true);
+  }
+  // Output emptied while a player gained that material (an output teleporter, or a collect).
+  for (const s of [...emptied]) {
+    if (s.buffer !== 'output') continue;
+    const gainer = next.players.find(pl => (inv[pl.id]?.d[s.material] ?? 0) > 0);
+    if (gainer && take(gainer.id, s.material, 1)) {
+      takeSlot(emptied, x => x === s);
+      phases[P_PLAYER]!.push({ kind: 'toPlayer', player: gainer.id, item: s.material, count: 1, from: { kind: 'piece', pieceId: s.pieceId } });
+    }
+  }
+  for (const s of filled) phases[P_FLOW]!.push({ kind: 'appear', ...s });
+  for (const s of emptied) phases[P_OPERATE]!.push({ kind: 'consume', ...s });
+  // Anything else a player gained (meeple benefits, exchanges, cards) comes from the table.
+  for (const pl of next.players) {
+    const x = inv[pl.id]!;
+    for (const m of MATS) if (x.d[m] > 0) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: pl.id, item: m, count: x.d[m], from: null });
+    if (x.power > 0) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: pl.id, item: 'power', count: x.power, from: null });
+  }
+
+  // ── Leverage cards ──
+  const played = new Map<number, CardType[]>();
+  for (const e of events) if (e.kind === 'cardPlayed') played.set(e.seat, [...(played.get(e.seat) ?? []), e.card]);
+  const bought = new Map<number, (CardType | null)[]>();
+  for (const e of events) if (e.kind === 'cardBought') bought.set(e.seat, [...(bought.get(e.seat) ?? []), e.card]);
+  for (const pl of next.players) {
+    const was = prev.players[pl.id];
+    const b = bought.get(pl.id) ?? [];
+    const gained = Math.max(b.length, pl.hand.length - (was?.hand.length ?? 0));
+    if (gained > 0) {
+      phases[P_PLACE]!.push({ kind: 'toPlayer', player: pl.id, item: 'card', count: gained, from: { kind: 'deck' }, card: b[0] ?? null });
+    }
+    const p = played.get(pl.id) ?? [];
+    for (const c of p) phases[P_PULSE]!.push({ kind: 'fromPlayer', player: pl.id, item: 'card', count: 1, to: { kind: 'deck' }, card: c });
+  }
+
+  return schedule(phases, roll);
+}
+
+function nearest(game: GameState, sources: readonly FlowSource[], s: Slot): number {
+  const dest = game.board.find(p => p.id === s.pieceId);
+  if (!dest) return 0;
+  const d = bufferSlotWorld(dest, 'input', s.slot);
+  let best = 0, bestD = Infinity;
+  sources.forEach((src, i) => {
+    const p = sourceWorld(game, src);
+    if (!p) return;
+    const dd = Math.hypot(p.x - d.x, p.z - d.z);
+    if (dd < bestD) { bestD = dd; best = i; }
+  });
+  return best;
+}
+
+function durationOf(s: StepBody): number {
+  switch (s.kind) {
+    case 'dice': return DUR.dice;
+    case 'pulse': return DUR.pulse;
+    case 'place': return DUR.place;
+    case 'belt': return DUR.belt;
+    case 'module': return DUR.module;
+    case 'teleporter': return DUR.teleporter;
+    case 'meeple': return DUR.meeple;
+    case 'consume': return DUR.consume;
+    case 'appear': return DUR.appear;
+    case 'flow': return Math.max(DUR.flowMin, Math.min(DUR.flowMax, 300 + pathLength(s.path) * 1.6));
+    case 'toPlayer':
+    case 'fromPlayer': return DUR.flight + DUR.flightGap * (Math.min(MAX_TOKENS, s.count) - 1);
+  }
+}
+
+/** Gap between the starts of consecutive items in one phase. */
+function gapOf(s: StepBody): number {
+  switch (s.kind) {
+    case 'belt': return DUR.beltGap;
+    case 'dice': return 0;
+    case 'pulse': return 70;
+    case 'flow': return 110;
+    default: return 90;
+  }
+}
+
+/** Lay the phases out one after another (overlapping a little); items in a phase are staggered. */
+function schedule(phases: StepBody[][], roll: number[] | null): TransitionPlan {
+  const steps: AnimStep[] = [];
+  let end = 0;
+  let flowStart = -1;
+  phases.forEach((list, pi) => {
+    if (list.length === 0) return;
+    // Pulses start as the dice land; things going to the players travel at the same time as
+    // material flows along the belts.
+    const start = pi === 1 && roll ? Math.max(0, DUR.dice - 120)
+      : pi === 6 && flowStart >= 0 ? flowStart
+        : steps.length > 0 ? Math.max(0, end - DUR.overlap) : 0;
+    if (pi === 5) flowStart = start;
+    const n = list.length;
+    let at = start;
+    let phaseEnd = start;
+    for (let i = 0; i < n; i++) {
+      const s = list[i]!;
+      const gap = Math.min(gapOf(s), n > 1 ? DUR.spread / (n - 1) : 0);
+      const dur = durationOf(s);
+      steps.push({ ...s, at: Math.round(at), dur: Math.round(dur) } as AnimStep);
+      phaseEnd = Math.max(phaseEnd, at + dur);
+      at += gap;
+    }
+    end = Math.max(end, phaseEnd);
+  });
+  return { steps, baseMs: Math.round(end), roll };
+}
+
+/** Sound cue of a step, if it has one (played when the step starts). */
+export type SoundName = 'dice' | 'place' | 'belt' | 'tick' | 'card' | 'turn' | 'alert' | 'refuse' | 'over';
+
+export function soundOf(s: AnimStep): SoundName | null {
+  switch (s.kind) {
+    case 'dice': return 'dice';
+    case 'place': case 'module': case 'meeple': case 'teleporter': return 'place';
+    case 'belt': return 'belt';
+    case 'flow': case 'appear': return 'tick';
+    case 'toPlayer': case 'fromPlayer': return s.item === 'card' ? 'card' : 'tick';
+    default: return null;
+  }
+}

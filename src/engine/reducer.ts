@@ -1,4 +1,5 @@
 import type { GameState, PlayerId } from './state';
+import { TESSERACTS_TO_WIN } from './config';
 import type { Action, RulesError, SkipFactoryRollAction, ExchangeMaterialsAction } from './actions';
 import { applySetupClaim } from './rules/setupClaim';
 import { applyPlacePiece } from './rules/pieces';
@@ -73,7 +74,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     const withBonuses = recomputeBonuses(state);
     const activeId = withBonuses.turnOrder[withBonuses.activePlayerIndex];
 
-    if (activeId !== undefined && tesseractCount(withBonuses, activeId) >= 4) {
+    if (activeId !== undefined && tesseractCount(withBonuses, activeId) >= TESSERACTS_TO_WIN) {
       return {
         ok: true,
         state: {
