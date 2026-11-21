@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Piece gallery</title>
+    <link rel="icon" href="data:," />
+    <style>
+      html, body { margin: 0; height: 100%; background: #2a1d15; overflow: hidden; font-family: system-ui, sans-serif; }
+      canvas { display: block; }
+      #labels { position: fixed; inset: 0; pointer-events: none; }
+      .label {
+        position: absolute; transform: translate(-50%, 0); white-space: nowrap; text-align: center;
+        color: #f3e9dc; font-size: 12px; line-height: 1.25; text-shadow: 0 1px 2px #000, 0 0 4px #000;
+      }
+      .label b { font-weight: 600; }
+      .label span { color: #cdbca8; font-size: 11px; }
+      .label.over span { color: #ffb48a; }
+      #title { position: fixed; left: 14px; top: 10px; color: #f3e9dc; font-size: 14px; text-shadow: 0 1px 2px #000; }
+    </style>
+  </head>
+  <body>
+    <div id="title"></div>
+    <div id="labels"></div>
+    <script type="module" src="./gallery.js"></script>
+  </body>
+</html>

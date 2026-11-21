@@ -10,7 +10,8 @@
     "lint": "eslint src",
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "models": "node tools/convert-3mf.mjs"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",

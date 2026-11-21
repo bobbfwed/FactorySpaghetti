@@ -266,15 +266,20 @@ Feedback that makes the game readable:
 | Control Module | Matte square tile in the player's colour with a black numeral; 6 and 9 carry a bar. Eighteen sit in a black 3×6 tray; taking one out leaves an empty pocket. | ~15 mm |
 | Belt | A flexible chain of arrow-shaped links in the player's colour, with an arrowhead at each end | 74 × 6.7 mm |
 | Meeple | Flat silhouette in the player's colour | 19 mm |
-| Ore | Iridescent purple rounded triangle | 12 mm |
-| Plate | Translucent yellow-orange parallelogram | 16 mm |
-| Sphere | Dark green glitter disc with a bevelled edge | 14 mm |
-| Tesseract | Black glitter open cross made of three intersecting square frames | 10 mm |
-| Power Token | Gold disc with an inlaid black lightning bolt | 22 mm |
+| Ore | Light-green rounded triangle | 12 mm |
+| Plate | Green parallelogram | 16 mm |
+| Sphere | Lime-green disc with a bevelled edge | 14 mm |
+| Tesseract | Yellow-green open cross made of intersecting square frames | 10 mm |
+| Power Token | Yellow disc with an inlaid black lightning bolt | 22 mm |
+| Starting-player piece | Tall yellow-green piece in the tesseract's shape | 46 mm |
+
+The material pieces are the same greens as the symbols on the tiles, so a symbol and the piece it stands for match by sight.
 
 Player colours in the printed set: **blue, red, orange, green**.
 
-No photo or model exists yet for teleporters, the leverage cards, or the starting-player piece in its printed colours. The mock-ups use placeholders for these.
+No model exists yet for teleporters or the leverage cards. The mock-ups use placeholders for these.
+
+All eighteen models above have been converted from the AMS file into `public/models/` (see `docs/models/README.md` and `docs/models/gallery.png`).
 
 The grey lunar-crater artwork in the rulebook diagrams does not appear on the printed tiles. See open decision D3.
 
