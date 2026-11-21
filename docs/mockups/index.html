@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Spaghetti — mock-ups</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  html, body { overflow: auto; height: auto; }
+  body { background: #140d09; padding: 32px 36px 60px; max-width: 1400px; margin: 0 auto; }
+  h1 { margin: 0 0 6px; font-size: 28px; font-weight: 900; }
+  .intro { color: var(--text-2); font-size: 14.5px; line-height: 1.5; max-width: 860px; margin: 0 0 26px; }
+  .intro b { color: var(--text); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+  .shot { padding: 14px; display: flex; flex-direction: column; gap: 10px; text-decoration: none; color: inherit; }
+  .shot .img { border-radius: 10px; overflow: hidden; background: #0b0b0c; display: grid; place-items: center; height: 300px; }
+  .shot img { max-width: 100%; max-height: 300px; display: block; }
+  .shot .t { display: flex; align-items: baseline; gap: 10px; }
+  .shot .t b { font-size: 16px; }
+  .shot .t span { color: var(--text-3); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  .shot p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.45; }
+  .shot .links { display: flex; gap: 14px; font-size: 13px; }
+  .shot .links a { color: var(--gold); text-decoration: none; font-weight: 700; }
+  .note { margin-top: 28px; color: var(--text-3); font-size: 12.5px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<h1>Factory Spaghetti — online version mock-ups</h1>
+<p class="intro">Static pictures of the planned isometric 3D table and the interface over it, for the designer to react to. <b>Not a working game:</b> the scene is hand-authored, nothing is clickable, no rules run. Every page opens directly in a browser (Three.js 0.160 from a CDN, no build step). Design reference: <b>docs/PLAN.md §5</b>.</p>
+<div class="grid">
+  <div class="shot tray"><div class="img"><img src="shots/01-game-desktop.png" alt="Desktop game, your turn, building menu open"></div>
+    <div class="t"><b>1 · Your turn, desktop</b><span>1440 × 900</span></div>
+    <p>Step 3 Actions. Building menu open on Blue's Plate Factory (module 3). Game menu open with save options. Seat plates, bank, turn bar, your tray and hand.</p>
+    <div class="links"><a href="game-desktop.html">Open page</a><a href="shots/01-game-desktop.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/02-game-phone.png" alt="Phone, placing a piece"></div>
+    <div class="t"><b>2 · Place a piece, phone</b><span>390 × 844 @3x</span></div>
+    <p>Step 1. Ghost Power Plant on a lit empty space with confirm, cancel and rotate. Other legal spaces glow. Bottom sheet collapsed.</p>
+    <div class="links"><a href="game-phone.html">Open page</a><a href="shots/02-game-phone.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/03-phone-tray.png" alt="Phone, tray sheet expanded"></div>
+    <div class="t"><b>3 · Tray sheet, phone</b><span>390 × 844 @3x</span></div>
+    <p>The bottom sheet dragged up: Control Module tray (2, 3, 5 on buildings), components, materials and the hand of three cards.</p>
+    <div class="links"><a href="phone-tray.html">Open page</a><a href="shots/03-phone-tray.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/04-operate-prompt.png" alt="Operate prompt on another player's turn"></div>
+    <div class="t"><b>4 · Operate prompt</b><span>1440 × 900</span></div>
+    <p>Alex rolled a 3 (one die, one mine in play). Every module 3 flashes; your Plate Factory asks Operate or Skip with a 6-second countdown ring.</p>
+    <div class="links"><a href="operate-prompt.html">Open page</a><a href="shots/04-operate-prompt.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/05-lobby.png" alt="Room lobby"></div>
+    <div class="t"><b>5 · Room lobby</b><span>1440 × 900</span></div>
+    <p>Room KQMTV, invite and save links, four seats (host, player, bot, open), room settings and Ready.</p>
+    <div class="links"><a href="lobby.html">Open page</a><a href="shots/05-lobby.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/06-menu-phone.png" alt="Start menu on a phone"></div>
+    <div class="t"><b>6 · Start menu, phone</b><span>390 × 844 @3x</span></div>
+    <p>Name, Host, Join with a 5-letter code, Solo vs bots, the saved game with Resume, Load a save, Install app hint, version.</p>
+    <div class="links"><a href="menu-phone.html">Open page</a><a href="shots/06-menu-phone.png">PNG</a></div></div>
+  <div class="shot tray"><div class="img"><img src="shots/07-pieces.png" alt="Piece gallery"></div>
+    <div class="t"><b>7 · Piece gallery</b><span>1440 × 1482</span></div>
+    <p>Every piece type in 3D on the wood table, with labels. Gold labels mark placeholders that have no printed version yet.</p>
+    <div class="links"><a href="pieces.html">Open page</a><a href="shots/07-pieces.png">PNG</a></div></div>
+</div>
+<p class="note">Files: table.js builds the 3D table (export <code>mountTable(canvas, options)</code>); ui.css, desktop.css and phone.css style the interface; ui.js draws the material icons and pins HTML to points on the table. Pieces are modelled procedurally from the print-file sizes; no photos or print files are copied here.</p>
+<script>window.__ready = true;</script>
+</body>
+</html>

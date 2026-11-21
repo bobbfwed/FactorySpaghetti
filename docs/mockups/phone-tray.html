@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Factory Spaghetti — your tray (phone)</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="phone.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+  .scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 0, rgba(0,0,0,.35) 100%); pointer-events: none; }
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; border-radius: 12px; margin-bottom: 12px; }
+  .tabs button { height: 40px; border-radius: 9px; font-weight: 700; font-size: 14px; color: var(--text-2); }
+  .tabs button.on { background: #2a2a2e; color: var(--text); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .tabs button .badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: var(--gold); color: var(--ink); font-size: 11px; font-weight: 900; margin-left: 4px; padding: 0 4px; }
+  .trayrow { display: flex; gap: 12px; margin-bottom: 14px; }
+  .trayrow .mod-tray { --m: 33px; --mg: 5px; padding: 7px; border-radius: 10px; }
+  .side { flex: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+  .side .comp { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; height: 44px; padding: 0 10px 0 8px; font-size: 13.5px; color: var(--text-2); }
+  .side .comp .ic { width: 22px; height: 22px; }
+  .side .comp .num { color: var(--text); font-size: 19px; }
+  .side .mats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .side .mat { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px; }
+  .side .mat .ic { width: 22px; height: 22px; }
+  .side .mat .num { margin-left: auto; font-size: 19px; }
+  .sechd { display: flex; align-items: baseline; justify-content: space-between; margin: 0 2px 8px; }
+  .sechd .muted { font-size: 12px; }
+  .handrow { display: flex; gap: 8px; justify-content: space-between; margin-bottom: 14px; }
+  .handrow .card { width: 112px; height: 150px; }
+  .handrow .card .band { font-size: 12px; }
+</style>
+</head>
+<body>
+<canvas class="table" id="table"></canvas>
+<div class="layer">
+  <div class="scrim"></div>
+  <div class="chips">
+    <button class="round" style="width:44px;height:44px;flex:none" aria-label="Game menu"><i class="ic" data-icon="menu"></i></button>
+    <div class="chip-seat tray"><span class="stripe" style="background:var(--red)"></span>
+      <div class="col"><span class="nm">Alex</span><span class="st">away · bot in 0:42</span></div>
+      <span class="pips" data-pips="1" style="margin-left:auto"></span></div>
+    <div class="chip-seat tray"><span class="stripe" style="background:var(--orange)"></span>
+      <div class="col"><span class="nm">Smart Bot</span><span class="st" style="color:var(--text-2)">bot</span></div>
+      <span class="pips" data-pips="0" style="margin-left:auto"></span></div>
+  </div>
+
+  <div class="sheet tray" id="sheet">
+    <div class="grab"></div>
+    <div class="tabs well">
+      <button class="on">Tray</button>
+      <button>Cards<span class="badge">3</span></button>
+      <button>Log</button>
+      <button>Rules</button>
+    </div>
+    <div class="trayrow">
+      <div>
+        <div class="label" style="margin:0 0 6px 2px">Control Modules</div>
+        <div class="mod-tray" data-tray="blue" data-missing="2,3,5"></div>
+      </div>
+      <div class="side">
+        <div class="label" style="margin:0 0 0 2px">Components</div>
+        <div class="comp well"><i class="ic" data-icon="power"></i>Power<span class="num">4</span></div>
+        <div class="comp well"><i class="ic" data-icon="belt" data-color="blue"></i>Belts<span class="num">3</span></div>
+        <div class="comp well"><i class="ic" data-icon="teleporter" data-color="blue"></i>Teleporters<span class="num">3</span></div>
+        <div class="mats">
+          <div class="mat well"><i class="ic" data-icon="ore"></i><span class="num">2</span></div>
+          <div class="mat well"><i class="ic" data-icon="plate"></i><span class="num">1</span></div>
+          <div class="mat well" style="color:var(--text-3)"><i class="ic" data-icon="sphere" style="opacity:.5"></i><span class="num">0</span></div>
+          <div class="mat well"><i class="ic" data-icon="tess"></i><span class="num">1</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="sechd"><span class="label">Your hand · 3 cards</span><span class="muted">Tap a card to read and play</span></div>
+    <div class="handrow" id="hand"></div>
+    <button class="btn btn-gold primary">Confirm placement</button>
+  </div>
+</div>
+<script type="module">
+import { mountTable, CARD_TEXT } from './table.js';
+import { hydrate } from './ui.js';
+import { cardHTML } from './ui.js';
+const hand = document.getElementById('hand');
+for (const title of ['Scouting Drone', 'Production Increase', 'Short Sale']) {
+  const c = document.createElement('div'); c.className = 'card'; c.innerHTML = cardHTML(title, CARD_TEXT[title]); hand.appendChild(c);
+}
+hydrate();
+const legal = [[3, -2], [-3, 2], [-1, 3], [0, 3], [2, 2], [4, -1], [-3, 1]];
+mountTable(document.getElementById('table'), {
+  camera: { viewHeight: 760, azimuth: -60, elevation: 48, target: [0, 0], shift: [0, -0.31] },
+  highlights: legal.map((cell) => ({ cell, color: 'blue', fill: 0.14, glow: 0.45 })).concat([{ cell: [-2, 2], color: 'blue', fill: 0.22, glow: 0.8 }]),
+  ghost: { cell: [-2, 2], type: 'power', k: 1 },
+});
+window.__ready = true;
+</script>
+</body>
+</html>

@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Spaghetti — room lobby</title>
+<link rel="stylesheet" href="ui.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+  canvas.table { filter: blur(4px) brightness(0.85) saturate(0.95); transform: scale(1.04); }
+  .veil { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 50%, rgba(10,7,5,.05), rgba(10,7,5,.6)); }
+  .top { position: absolute; top: 22px; left: 28px; right: 28px; display: flex; align-items: center; gap: 14px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .mark { width: 40px; height: 40px; }
+  .brand .wm { font-weight: 900; font-size: 20px; letter-spacing: .02em; }
+  .brand .wm small { display: block; font-size: 11px; letter-spacing: .14em; color: var(--text-2); font-weight: 700; text-transform: uppercase; }
+  .top .right { margin-left: auto; display: flex; gap: 10px; align-items: center; color: var(--text-2); font-size: 13px; }
+  .wrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%); width: 1180px; display: grid; grid-template-columns: 440px 1fr; gap: 20px; }
+  .panel { padding: 24px; }
+  .room .codes { display: flex; gap: 10px; margin: 10px 0 18px; }
+  .room .ch { width: 70px; height: 86px; border-radius: 12px; display: grid; place-items: center; font-family: "Arial Black", "Segoe UI Black", system-ui, sans-serif; font-weight: 900; font-size: 50px; color: #0d0d0d; background: #f1eee7;
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,.18), inset 0 1px 0 rgba(255,255,255,.7), 0 3px 0 #0a0a0b, 0 8px 18px rgba(0,0,0,.45); }
+  .room .btns { display: flex; gap: 10px; }
+  .room .btns .btn-gold { flex: 1.25; }
+  .room .btns .btn-quiet { flex: 1; }
+  .room .hint { margin-top: 14px; font-size: 13px; color: var(--text-2); line-height: 1.45; }
+  .room .hint code { color: var(--text); font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; background: #1f1f23; padding: 2px 6px; border-radius: 5px; }
+  h2 { margin: 0; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
+  .seats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 14px; }
+  .seatcard { display: flex; align-items: center; gap: 14px; height: 84px; padding: 0 16px 0 0; border-radius: 12px; overflow: hidden; }
+  .seatcard .bar { width: 10px; align-self: stretch; }
+  .seatcard .av { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; flex: none; }
+  .seatcard .av .ic { width: 30px; height: 30px; }
+  .seatcard .nm { font-weight: 850; font-size: 17px; display: flex; align-items: center; gap: 8px; }
+  .seatcard .meta { font-size: 13px; color: var(--text-2); margin-top: 3px; display: flex; align-items: center; gap: 6px; }
+  .seatcard .state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 15px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+  .state.ready { background: rgba(74,212,126,.14); color: #6fe39a; }
+  .state.bot { background: rgba(255,255,255,.07); color: var(--text-2); }
+  .state.wait { color: var(--text-3); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+  .seatcard.open { background: transparent !important; box-shadow: inset 0 0 0 2px rgba(255,255,255,.12); border: 0; background-image: none; }
+  .seatcard.open .bar { background: repeating-linear-gradient(180deg, var(--green) 0 8px, transparent 8px 14px); }
+  .tagh { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--gold); color: var(--ink); font-size: 11px; font-weight: 900; letter-spacing: .04em; }
+  .tagh .ic { width: 12px; height: 12px; }
+  .settings { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 24px; }
+  .set { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 4px; border-bottom: 1px solid var(--line); }
+  .set .k { font-size: 14.5px; font-weight: 600; }
+  .set .k small { display: block; font-size: 12px; color: var(--text-2); font-weight: 500; margin-top: 1px; }
+  .set .v { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .seg { display: inline-flex; padding: 3px; border-radius: 10px; background: #0d0d0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .seg span { width: 36px; height: 32px; display: grid; place-items: center; border-radius: 8px; font-weight: 800; color: var(--text-2); font-size: 14px; }
+  .seg span.on { background: var(--gold); color: var(--ink); }
+  .toggle { width: 50px; height: 30px; border-radius: 15px; background: var(--gold); position: relative; box-shadow: inset 0 -2px 0 rgba(0,0,0,.2); }
+  .toggle::after { content: ""; position: absolute; right: 3px; top: 3px; width: 24px; height: 24px; border-radius: 50%; background: var(--ink); }
+  .toggle-l { font-size: 13px; font-weight: 800; color: var(--gold); }
+  .step2 { display: inline-flex; align-items: center; gap: 0; border-radius: 10px; background: #0d0d0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+  .step2 button { width: 34px; height: 36px; color: var(--text-2); font-weight: 900; font-size: 18px; }
+  .step2 .val { min-width: 52px; text-align: center; font-weight: 900; font-size: 15px; }
+  .sel { height: 36px; padding: 0 12px; border-radius: 10px; background: #0d0d0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; white-space: nowrap; }
+  .sel::after { content: ""; width: 8px; height: 8px; border-right: 2px solid var(--text-2); border-bottom: 2px solid var(--text-2); transform: rotate(45deg) translateY(-2px); }
+  .footer { margin-top: 22px; display: flex; align-items: center; gap: 16px; }
+  .footer .status { font-size: 14px; color: var(--text-2); }
+  .footer .status b { color: var(--text); }
+  .footer .btn-gold { margin-left: auto; height: 60px; min-width: 240px; font-size: 18px; border-radius: 14px; }
+  .footer .btn-gold .ic { width: 22px; height: 22px; }
+  .members { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+  .members .row { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text-2); }
+  .members .row b { color: var(--text); font-weight: 700; }
+</style>
+</head>
+<body>
+<canvas class="table" id="table"></canvas>
+<div class="veil"></div>
+<div class="layer">
+  <div class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 40 40"><polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill="#efede6"/><g fill="#e8b730"><path d="M9 22h4l3-4-3-4H9l3 4z"/><path d="M16 22h4l3-4-3-4h-4l3 4z"/><path d="M23 22h4l3-4-3-4h-4l3 4z"/></g><path d="M8 27a3 3 0 0 1 6 0z" fill="#141416"/></svg>
+      <div class="wm">Factory Spaghetti<small>Room lobby</small></div>
+    </div>
+    <div class="right"><i class="ic" data-icon="wifi" style="color:#6fe39a"></i>Connected · host is you <button class="btn btn-quiet" style="height:40px;margin-left:8px"><i class="ic" data-icon="leave"></i>Leave room</button></div>
+  </div>
+
+  <div class="wrap">
+    <div class="tray panel room">
+      <h2>Room code</h2>
+      <div class="codes"><span class="ch">K</span><span class="ch">Q</span><span class="ch">M</span><span class="ch">T</span><span class="ch">V</span></div>
+      <div class="btns">
+        <button class="btn btn-gold btn-lg"><i class="ic" data-icon="link"></i>Copy invite link</button>
+        <button class="btn btn-quiet btn-lg"><i class="ic" data-icon="copy"></i>Copy save link</button>
+      </div>
+      <div class="hint">Friends open the invite link, or choose <b style="color:var(--text)">Join a game</b> and type <code>KQMTV</code>. The save link brings this exact game back later, on any device.</div>
+      <div class="members">
+        <div class="label" style="margin-bottom:2px">In the room</div>
+        <div class="row"><span class="dot on"></span><b>Brandon</b> · this device · host</div>
+        <div class="row"><span class="dot on"></span><b>Alex</b> · joined 2 min ago</div>
+        <div class="row"><span class="dot" style="background:#5d5a55"></span>1 seat open</div>
+      </div>
+    </div>
+
+    <div class="tray panel">
+      <h2>Seats</h2>
+      <div class="seats">
+        <div class="seatcard well"><span class="bar" style="background:var(--blue)"></span>
+          <span class="av" style="background:rgba(47,111,214,.16)"><i class="ic" data-icon="meeple" data-color="blue"></i></span>
+          <div><div class="nm">Brandon <span class="tagh"><i class="ic" data-icon="crown"></i>HOST</span></div><div class="meta">Blue · you</div></div>
+          <span class="state ready"><i class="ic" data-icon="check" style="width:14px;height:14px"></i>Ready</span></div>
+        <div class="seatcard well"><span class="bar" style="background:var(--red)"></span>
+          <span class="av" style="background:rgba(224,69,79,.16)"><i class="ic" data-icon="meeple" data-color="red"></i></span>
+          <div><div class="nm">Alex</div><div class="meta">Red · <span class="dot on" style="width:7px;height:7px"></span> connected</div></div>
+          <span class="state ready"><i class="ic" data-icon="check" style="width:14px;height:14px"></i>Ready</span></div>
+        <div class="seatcard well"><span class="bar" style="background:var(--orange)"></span>
+          <span class="av" style="background:rgba(240,138,36,.16)"><i class="ic" data-icon="meeple" data-color="orange"></i></span>
+          <div><div class="nm">Smart Bot <i class="ic" data-icon="bot" style="width:18px;height:18px;color:var(--text-2)"></i></div><div class="meta">Orange · computer player</div></div>
+          <span class="state bot">Bot · ready</span></div>
+        <div class="seatcard open"><span class="bar"></span>
+          <span class="av" style="box-shadow: inset 0 0 0 2px rgba(46,158,91,.5)"><i class="ic" data-icon="meeple" data-color="rgba(46,158,91,.45)"></i></span>
+          <div><div class="nm" style="color:var(--text-2)">Open seat</div><div class="meta">Green · waiting…</div></div>
+          <button class="btn btn-quiet" style="margin-left:auto;height:40px"><i class="ic" data-icon="bot" style="width:18px;height:18px"></i>Add bot</button></div>
+      </div>
+
+      <div class="settings">
+        <div class="set"><div class="k">Players</div><div class="v"><span class="seg"><span>2</span><span>3</span><span class="on">4</span></span></div></div>
+        <div class="set"><div class="k">Bonus Tesseracts<small>Face-up bonus cards count toward 4</small></div><div class="v"><span class="toggle-l">On</span><span class="toggle"></span></div></div>
+        <div class="set"><div class="k">Operate timer<small>Time to answer an off-turn prompt</small></div><div class="v"><span class="step2"><button>−</button><span class="val">8 s</span><button>+</button></span></div></div>
+        <div class="set"><div class="k">Round-end timer<small>Free upgrades at the end of a round</small></div><div class="v"><span class="step2"><button>−</button><span class="val">20 s</span><button>+</button></span></div></div>
+        <div class="set" style="grid-column:1 / -1"><div class="k">If a player drops<small>Their seat keeps its pieces; a bot plays until they reconnect</small></div><div class="v"><span class="sel">Bot takes over after 90 s</span></div></div>
+      </div>
+
+      <div class="footer">
+        <div class="status"><b>3 of 4</b> seats ready · waiting for Green, or start with a bot in the open seat.</div>
+        <button class="btn btn-gold"><i class="ic" data-icon="check"></i>Ready</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { mountTable } from './table.js';
+import { hydrate } from './ui.js';
+hydrate();
+mountTable(document.getElementById('table'), { camera: { viewHeight: 560, target: [20, 0], azimuth: -30, elevation: 42 }, pixelRatio: 1 });
+window.__ready = true;
+</script>
+</body>
+</html>

@@ -13,6 +13,34 @@ An online, isometric 3D version of the board game **Factory Spaghetti** (2–4 p
 - **Phone-friendly and installable** from the browser on Android.
 - **Hosted on GitHub Pages**, updated on every push to `main`.
 
+## Mock-ups
+
+These are pictures of the intended look, not a working game. The pieces are modelled on photos of the printed set. The pages that produced them are in [docs/mockups](docs/mockups) (serve that folder with any static web server and open `index.html`).
+
+**The table on a desktop**, on your Actions step, with a building's menu open and the game menu showing the save options.
+
+![Desktop game mock-up](docs/mockups/shots/01-game-desktop.png)
+
+**On a phone.** Left: placing a piece, with the legal spaces lit and confirm, rotate and cancel beside the preview. Middle: the bottom sheet pulled up to show your Control Module tray and hand. Right: the start menu.
+
+<p>
+<img src="docs/mockups/shots/02-game-phone.png" width="32%" alt="Phone: placing a piece">
+<img src="docs/mockups/shots/03-phone-tray.png" width="32%" alt="Phone: tray and hand">
+<img src="docs/mockups/shots/06-menu-phone.png" width="32%" alt="Phone: start menu">
+</p>
+
+**A roll activates your factory on someone else's turn**: operate or skip, with a countdown.
+
+![Operate prompt mock-up](docs/mockups/shots/04-operate-prompt.png)
+
+**The room lobby**: room code, invite link, save link, seats and settings.
+
+![Lobby mock-up](docs/mockups/shots/05-lobby.png)
+
+**Every piece**, as it will appear on the table. Gold labels mark pieces that have no printed version yet.
+
+![Piece gallery mock-up](docs/mockups/shots/07-pieces.png)
+
 ## What exists today
 
 | Part | State |

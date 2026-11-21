@@ -1,0 +1,27 @@
+/* phone-specific pieces shared by game-phone.html and phone-tray.html */
+.chips { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; gap: 6px; align-items: center; }
+.chip-seat { display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 6px; border-radius: 12px; min-width: 0; flex: 1; }
+.chip-seat .stripe { width: 5px; height: 30px; border-radius: 3px; flex: none; }
+.chip-seat .nm { font-weight: 800; font-size: 13.5px; white-space: nowrap; }
+.chip-seat .st { font-size: 11px; color: #e8a53a; white-space: nowrap; }
+.chip-seat .pips .pip { width: 11px; height: 11px; }
+.chip-seat .col { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cam-col { position: absolute; right: 10px; top: 64px; display: flex; flex-direction: column; gap: 8px; }
+.cam-col .round { width: 44px; height: 44px; }
+
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 22px 22px 0 0; padding: 8px 14px 16px; }
+.grab { width: 44px; height: 5px; border-radius: 3px; background: #4a4844; margin: 2px auto 10px; }
+.sheet .stepline { display: flex; align-items: center; gap: 8px; }
+.sheet .stepchip { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px 0 5px; border-radius: 10px; background: var(--gold); color: var(--ink); font-weight: 800; font-size: 14.5px; }
+.sheet .stepchip .n { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); color: var(--gold); display: grid; place-items: center; font-weight: 900; font-size: 13px; }
+.sheet .dots { display: inline-flex; gap: 4px; margin-left: 2px; }
+.sheet .dots i { width: 6px; height: 6px; border-radius: 50%; background: #3a3936; display: inline-block; }
+.sheet .dots i.on { background: var(--gold); width: 16px; border-radius: 3px; }
+.sheet .rnd { margin-left: auto; color: var(--text-2); font-size: 12.5px; }
+.sheet .rnd b { color: var(--text); font-weight: 900; font-size: 15px; }
+.sheet .instr2 { font-size: 15px; margin: 10px 2px 12px; color: var(--text); line-height: 1.35; }
+.strip { display: flex; align-items: center; justify-content: space-between; height: 44px; padding: 0 12px; margin-bottom: 12px; }
+.strip .count { gap: 5px; }
+.strip .count .num { font-size: 16px; }
+.strip .sep { width: 1px; height: 22px; background: var(--line); }
+.sheet .primary { width: 100%; height: 56px; font-size: 17px; border-radius: 14px; }

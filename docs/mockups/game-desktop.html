@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Factory Spaghetti — your turn (desktop)</title>
+<link rel="stylesheet" href="ui.css">
+<link rel="stylesheet" href="desktop.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+  #menuPop { z-index: 5; }
+  #menuPop .item { min-height: 40px; }
+</style>
+</head>
+<body>
+<canvas class="table" id="table"></canvas>
+<div class="layer" id="ui">
+
+  <button class="round open" id="menuBtn" aria-label="Game menu"><i class="ic" data-icon="menu"></i></button>
+  <div class="tray" id="menuDrop">
+    <button class="item hot"><i class="ic" data-icon="link"></i>Copy save link</button>
+    <button class="item"><i class="ic" data-icon="download"></i>Download save file</button>
+    <hr>
+    <button class="item"><i class="ic" data-icon="book"></i>Rules</button>
+    <button class="item"><i class="ic" data-icon="gear"></i>Settings</button>
+    <hr>
+    <button class="item danger"><i class="ic" data-icon="leave"></i>Leave game</button>
+  </div>
+
+  <div id="seats">
+    <div class="seat tray">
+      <div class="stripe" style="background:var(--red)"></div>
+      <div class="body">
+        <div class="row"><span class="name">Alex</span><span class="dot off"></span><span class="status warn">away — bot in 0:42</span><span class="pips" data-pips="1" style="margin-left:auto"></span></div>
+        <div class="row counts">
+          <span class="count"><i class="ic" data-icon="ore"></i><span class="num">3</span></span>
+          <span class="count"><i class="ic" data-icon="plate"></i><span class="num">2</span></span>
+          <span class="count"><i class="ic" data-icon="sphere"></i><span class="num">1</span></span>
+          <span class="count"><i class="ic" data-icon="power"></i><span class="num">6</span></span>
+          <span class="count"><i class="ic" data-icon="card"></i><span class="num">2</span></span>
+          <span class="count"><i class="ic" data-icon="belt" data-color="red"></i><span class="num">2</span></span>
+        </div>
+      </div>
+    </div>
+    <div class="seat tray">
+      <div class="stripe" style="background:var(--orange)"></div>
+      <div class="body">
+        <div class="row"><span class="name">Smart Bot</span><span class="dot on"></span><span class="status">bot · waiting</span><span class="pips" data-pips="0" style="margin-left:auto"></span></div>
+        <div class="row counts">
+          <span class="count"><i class="ic" data-icon="ore"></i><span class="num">1</span></span>
+          <span class="count"><i class="ic" data-icon="plate"></i><span class="num">3</span></span>
+          <span class="count"><i class="ic" data-icon="sphere"></i><span class="num">0</span></span>
+          <span class="count"><i class="ic" data-icon="power"></i><span class="num">5</span></span>
+          <span class="count"><i class="ic" data-icon="card"></i><span class="num">4</span></span>
+          <span class="count"><i class="ic" data-icon="belt" data-color="orange"></i><span class="num">5</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="cam">
+    <button class="round" aria-label="Rotate 60 degrees"><i class="ic" data-icon="rotate"></i></button>
+    <button class="round" aria-label="Re-centre"><i class="ic" data-icon="recenter"></i></button>
+    <button class="round" aria-label="Top-down view"><i class="ic" data-icon="topdown"></i></button>
+  </div>
+
+  <div class="edge-tabs" id="tabs"><button>Log</button><button>Rules</button><button>Bonuses</button></div>
+
+  <div class="tray" id="bank">
+    <div class="label" style="padding:0 4px 2px">Bank</div>
+    <div class="chip"><i class="ic" data-icon="belt" data-color="#b9b4aa"></i>Belt<span class="num">1</span></div>
+    <div class="chip"><i class="ic" data-icon="card"></i>Card<span class="num">2</span></div>
+    <div class="chip"><i class="ic" data-icon="mine"></i>Mine<span class="num">6</span></div>
+    <div class="chip"><i class="ic" data-icon="teleporter" data-color="#b9b4aa"></i>Teleporter<span class="num">3</span></div>
+  </div>
+
+  <!-- building menu, anchored to Blue's Plate Factory (module 3) -->
+  <div class="pop tray" id="menuPop">
+    <div class="pointer" id="ptr"></div>
+    <div class="hd"><span class="sw" style="background:var(--blue)"></span><span class="t">Plate Factory</span><span class="muted" style="font-size:13px">module 3 · yours</span></div>
+    <button class="item hot"><i class="ic" data-icon="module" data-color="blue" data-n="4"></i>Upgrade module 3 → 4<span class="cost">1 upgrade</span></button>
+    <button class="item"><i class="ic" data-icon="ore"></i>Load input · ore<span class="cost">from your area</span></button>
+    <button class="item"><i class="ic" data-icon="teleporter" data-color="blue"></i>Place teleporter · input<span class="cost">cost 3</span></button>
+    <button class="item off"><i class="ic" data-icon="plate" style="opacity:.45"></i>Collect output<span class="cost">meeple not here</span></button>
+  </div>
+
+  <div class="tray turnbar" id="turnbar">
+    <div class="steps">
+      <span class="step done"><span class="n">1</span>Place a piece</span>
+      <span class="step done"><span class="n">2</span>Roll</span>
+      <span class="step now"><span class="n">3</span>Actions</span>
+      <span class="step"><span class="n">4</span>Place meeple</span>
+    </div>
+    <span class="instr">Buy, place belts, play cards, or finish.</span>
+    <span class="round-no">Round <span class="num">6</span></span>
+  </div>
+
+  <div class="tray" id="yours">
+    <div class="sec" style="width:176px">
+      <div class="who"><span class="sw" style="background:var(--blue)"></span>Brandon<span class="muted" style="font-weight:600;font-size:13px">you</span></div>
+      <div class="kv">Tesseracts<span class="pips" data-pips="1" style="margin-left:auto"></span></div>
+      <div class="kv"><i class="ic" data-icon="meeple" data-color="blue"></i>Meeple<span style="margin-left:auto;color:var(--text);font-size:12.5px">on the board</span></div>
+      <div class="kv">Upgrades<span class="num">1</span></div>
+      <div class="kv">Cards played<span class="num">0 / 2</span></div>
+    </div>
+    <div class="vr"></div>
+    <div class="sec">
+      <span class="label">Modules</span>
+      <div class="mod-tray" data-tray="blue" data-missing="2,3,5" style="--m:18px;--mg:3px"></div>
+    </div>
+    <div class="vr"></div>
+    <div class="sec" style="width:178px;justify-content:center">
+      <div class="comp well"><i class="ic" data-icon="power"></i>Power<span class="num">4</span></div>
+      <div class="comp well"><i class="ic" data-icon="belt" data-color="blue"></i>Belts<span class="num">3</span></div>
+      <div class="comp well"><i class="ic" data-icon="teleporter" data-color="blue"></i>Teleporters<span class="num">3</span></div>
+    </div>
+    <div class="vr"></div>
+    <div class="sec" style="width:228px;justify-content:center">
+      <div class="mats">
+        <div class="mat well"><i class="ic" data-icon="ore"></i><span class="nm">Ore</span><span class="num">2</span></div>
+        <div class="mat well"><i class="ic" data-icon="plate"></i><span class="nm">Plate</span><span class="num">1</span></div>
+        <div class="mat well zero"><i class="ic" data-icon="sphere" style="opacity:.5"></i><span class="nm">Sphere</span><span class="num">0</span></div>
+        <div class="mat well"><i class="ic" data-icon="tess"></i><span class="nm">Tesseract</span><span class="num">1</span></div>
+      </div>
+    </div>
+    <div class="vr"></div>
+    <div class="hand" id="hand"></div>
+    <div class="act">
+      <button class="btn btn-dark">Undo belts</button>
+      <button class="btn btn-gold btn-lg">Done with actions</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { mountTable, CARD_TEXT } from './table.js';
+import { hydrate, pin, cardHTML } from './ui.js';
+
+const hand = document.getElementById('hand');
+['Scouting Drone', 'Production Increase', 'Short Sale'].forEach((t, i) => {
+  const c = document.createElement('div'); c.className = 'card'; c.innerHTML = cardHTML(t, CARD_TEXT[t]);
+  c.style.left = (18 + i * 98) + 'px'; c.style.transform = `rotate(${(i - 1) * 6}deg) translateY(${i === 1 ? -6 : 0}px)`;
+  hand.appendChild(c);
+});
+hydrate();
+
+const t = mountTable(document.getElementById('table'), {
+  camera: { viewHeight: 470, target: [26, 0], shift: [0, -0.075] },
+  highlights: [{ cell: [-1, 1], color: 'blue', glow: 0.55 }],
+});
+
+function layout() {
+  const bp = t.anchor('bp1');
+  const pop = document.getElementById('menuPop'), ptr = document.getElementById('ptr');
+  pin(pop, bp, 1, 0, -60, -34);
+  ptr.style.right = '-8px'; ptr.style.top = '26px';
+}
+layout();
+window.__ready = true;
+</script>
+</body>
+</html>

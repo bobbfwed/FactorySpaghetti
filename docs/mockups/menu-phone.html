@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link rel="icon" href="data:,">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Factory Spaghetti — start menu (phone)</title>
+<link rel="stylesheet" href="ui.css">
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<style>
+  canvas.table { filter: blur(2.5px) brightness(0.62); transform: scale(1.03); }
+  .veil { position: fixed; inset: 0; background: linear-gradient(180deg, rgba(12,8,6,.42) 0%, rgba(12,8,6,.66) 30%, rgba(12,8,6,.88) 52%, rgba(12,8,6,.96) 100%); }
+  .col { position: absolute; left: 16px; right: 16px; top: 0; bottom: 0; display: flex; flex-direction: column; padding: 26px 0 12px; }
+  .title { text-align: center; margin-bottom: 18px; }
+  .title .mark { width: 58px; height: 58px; display: block; margin: 0 auto 10px; filter: drop-shadow(0 6px 14px rgba(0,0,0,.6)); }
+  .title h1 { margin: 0; font-weight: 900; font-size: 34px; line-height: .98; letter-spacing: .01em; text-transform: uppercase; text-shadow: 0 4px 18px rgba(0,0,0,.7); }
+  .title h1 span { color: var(--gold); }
+  .title p { margin: 8px 0 0; color: #d6d1c6; font-size: 13px; text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+  .input { height: 50px; border-radius: 12px; background: #0d0d0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), inset 0 2px 6px rgba(0,0,0,.7); display: flex; align-items: center; padding: 0 14px; font-size: 16.5px; font-weight: 650; gap: 10px; }
+  .input .sw { width: 14px; height: 14px; }
+  .input .edit { margin-left: auto; color: var(--text-3); font-size: 12.5px; font-weight: 600; }
+  .stack { display: flex; flex-direction: column; gap: 10px; }
+  .stack .btn { width: 100%; height: 54px; font-size: 16.5px; border-radius: 14px; justify-content: flex-start; padding: 0 18px; gap: 12px; }
+  .stack .btn .ic { width: 22px; height: 22px; }
+  .stack .btn .sub { margin-left: auto; font-size: 12.5px; font-weight: 600; opacity: .7; }
+  .join { display: flex; gap: 8px; }
+  .code { flex: 1; display: flex; gap: 5px; height: 54px; padding: 5px; border-radius: 14px; background: #0d0d0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.1), inset 0 2px 6px rgba(0,0,0,.7); }
+  .code span { flex: 1; border-radius: 9px; background: #1b1b1e; display: grid; place-items: center; font-weight: 900; font-size: 20px; color: var(--text-3); font-family: "Arial Black", "Segoe UI Black", system-ui, sans-serif; }
+  .code span.cur { box-shadow: inset 0 0 0 2px var(--gold); }
+  .join .btn { width: 124px; height: 54px; border-radius: 14px; font-size: 15.5px; padding: 0 10px; }
+  .save { margin-top: 4px; padding: 12px 12px 12px 14px; display: flex; align-items: center; gap: 12px; }
+  .save .info { min-width: 0; flex: 1; }
+  .save .k { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); font-weight: 800; margin-bottom: 4px; }
+  .save .t { font-size: 14px; font-weight: 750; line-height: 1.35; }
+  .save .t .muted { font-weight: 500; }
+  .stack .save .btn { width: auto; height: 46px; padding: 0 18px; flex: none; justify-content: center; }
+  .mini { display: flex; gap: 4px; margin-top: 6px; }
+  .mini i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; }
+  .install { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px; font-size: 13px; color: var(--text-2); background: rgba(232,183,48,.08); box-shadow: inset 0 0 0 1px rgba(232,183,48,.22); }
+  .install b { color: var(--text); }
+  .install .ic { width: 22px; height: 22px; color: var(--gold); }
+  .install .x { margin-left: auto; width: 32px; height: 32px; display: grid; place-items: center; color: var(--text-3); }
+  .ver { text-align: center; font-size: 11.5px; color: var(--text-3); font-variant-numeric: tabular-nums; letter-spacing: .02em; }
+</style>
+</head>
+<body>
+<canvas class="table" id="table"></canvas>
+<div class="veil"></div>
+<div class="layer">
+  <div class="col">
+    <div class="title">
+      <svg class="mark" viewBox="0 0 40 40"><polygon points="20,2 36,11 36,29 20,38 4,29 4,11" fill="#efede6"/><g fill="#e8b730"><path d="M9 22h4l3-4-3-4H9l3 4z"/><path d="M16 22h4l3-4-3-4h-4l3 4z"/><path d="M23 22h4l3-4-3-4h-4l3 4z"/></g><path d="M8 27a3 3 0 0 1 6 0z" fill="#141416"/><path d="M26 27a3 3 0 0 1 6 0z" fill="#141416"/></svg>
+      <h1>Factory<br><span>Spaghetti</span></h1>
+      <p>Build the factory. Untangle the belts. First to 4 Tesseracts.</p>
+    </div>
+
+    <div class="field">
+      <span class="label">Your name</span>
+      <div class="input"><span class="sw" style="background:var(--blue)"></span>Brandon<span class="edit">tap to edit</span></div>
+    </div>
+
+    <div class="stack">
+      <button class="btn btn-gold"><i class="ic" data-icon="crown"></i>Host a game<span class="sub">get a room code</span></button>
+      <div class="join">
+        <div class="code"><span class="cur">_</span><span>_</span><span>_</span><span>_</span><span>_</span></div>
+        <button class="btn btn-dark">Join a game</button>
+      </div>
+      <button class="btn btn-dark"><i class="ic" data-icon="bot"></i>Play solo vs bots<span class="sub">offline</span></button>
+
+      <div class="save tray">
+        <div class="info">
+          <div class="k">Saved game</div>
+          <div class="t">Room KQMTV · Round 12 · <span class="muted">Brandon, Alex, Sam</span> · <span class="muted">saved Tuesday</span></div>
+        </div>
+        <button class="btn btn-gold">Resume</button>
+      </div>
+
+      <button class="btn btn-quiet" style="height:48px"><i class="ic" data-icon="file"></i>Load a save (link or file)</button>
+    </div>
+
+    <div class="foot">
+      <div class="install"><i class="ic" data-icon="install"></i><span><b>Install app</b> · add to your home screen for full screen and offline solo play</span><span class="x"><i class="ic" data-icon="cross" style="width:14px;height:14px"></i></span></div>
+      <div class="ver">v0.1 · build a1b2c3d</div>
+    </div>
+  </div>
+</div>
+<script type="module">
+import { mountTable } from './table.js';
+import { hydrate } from './ui.js';
+hydrate();
+mountTable(document.getElementById('table'), { camera: { viewHeight: 420, target: [0, 0], azimuth: -60, elevation: 50, shift: [0, -0.3] }, pixelRatio: 1.5 });
+window.__ready = true;
+</script>
+</body>
+</html>
