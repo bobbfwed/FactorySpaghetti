@@ -3,6 +3,7 @@
 // Never put internal names here (phase names, action type names, piece or card ids).
 
 import type { CardType, Material, PieceType } from '../engine/config';
+import { MAX_CARDS_PLAYED_PER_TURN } from '../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 
 export { CARD_NAME, MATERIAL_NAME };
@@ -219,7 +220,7 @@ export const W = {
 
   // Cards
   playCard: (name: string): string => `Play ${name}?`,
-  cardsMaxed: 'You have already played 2 Leverage cards this turn.',
+  cardsMaxed: `You have already played ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards this turn.`,
   cardOnlyActions: 'Leverage cards can be played only during your actions step.',
   cardNoModule: (floor: number): string => `You have no Control Module of ${floor} or more left.`,
   cardNoTarget: 'There is nothing this card can be used on right now.',

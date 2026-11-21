@@ -4,7 +4,7 @@
 import { h } from '../dom';
 import { icon } from '../icons';
 import type { Ctx, SideTab } from './context';
-import { bonusSheet, logList, rulesSheet } from './rules';
+import { cachedBonuses, cachedLog, cachedRules } from './memo';
 
 const TABS: { id: SideTab; label: string }[] = [
   { id: 'log', label: 'Log' }, { id: 'rules', label: 'Rules' }, { id: 'bonuses', label: 'Bonuses' },
@@ -25,5 +25,5 @@ export function sidePanel(ctx: Ctx): HTMLElement | null {
   return h('aside', { class: 'tg-side tray', attrs: { role: 'tabpanel', 'aria-label': title } },
     h('div', { class: 'hd' }, h('b', { text: tab === 'bonuses' ? 'Bonus Tesseracts' : tab === 'rules' ? 'Rules reference' : 'Game log' }),
       h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close' }, onclick: () => { ctx.ui.side = null; ctx.redraw(); } }, icon('cross'))),
-    h('div', { class: 'body' }, tab === 'log' ? logList(ctx) : tab === 'rules' ? rulesSheet(ctx) : bonusSheet(ctx)));
+    h('div', { class: 'body' }, tab === 'log' ? cachedLog(ctx) : tab === 'rules' ? cachedRules(ctx) : cachedBonuses(ctx)));
 }

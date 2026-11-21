@@ -66,6 +66,8 @@ export class Stage {
   /** Nothing playing or waiting: the screen shows the newest state. */
   get drained(): boolean { return this.q.drained; }
   lagMs(): number { return this.q.lagMs(performance.now()); }
+  /** Transitions played, and skipped by the lag cap (for checks). */
+  get queueCounts(): { played: number; skipped: number } { return { ...this.q.counts }; }
 
   /** The connection dropped or a new host took over: the next new state snaps. */
   markResync(): void { this.resync = true; }

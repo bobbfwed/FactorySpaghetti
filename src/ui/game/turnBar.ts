@@ -84,12 +84,12 @@ export function primaryButton(ctx: Ctx, cls = ''): HTMLElement | null {
     return h('button', {
       class: `btn btn-gold btn-lg tg-primary${p.enabled ? '' : ' is-disabled'} ${cls}`,
       title: p.enabled ? p.label : p.hint ?? p.label,
-      attrs: { 'aria-disabled': String(!p.enabled), 'data-primary': '1' },
+      attrs: { 'aria-disabled': String(!p.enabled), 'data-primary': '1', 'data-act': `primary:${p.label}`, 'data-strict': '1' },
       onclick: () => ctx.play.primary(),
     }, p.label);
   }
   if (v.confirmBar?.confirm && !v.menu && !v.choices) {
-    return h('button', { class: `btn btn-gold btn-lg tg-primary ${cls}`, attrs: { 'data-primary': 'confirm' }, onclick: () => ctx.play.confirm() },
+    return h('button', { class: `btn btn-gold btn-lg tg-primary ${cls}`, attrs: { 'data-primary': 'confirm', 'data-act': `confirm:${v.selection?.label ?? ''}`, 'data-strict': '1' }, onclick: () => ctx.play.confirm() },
       icon('check'), v.ghost ? 'Confirm placement' : 'Confirm');
   }
   if (ctx.game.gameOver) return null;
@@ -103,7 +103,7 @@ export function primaryButton(ctx: Ctx, cls = ''): HTMLElement | null {
 export function undoBeltsButton(ctx: Ctx): HTMLElement | null {
   const it = ctx.view.bank.find(b => b.id === 'bank:undoBelts');
   if (!it || !it.enabled) return null;
-  return h('button', { class: 'btn btn-dark tg-undo', title: it.detail ?? it.label, onclick: () => ctx.play.choose(it.id) }, icon('undo'), 'Undo belts');
+  return h('button', { class: 'btn btn-dark tg-undo', title: it.detail ?? it.label, attrs: { 'data-act': it.id }, onclick: () => ctx.play.choose(it.id) }, icon('undo'), 'Undo belts');
 }
 
 /** ✕ ⟳ ✓ beside the ghost (or the last touched piece); docked when there is nothing to point at. */
@@ -118,5 +118,5 @@ export function confirmBar(ctx: Ctx, anchor: string | null): HTMLElement | null 
     v.selection ? h('span', { class: 'tg-sel', text: v.selection.label }) : null,
     cb.cancel ? h('button', { class: 'round tg-cbtn', title: 'Cancel', attrs: { 'aria-label': 'Cancel', 'data-confirm': 'cancel' }, onclick: () => ctx.play.cancel() }, icon('cross')) : null,
     cb.rotate ? h('button', { class: 'round tg-cbtn', title: 'Turn it', attrs: { 'aria-label': 'Turn it', 'data-confirm': 'rotate' }, onclick: () => ctx.play.rotate(1) }, icon('rotate')) : null,
-    cb.confirm ? h('button', { class: 'round tg-cbtn ok', title: 'Confirm', attrs: { 'aria-label': 'Confirm', 'data-confirm': 'ok' }, onclick: () => ctx.play.confirm() }, icon('check')) : null);
+    cb.confirm ? h('button', { class: 'round tg-cbtn ok', title: 'Confirm', attrs: { 'aria-label': 'Confirm', 'data-confirm': 'ok', 'data-act': `confirm:${v.selection?.label ?? ''}`, 'data-strict': '1' }, onclick: () => ctx.play.confirm() }, icon('check')) : null);
 }

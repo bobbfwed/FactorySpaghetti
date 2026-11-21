@@ -2,6 +2,7 @@
 // state, Tesseract pips and counts; tapping one opens that player's full details.
 
 import type { PlayerId } from '../../engine/state';
+import { TESSERACTS_TO_WIN } from '../../engine/config';
 import { tesseractCount } from '../../engine/rules/scoring';
 import { BONUS_NAME } from './rules';
 import { BUILDING_NAME, MATERIAL_NAME } from '../../session/describe';
@@ -48,7 +49,7 @@ function counts(ctx: Ctx, s: Seat): HTMLElement {
   return h('div', { class: 'tg-counts' },
     MATERIAL_LIST.filter(m => m !== 'tesseract').map(m => count(MATERIAL_ICON[m], p.inventory[m], MATERIAL_NAME[m])),
     count('power', p.powerTokens, 'Power Tokens'),
-    count('card', p.hand.length, 'Cards in hand'),
+    count('card', p.hand.length, 'Leverage cards in hand'),
     count('belt', p.beltsRemaining, 'Belts left', s.color));
 }
 
@@ -58,10 +59,10 @@ export function seatPlates(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-seats', attrs: { role: 'list', 'aria-label': 'Other players' } }, opponents(ctx).map(s => {
     const st = status(ctx, s);
     const t = tesseractCount(ctx.game, s.index as PlayerId);
-    return h('button', {
+    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
       class: `tg-plate tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}${ctx.ui.seat === s.index ? ' open' : ''}`,
       style: `--seat:${seatHex(ctx.room, s.index)}`,
-      attrs: { role: 'listitem', 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
+      attrs: { 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
       onclick: () => { ctx.ui.seat = ctx.ui.seat === s.index ? null : s.index; ctx.redraw(); },
     },
     h('span', { class: 'stripe' }),
@@ -72,7 +73,7 @@ export function seatPlates(ctx: Ctx): HTMLElement {
         h('span', { class: `status${st.warn ? ' is-warn' : ''}` }, st.text),
         h('span', { class: 'grow' }),
         pips(t)),
-      counts(ctx, s)));
+      counts(ctx, s))));
   }));
 }
 
@@ -82,17 +83,17 @@ export function seatChips(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-chips', attrs: { role: 'list', 'aria-label': 'Other players' } }, opponents(ctx).map(s => {
     const st = status(ctx, s);
     const t = tesseractCount(ctx.game, s.index as PlayerId);
-    return h('button', {
+    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
       class: `tg-chip tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}`,
       style: `--seat:${seatHex(ctx.room, s.index)}`,
-      attrs: { role: 'listitem', 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
+      attrs: { 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
       onclick: () => { ctx.ui.seat = ctx.ui.seat === s.index ? null : s.index; ctx.redraw(); },
     },
     h('span', { class: 'stripe' }),
     h('span', { class: 'col' },
       h('span', { class: 'nm', text: s.name || `Player ${s.index + 1}` }),
-      h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of 4`)),
-    pips(t));
+      h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of ${TESSERACTS_TO_WIN}`)),
+    pips(t)));
   }));
 }
 
@@ -124,12 +125,12 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
     h('div', { class: 'tg-kvs' },
       kv('Materials', h('span', { class: 'tg-counts' }, MATERIAL_LIST.map(m => count(MATERIAL_ICON[m], p.inventory[m], MATERIAL_NAME[m])))),
       kv('Power Tokens', String(p.powerTokens)),
-      kv('Cards in hand', String(p.hand.length)),
+      kv('Leverage cards in hand', String(p.hand.length)),
       kv('Belts left', String(p.beltsRemaining)),
       kv('Teleporters left', String(p.teleportersRemaining)),
       kv('Meeple', meeple),
-      kv('Modules in the tray', p.controlModules.length ? [...p.controlModules].sort((a, b) => a - b).join(', ') : 'none'),
-      kv('Modules on the board', onBoard.length ? onBoard.join(' · ') : 'none'),
+      kv('Control Modules in the tray', p.controlModules.length ? [...p.controlModules].sort((a, b) => a - b).join(', ') : 'none'),
+      kv('Control Modules on the board', onBoard.length ? onBoard.join(' · ') : 'none'),
       kv('Bonus cards', bonuses.length ? bonuses.map(b => BONUS_NAME[b]).join(', ') : 'none')));
 }
 

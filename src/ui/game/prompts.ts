@@ -21,7 +21,7 @@ function buttons(ctx: Ctx, p: Prompt): HTMLElement {
     p.options.map((o, i) => h('button', {
       class: `btn ${i === 0 ? 'btn-gold' : 'btn-dark'}${o.enabled ? '' : ' is-disabled'}`,
       title: o.enabled ? o.detail ?? o.label : o.reason ?? o.label,
-      attrs: { 'aria-disabled': String(!o.enabled), 'data-item': o.id },
+      attrs: { 'aria-disabled': String(!o.enabled), 'data-item': o.id, 'data-act': o.id, 'data-strict': '1' },
       onclick: () => ctx.play.choose(o.id),
     }, o.label)),
     ring(ctx));

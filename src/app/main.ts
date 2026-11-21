@@ -92,7 +92,7 @@ const deps: AppDeps = {
 
 const ctrl = new AppController(deps);
 // For scripted browser checks (and curious developers): the live controller.
-(window as unknown as { __app: AppController }).__app = ctrl;
+if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) (window as unknown as { __app: AppController }).__app = ctrl;
 
 const root = document.getElementById('app');
 if (root) mountApp(root, ctrl, __APP_VERSION__);

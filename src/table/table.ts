@@ -92,8 +92,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let lastAz = NaN;
   let stats: TableStats = { calls: 0, triangles: 0, frameMs: 0, frames: 0 };
 
+  /** The WebGL context is gone (Android may take it when the app goes to the background). */
+  let contextLost = false;
+
   function invalidate(): void {
-    if (frameRequested || disposed) return;
+    if (frameRequested || disposed || contextLost) return;
     frameRequested = true;
     requestAnimationFrame(frame);
   }
@@ -126,7 +129,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
 
   function frame(now: number): void {
     frameRequested = false;
-    if (disposed) return;
+    if (disposed || contextLost) return;
     if (draw(now)) invalidate();
   }
 
@@ -213,6 +216,24 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
   canvas.addEventListener('wheel', onWheel, { passive: false });
+
+  // Context loss: keep the page (prevent the default), stop drawing; once the browser gives the
+  // context back, Three.js uploads everything again on the next draw, so rebuild and draw the
+  // current state (the table only draws on demand and would otherwise stay blank).
+  function onContextLost(e: Event): void {
+    e.preventDefault();
+    contextLost = true;
+    frameRequested = false;
+  }
+  function onContextRestored(): void {
+    contextLost = false;
+    lastAz = NaN;
+    table.rebuild(performance.now(), rig.azimuth);
+    fitShadow();
+    invalidate();
+  }
+  canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
 
   function pickAt(px: number, py: number): Target | null {
     // Things standing beside the board first (they stand up off the table), then the board.
@@ -367,6 +388,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
       canvas.removeEventListener('wheel', onWheel);
+      canvas.removeEventListener('webglcontextlost', onContextLost);
+      canvas.removeEventListener('webglcontextrestored', onContextRestored);
       pickers.clear();
       animEndListeners.clear();
       animator.dispose();
@@ -387,6 +410,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     },
     stats() { return stats; },
     renderNow() {
+      if (contextLost) return;
       frameRequested = false;
       draw(performance.now());
       // Same frame again without redrawing the shadow map: the visible pass on its own.

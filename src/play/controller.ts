@@ -12,7 +12,7 @@ import type {
   UpgradeBuildingAction,
 } from '../engine/actions';
 import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
-import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MINE_COSTS, cardCost } from '../engine/config';
+import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
 import { tryPayExact } from '../engine/rules/flow';
 import { findBeltPath, type RoutePoint } from '../engine/routing';
@@ -507,7 +507,7 @@ export class PlayController {
     v.instruction = W.setupConfirm(pieceName(piece.type), module);
     v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
     v.confirmBar = { confirm: true, rotate: false, cancel: true };
-    v.tray = v.tray.map(t => (t.module === module ? { module, state: 'lit', cost: W.free } : t));
+    v.tray = v.tray.map(t => (t.module === module ? { module, state: 'lit', cost: W.free, upgradeCost: 0 } : t));
     b.onConfirm = (): void => this.send(c);
     return true;
   }
@@ -851,7 +851,7 @@ export class PlayController {
     for (const buf of ['input', 'output'] as const) {
       const tp = legal.find(a => a.type === 'PLACE_TELEPORTER' && a.pieceId === id && a.bufferType === buf);
       if (tp) {
-        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(g.globalTeleporterCount + 1), enabled: true, danger: true },
+        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(teleporterCost(g.globalTeleporterCount)), enabled: true, danger: true },
           () => this.send(tp)));
       }
     }
@@ -895,7 +895,7 @@ export class PlayController {
       const a = cands.find(c => c.controlModule === t.module);
       if (!a) return t;
       b.item({ id: `module:${t.module}`, label: '', enabled: true }, () => this.send(a, back));
-      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - g.mineCount + 1) };
+      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - g.mineCount + 1), upgradeCost: t.module - g.mineCount + 1 };
     });
     return true;
   }
@@ -930,7 +930,7 @@ export class PlayController {
       const a = cands.find(c => c.newModule === t.module);
       if (!a) return t;
       b.item({ id: `module:${t.module}`, label: '', enabled: true }, () => this.send(a, back));
-      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - m.old) };
+      return { module: t.module, state: 'lit', cost: W.moduleCost(t.module - m.old), upgradeCost: t.module - m.old };
     });
     return true;
   }
@@ -1301,19 +1301,19 @@ export class PlayController {
 
     add({ id: 'bank:placeBelt', label: W.bankPlaceBelt, detail: W.bankPlaceBeltDetail(player.beltsRemaining) }, has('PLACE_BELT'),
       () => (player.beltsRemaining <= 0 ? W.noBelts : W.noBeltPoint), () => this.setMode({ k: 'belt', start: null }));
-    add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST) }, has('BUY_BELT'),
+    add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST), price: BELT_COST }, has('BUY_BELT'),
       () => W.cantAfford(BELT_COST, worth), () => this.send({ type: 'BUY_BELT' }));
     add({ id: 'bank:undoBelts', label: W.bankUndoBelts, detail: W.bankUndoDetail(g.beltsPlacedThisTurn.length) }, has('UNDO_BELTS'),
       () => W.noBeltsThisTurn, () => this.send({ type: 'UNDO_BELTS' }));
     const cc = cardCost(g.mineCount);
-    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length) }, has('BUY_CARD'),
+    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length), price: cc }, has('BUY_CARD'),
       () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }));
     const mp = nextMinePrice(g, MINE_COSTS);
-    add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp) }, has('BUY_MINE'),
+    add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp), ...(mp === null ? {} : { price: mp }) }, has('BUY_MINE'),
       () => (mp === null ? W.allMinesIn : g.pendingMineIds.length > 0 ? W.mineDropPending : W.cantAfford(mp, worth)),
       () => this.setMode({ k: 'place', src: { kind: 'buyMine' }, coord: null, rotation: 0, auto: false }));
-    const tpPrice = g.globalTeleporterCount + 1;
-    add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.priceExact(tpPrice) }, has('PLACE_TELEPORTER'),
+    const tpPrice = teleporterCost(g.globalTeleporterCount);
+    add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.priceExact(tpPrice), price: tpPrice }, has('PLACE_TELEPORTER'),
       () => (player.teleportersRemaining <= 0 ? W.noTeleporters
         : tryPayExact(player.inventory, tpPrice) === null ? W.cantPayExact(tpPrice) : W.noFreeBuffer),
       () => this.setMode({ k: 'teleporter', pick: null, whichOn: null }));
@@ -1338,12 +1338,12 @@ export class PlayController {
         if (pending) reason = W.decideFirst;
         else if (!myTurn) reason = W.notYourTurn;
         else if (g.phase !== 'actions') reason = W.cardOnlyActions;
-        else if (g.cardsPlayedThisTurn >= 2) reason = W.cardsMaxed;
+        else if (g.cardsPlayedThisTurn >= MAX_CARDS_PLAYED_PER_TURN) reason = W.cardsMaxed;
         else if (card === 'shortSale' && !player.controlModules.some(x => x >= g.mineCount)) reason = W.cardNoModule(g.mineCount);
         else if (card === 'rdTaxWriteOff' && player.teleportersRemaining <= 0) reason = W.cardNoTeleporters;
         else reason = W.cardNoTarget;
       }
-      const it: Item = { id: `card:${card}`, label: W.cardCount(CARD_NAME[card], n), enabled, ...(reason ? { reason } : {}) };
+      const it: Item = { id: `card:${card}`, label: W.cardCount(CARD_NAME[card], n), count: n, enabled, ...(reason ? { reason } : {}) };
       b.item(it, enabled ? (): void => this.setMode(card === 'scoutingDrone'
         ? { k: 'drone' }
         : { k: 'card', card, a: null, b: null, module: null, buffer: null, whichOn: null }) : undefined);

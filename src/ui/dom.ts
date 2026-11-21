@@ -76,6 +76,9 @@ function on(el: Element, type: string, fn: EventListener | undefined): void {
  * steal focus or swap a button out from under a finger. Nodes are matched by position and tag.
  */
 export function morph(cur: Element, next: Element): void {
+  // A subtree marked with the same data-keep key as before is unchanged: leave it alone.
+  const keep = next.getAttribute('data-keep');
+  if (keep !== null && cur.getAttribute('data-keep') === keep) return;
   // Attributes.
   for (const a of [...cur.attributes]) if (!next.hasAttribute(a.name)) cur.removeAttribute(a.name);
   for (const a of [...next.attributes]) if (cur.getAttribute(a.name) !== a.value) cur.setAttribute(a.name, a.value);

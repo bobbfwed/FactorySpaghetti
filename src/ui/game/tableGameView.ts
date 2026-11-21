@@ -36,6 +36,9 @@ import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vi
 import { FxLayer } from './fx';
 import { Sound } from './sound';
 import { Stage, type Shown, type StageHost } from './stage';
+import { allowPress, observe, type Seen } from './pressGuard';
+import { placeAll, type AnchorItem, type Pt } from './anchors';
+import { refusalText } from '../../app/gameText';
 import { DUR } from '../../table/transition';
 import { cameraButtons, gameMenu, menuButton } from './gameMenu';
 import { gameOverCard } from './gameOver';
@@ -56,6 +59,14 @@ const PHONE_MIN_TILE_PX = 64;
 
 /** Below this height the desktop panels leave too little table, so the phone layout is used. */
 const PHONE_MAX_H = 560;
+
+/** A pressed move control shows "Sending…" when the host has not answered after this long. */
+const SENDING_AFTER_MS = 400;
+
+/** The page exposes window.__game (for scripted checks) only in development or with ?debug. */
+function debugWanted(): boolean {
+  try { return import.meta.env.DEV || new URLSearchParams(location.search).has('debug'); } catch { return false; }
+}
 
 export function isPhoneLayout(): boolean {
   const w = window.innerWidth, hgt = window.innerHeight;
@@ -136,7 +147,19 @@ export function tableGameView(ctrl: AppController): View {
   let insetsKey = '';
   let free: Rect = { left: 8, top: 80, right: window.innerWidth - 8, bottom: window.innerHeight - 260 };
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastHintView: unknown = null;
+  let lastHint: string | null = null;
+  /** The phone sheet was closed by the player while these modules were lit: do not reopen it for them. */
+  let sheetDismissedFor: string | null = null;
+  // Double-tap guard (pressGuard.ts): what each move control showed, and when the picture last changed.
+  let seenByEl = new WeakMap<Element, Seen>();
+  let stateChangedAt = -1e9;
+  // A move in flight: which control was pressed and when, to show "Sending…" after a moment.
+  let pressedEl: Element | null = null;
+  let sendStartedAt = 0;
+  let sendingTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastPending = false;
+  const anchorCache = new Map<string, Target | null>();
+  let litCache: { view: unknown; list: { key: string; t: Target }[] } = { view: null, list: [] };
   let autoOpened = false;
   let boardSize = 0;
   /** The room on screen (from the stage) and the controller that describes it while it lags. */
@@ -161,10 +184,19 @@ export function tableGameView(ctrl: AppController): View {
   // ── Play controller ─────────────────────────────────────────────────────────
   const send = (action: Action): void => {
     const client = ctrl.state.online?.client;
-    if (!client) { play.refused('Not connected to the game.'); return; }
+    if (!client) { refuse('Not connected to the game.'); return; }
+    if (client.pending) return; // input is locked while a move is in flight; never a refusal
+    sendStartedAt = performance.now();
+    if (sendingTimer) clearTimeout(sendingTimer);
+    sendingTimer = setTimeout(() => { sendingTimer = null; schedule(); }, SENDING_AFTER_MS + 10);
     client.act(action).then(
-      (res) => { if (!res.ok && !disposed) refuse(res.error.message); },
-      (err: unknown) => { if (!disposed) refuse(err instanceof Error ? err.message : 'The move could not be sent.'); },
+      (res) => {
+        if (disposed) return;
+        schedule();
+        // BUSY only means another move was still in flight: ignore it (the selection stays).
+        if (!res.ok && res.error.code !== 'BUSY') refuse(refusalText(res.error));
+      },
+      () => { if (!disposed) { schedule(); refuse('The move could not be sent.'); } },
     );
   };
   const refuse = (message: string): void => {
@@ -177,14 +209,19 @@ export function tableGameView(ctrl: AppController): View {
 
   function onPlayChange(): void {
     const v = play.view;
-    if (v.hint && v !== lastHintView) showToast(v.hint);
-    lastHintView = v;
+    // The same hint is shown once, not again on every redraw (each rotate, each tap that changes nothing).
+    if (v.hint && v.hint !== lastHint) showToast(v.hint);
+    lastHint = v.hint;
     if (!v.confirmBar) lastTap = null;
     // Panels follow the newest state only once the picture has caught up with it.
     if (!stage.drained) return;
     // Phone: the module tray lives in the sheet, so open it when a module must be chosen there.
     const lit = v.tray.some(t => t.state === 'lit') && (v.step === 'actions' || v.step === 'roundEnd');
-    if (phone && lit && !ui.sheetOpen) { ui.sheetOpen = true; ui.sheetTab = 'tray'; autoOpened = true; }
+    const litKey = lit ? `${v.instruction}|${v.tray.filter(t => t.state === 'lit').map(t => t.module).join(',')}` : null;
+    // The player closed the sheet while modules were lit: leave it closed for this choice.
+    if (ui.sheetUserClosed) { ui.sheetUserClosed = false; sheetDismissedFor = litKey; autoOpened = false; }
+    if (litKey === null) sheetDismissedFor = null;
+    if (phone && lit && !ui.sheetOpen && litKey !== sheetDismissedFor) { ui.sheetOpen = true; ui.sheetTab = 'tray'; autoOpened = true; }
     else if (phone && !lit && autoOpened) { ui.sheetOpen = false; autoOpened = false; }
     // A flow that needs the table closes the sheet so the glowing targets can be seen.
     if (phone && ui.sheetOpen && !lit && (v.ghost || (v.selection && v.targets.length > 0 && !v.menu && !v.choices))) ui.sheetOpen = false;
@@ -220,6 +257,7 @@ export function tableGameView(ctrl: AppController): View {
   function onShown(info: Shown): void {
     const prev = shownRoom;
     shownRoom = info.room;
+    if (!prev || prev.seq !== info.room.seq) stateChangedAt = performance.now();
     const g = info.room.game!;
     if (table) {
       const grew = g.board.length !== boardSize;
@@ -297,6 +335,18 @@ export function tableGameView(ctrl: AppController): View {
   /** Any input while the picture lags only catches the picture up. */
   const catchUp = (): void => { blocked++; stage.skip(); };
   const busyInput: PlayInput = { tap: catchUp, choose: catchUp, primary: catchUp, confirm: catchUp, cancel: catchUp, rotate: catchUp };
+  /** While a move is in flight, or a bot plays this seat: input does nothing. */
+  const ignore = (): void => { blocked++; };
+  const lockedInput: PlayInput = { tap: ignore, choose: ignore, primary: ignore, confirm: ignore, cancel: ignore, rotate: ignore };
+
+  /** Why input is locked now: a move in flight, or a bot (autoplay or the host's stand-in) plays my seat. */
+  function lockReason(): 'sending' | 'bot' | null {
+    const me = ctrl.mySeat;
+    if (me === null) return null;
+    if (ctrl.state.autoplay || ctrl.room?.seats[me]?.autopilot) return 'bot';
+    if (ctrl.state.online?.client.pending) return 'sending';
+    return null;
+  }
   const liveInput: PlayInput = {
     tap: (t) => play.tap(t),
     choose: (id) => play.choose(id),
@@ -325,7 +375,10 @@ export function tableGameView(ctrl: AppController): View {
       ...shown, seats: newest.seats, hostSeat: newest.hostSeat, waiting: newest.waiting, settings: newest.settings,
       opDeadline: newest.opDeadline, roundEndDeadline: newest.roundEndDeadline, hold: newest.hold,
     };
-    let view = play.view;
+    const lock = lockReason();
+    // A bot plays this seat: nothing to press. A move in flight: nothing lit, and the controls stay
+    // where they are (inert) so the pressed one can say it is sending.
+    let view = lock === 'bot' ? busyView(play.view) : lock === 'sending' ? { ...play.view, targets: [] } : play.view;
     if (busy) {
       if (displayGame !== shown.game || displaySeat !== me) {
         displayGame = shown.game;
@@ -335,7 +388,7 @@ export function tableGameView(ctrl: AppController): View {
       view = busyView(displayPlay.view);
     }
     return {
-      ctrl, room: r, game: shown.game, me, view, play: busy ? busyInput : liveInput, ui, phone, landscape: phone && isLandscapePhone(),
+      ctrl, room: r, game: shown.game, me, view, play: lock ? lockedInput : busy ? busyInput : liveInput, ui, phone, landscape: phone && isLandscapePhone(),
       feel, busy, skip: () => stage.skip(),
       redraw: schedule,
       camera: {
@@ -387,12 +440,33 @@ export function tableGameView(ctrl: AppController): View {
     morph(hud, fresh);
     root.classList.toggle('phone', phone);
     root.classList.toggle('landscape', ctx.landscape);
+    observeControls();
     measureFree();
     placeAnchors();
     syncTable(ctx);
     tick();
     promptCue(ctx);
   }
+
+  /** Record what each move control shows now (double-tap guard) and mark the one sending. */
+  function observeControls(): void {
+    const now = performance.now();
+    for (const el of hud.querySelectorAll<HTMLElement>('[data-act]')) seenByEl.set(el, observe(seenByEl.get(el), el.dataset.act ?? '', now));
+    const pending = !!ctrl.state.online?.client.pending;
+    const showSending = pending && now - sendStartedAt >= SENDING_AFTER_MS;
+    for (const el of hud.querySelectorAll('[data-sending]')) if (el !== pressedEl || !showSending) el.removeAttribute('data-sending');
+    if (showSending && pressedEl?.isConnected) pressedEl.setAttribute('data-sending', '1');
+    if (!pending) pressedEl = null;
+  }
+
+  // A press on a move control that just changed under the finger is dropped (see pressGuard.ts).
+  hud.addEventListener('click', (e) => {
+    const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act]') : null;
+    if (!el) return;
+    const ok = allowPress(seenByEl.get(el), el.dataset.act ?? '', performance.now(), { strict: el.dataset.strict === '1', stateChangedAt });
+    if (!ok) { blocked++; e.stopImmediatePropagation(); e.preventDefault(); return; }
+    pressedEl = el;
+  }, true);
 
   /** A new off-turn decision for me, once it is shown: alert sound and vibration. */
   function promptCue(ctx: Ctx): void {
@@ -439,14 +513,18 @@ export function tableGameView(ctrl: AppController): View {
     const top = Math.max(phone ? 60 : 70, bottomOf(phone ? '.tg-toprow' : '.tg-seats')) + 8;
     const bottom = landscape ? H - 8 : topOf(phone ? '.tg-sheet' : '.tg-turnbar', H) - 8;
     const sideLeft = landscape ? topOfLeft('.tg-sheet', W) : phone ? W : topOfLeft('.tg-side', W);
-    free = { left: 8, top, right: Math.min(W - 8, sideLeft - 8), bottom: Math.max(top + 80, bottom) };
+    const hb = hud.getBoundingClientRect();
+    free = { left: 8 + Math.max(0, hb.left), top, right: Math.min(hb.right - 8, sideLeft - 8), bottom: Math.max(top + 80, bottom) };
     // Panels that float just above the bottom panel or sheet read its height from here.
     root.style.setProperty('--bottom-h', `${Math.round(H - bottom - 8)}px`);
     // Frame the camera to the free area. On the phone, use the collapsed sheet so pulling it up
     // does not move the table.
     if (!table || (phone && !landscape && ui.sheetOpen)) return;
-    const insets: ViewInsets = { top, right: landscape ? W - sideLeft + 8 : 12, bottom: H - free.bottom, left: 12 };
-    const key = `${phone ? 'p' : 'd'}:${Math.round(insets.top / 4)}:${Math.round(insets.bottom / 4)}:${Math.round(insets.right / 4)}`;
+    // The HUD keeps to the safe area (game.css), so its edges are the notch and gesture-bar insets.
+    const hr = hud.getBoundingClientRect();
+    const safeL = Math.max(0, hr.left), safeR = Math.max(0, W - hr.right);
+    const insets: ViewInsets = { top, right: landscape ? W - sideLeft + 8 : 12 + safeR, bottom: H - free.bottom, left: 12 + safeL };
+    const key = `${phone ? 'p' : 'd'}:${Math.round(insets.top / 4)}:${Math.round(insets.bottom / 4)}:${Math.round(insets.right / 4)}:${Math.round(insets.left / 4)}`;
     if (key !== insetsKey) {
       const first = insetsKey === '';
       insetsKey = key;
@@ -470,107 +548,57 @@ export function tableGameView(ctrl: AppController): View {
     return Math.max(20, Math.min(240, Math.hypot(a.x - b.x, a.y - b.y)));
   }
 
-  /** Screen points of the glowing targets other than `except` (to keep the confirm bar off them). */
-  function litPoints(except: Target): { x: number; y: number }[] {
-    if (!table) return [];
-    const skip = JSON.stringify(except);
-    const out: { x: number; y: number }[] = [];
-    for (const t of play.view.targets) {
-      if (JSON.stringify(t) === skip) continue;
-      const q = table.screenPosition(t);
-      if (q) out.push(q);
+  /** The glowing targets with their keys, worked out once per view (not on every frame). */
+  function litTargets(): { key: string; t: Target }[] {
+    const v = play.view;
+    if (litCache.view !== v) litCache = { view: v, list: v.targets.map(t => ({ key: JSON.stringify(t), t })) };
+    return litCache.list;
+  }
+
+  function anchorOf(raw: string): Target | null {
+    let t = anchorCache.get(raw);
+    if (t === undefined) {
+      try { t = JSON.parse(raw) as Target; } catch { t = null; }
+      if (anchorCache.size > 200) anchorCache.clear();
+      anchorCache.set(raw, t);
     }
-    return out;
+    return t;
   }
 
   function placeAnchors(): void {
-    const els = hud.querySelectorAll<HTMLElement>('[data-anchor]');
+    const els = [...hud.querySelectorAll<HTMLElement>('[data-anchor]')];
     if (els.length === 0) return;
-    const W = window.innerWidth, H = window.innerHeight;
+    // Read: every size and screen point first …
     const tile = tilePx();
-    const placed: Rect[] = [];
-    const clampX = (x: number, w: number): number => Math.max(Math.max(8, free.left), Math.min(x, Math.min(W - 8, free.right) - w));
-    const clampY = (y: number, hh: number): number => {
-      const lo = free.top, hi = free.bottom - hh;
-      if (hi >= lo) return Math.max(lo, Math.min(y, hi));
-      return Math.max(8, Math.min(y, H - 8 - hh));
-    };
-    // Panels first (they must not overlap each other), markers last.
-    const ordered = [...els].sort((a, b) => Number(a.dataset.place === 'center') - Number(b.dataset.place === 'center'));
-    for (const el of ordered) {
-      let t: Target;
-      try { t = JSON.parse(el.dataset.anchor ?? 'null') as Target; } catch { continue; }
-      const p0 = table && t ? table.screenPosition(t) : null;
-      const kind = el.dataset.place ?? 'side';
-      if (!p0 && kind === 'center') { el.style.visibility = 'hidden'; continue; }
-      // A panel whose piece cannot be located (table still loading) stays usable in the middle.
-      const p = p0 ?? { x: (free.left + free.right) / 2, y: free.top + 40 };
-      const w = el.offsetWidth, hh = el.offsetHeight;
-      let x: number, y: number;
-      let side: 'left' | 'right' | 'above' | 'below' = 'below';
-      if (kind === 'center') {
-        x = p.x - w / 2; y = p.y - hh / 2;
-        const inside = p.x > free.left && p.x < free.right && p.y > free.top && p.y < free.bottom;
-        el.style.visibility = inside ? '' : 'hidden';
-        el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-        continue;
-      }
-      if (kind === 'below') {
-        // The confirm bar: beside the ghost, on the side that hides the fewest glowing targets.
-        // The ghost's tile reaches about half a tile from its centre each way (more across).
-        const rx = tile * 0.6, ry = tile * 0.5;
-        const pts = litPoints(t);
-        const cands: [number, number, 'left' | 'right' | 'above' | 'below'][] = [
-          [p.x - w / 2, p.y + ry + 10, 'below'], [p.x + rx + 10, p.y - hh / 2, 'right'],
-          [p.x - rx - 10 - w, p.y - hh / 2, 'left'], [p.x - w / 2, p.y - ry - 10 - hh, 'above'],
-        ];
-        let best = Infinity;
-        x = 0; y = 0;
-        for (const [cx0, cy0, sd] of cands) {
-          const cx = clampX(cx0, w), cy = clampY(cy0, hh);
-          const covered = pts.filter(q => q.x > cx - 8 && q.x < cx + w + 8 && q.y > cy - 8 && q.y < cy + hh + 8).length;
-          const coversGhost = cx < p.x + rx && cx + w > p.x - rx && cy < p.y + ry && cy + hh > p.y - ry ? 100 : 0;
-          const score = covered * 10 + coversGhost + Math.hypot(cx - cx0, cy - cy0) / 20;
-          if (score < best) { best = score; x = cx; y = cy; side = sd; }
+    const items: AnchorItem[] = els.map((el) => {
+      const raw = el.dataset.anchor ?? 'null';
+      const t = anchorOf(raw);
+      const kind = (el.dataset.place ?? 'side') as AnchorItem['kind'];
+      const p: Pt | null = table && t ? table.screenPosition(t) : null;
+      const lit = kind === 'below' && table
+        ? litTargets().filter(x => x.key !== raw).flatMap(x => { const q = table!.screenPosition(x.t); return q ? [q] : []; })
+        : undefined;
+      return { kind, p, w: el.offsetWidth, h: el.offsetHeight, ...(lit ? { lit } : {}), hasPointer: !!el.querySelector(':scope > .tg-ptr') };
+    });
+    const out = placeAll(items, { free, W: window.innerWidth, H: window.innerHeight, tile, phone });
+    // The HUD sits inside the safe area: positions are written relative to it.
+    const hr = hud.getBoundingClientRect();
+    // … then write every position.
+    els.forEach((el, i) => {
+      const o = out[i]!;
+      el.style.visibility = o.visible ? '' : 'hidden';
+      if (!o.visible && !items[i]!.p) return;
+      el.style.transform = `translate(${Math.round(o.x - hr.left)}px, ${Math.round(o.y - hr.top)}px)`;
+      if (items[i]!.kind !== 'center') el.dataset.side = o.side;
+      if (o.ptr) {
+        const ptr = el.querySelector<HTMLElement>(':scope > .tg-ptr');
+        if (ptr) {
+          ptr.style.left = `${o.ptr.left}px`;
+          ptr.style.top = `${o.ptr.top}px`;
+          ptr.style.display = o.ptr.hidden ? 'none' : '';
         }
-      } else if (!phone) {
-        const gap = tile * 0.45 + 16;
-        if (p.x + gap + w <= free.right) { x = p.x + gap; side = 'right'; }
-        else if (p.x - gap - w >= free.left) { x = p.x - gap - w; side = 'left'; }
-        else { x = clampX(p.x - w / 2, w); side = p.y - free.top > free.bottom - p.y ? 'above' : 'below'; }
-        y = side === 'above' ? p.y - gap - hh : side === 'below' ? p.y + gap : p.y - Math.min(40, hh / 2);
-        y = clampY(y, hh);
-      } else {
-        const gap = tile * 0.45 + 14;
-        x = clampX(p.x - w / 2, w);
-        if (p.y + gap + hh <= free.bottom) { y = p.y + gap; side = 'below'; }
-        else { y = p.y - gap - hh; side = 'above'; }
-        y = clampY(y, hh);
       }
-      // Keep panels from covering each other: push down (or up when there is no room below).
-      for (let guard = 0; guard < 6; guard++) {
-        const hit = placed.find(r => x < r.right && x + w > r.left && y < r.bottom && y + hh > r.top);
-        if (!hit) break;
-        y = hit.bottom + 8 + hh <= Math.max(free.bottom, H - 8) ? hit.bottom + 8 : hit.top - 8 - hh;
-      }
-      el.style.visibility = '';
-      el.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
-      el.dataset.side = side;
-      placed.push({ left: x, top: y, right: x + w, bottom: y + hh });
-      const ptr = el.querySelector<HTMLElement>(':scope > .tg-ptr');
-      if (ptr) {
-        if (side === 'left' || side === 'right') {
-          ptr.style.top = `${Math.round(Math.max(12, Math.min(hh - 30, p.y - y - 9)))}px`;
-          ptr.style.left = side === 'right' ? '-8px' : `${w - 10}px`;
-        } else {
-          ptr.style.left = `${Math.round(Math.max(12, Math.min(w - 30, p.x - x - 9)))}px`;
-          ptr.style.top = side === 'below' ? '-8px' : `${hh - 10}px`;
-        }
-        // Hide the pointer when the panel had to be pushed away from its piece.
-        const far = side === 'left' || side === 'right' ? (p.y < y || p.y > y + hh) : (p.x < x || p.x > x + w);
-        ptr.style.display = far ? 'none' : '';
-      }
-    }
+    });
   }
 
   // ── Countdowns: text only, once a second ────────────────────────────────────
@@ -595,12 +623,14 @@ export function tableGameView(ctrl: AppController): View {
   function onPick(hit: Target | null): void {
     // A tap while the picture lags jumps to the newest state; it is never taken as a move.
     if (!stage.drained) { stage.skip(); return; }
+    // A move in flight or a bot playing this seat: the table does not take moves.
+    if (lockReason() && hit) { blocked++; return; }
     if (ui.menuOpen || ui.seat !== null) {
       ui.menuOpen = false; ui.seat = null; schedule();
       if (!hit) return;
     }
     if (!hit) {
-      if (phone && ui.sheetOpen) { ui.sheetOpen = false; autoOpened = false; schedule(); return; }
+      if (phone && ui.sheetOpen) { ui.sheetOpen = false; ui.sheetUserClosed = true; autoOpened = false; schedule(); return; }
       if (play.view.menu) play.cancel();
       return;
     }
@@ -615,6 +645,7 @@ export function tableGameView(ctrl: AppController): View {
       if (e.key === 'Escape') stage.skip();
       return;
     }
+    if (lockReason() && e.key !== 'Escape') return;
     if (e.key === 'Escape') {
       if (ui.card !== null) ui.card = null;
       else if (ui.menuOpen || ui.seat !== null) { ui.menuOpen = false; ui.seat = null; }
@@ -642,6 +673,7 @@ export function tableGameView(ctrl: AppController): View {
     drag = null;
     if (Math.abs(dy) < 24) return; // a tap: the button's click toggles
     ui.sheetOpen = dy < 0;
+    if (!ui.sheetOpen) ui.sheetUserClosed = true;
     autoOpened = false;
     suppressClick = true;
     schedule();
@@ -659,7 +691,7 @@ export function tableGameView(ctrl: AppController): View {
     const flipped = nowPortrait !== portrait;
     portrait = nowPortrait;
     if (flipped) insetsKey = '';
-    render();
+    schedule();
   }
 
   let ticker: ReturnType<typeof setInterval> | null = null;
@@ -726,6 +758,8 @@ export function tableGameView(ctrl: AppController): View {
       const status = ctrl.state.online?.status;
       if (status && status !== 'online') stage.markResync();
       let changed = false;
+      const pending = !!ctrl.state.online?.client.pending;
+      if (pending !== lastPending) { lastPending = pending; changed = true; }
       if (r !== room) { syncRoom(r); changed = true; }
       if (ctrl.state !== lastState) { lastState = ctrl.state; changed = true; }
       if (changed) schedule();
@@ -738,7 +772,7 @@ export function tableGameView(ctrl: AppController): View {
       window.addEventListener('keydown', unlockAudio, true);
       document.addEventListener('visibilitychange', onVisibility);
       ticker = setInterval(tick, 1000);
-      (window as unknown as { __game?: GameDebug }).__game = debug;
+      if (debugWanted()) (window as unknown as { __game?: GameDebug }).__game = debug;
       render();
       void startTable();
     },
@@ -754,6 +788,8 @@ export function tableGameView(ctrl: AppController): View {
       fx.dispose();
       sound.dispose();
       if (flashTimer) clearTimeout(flashTimer);
+      if (sendingTimer) clearTimeout(sendingTimer);
+      seenByEl = new WeakMap();
       if (ticker) clearInterval(ticker);
       if (toastTimer) clearTimeout(toastTimer);
       if (queued) cancelAnimationFrame(queued);

@@ -1,7 +1,7 @@
 // The bank: belt, Leverage card, Mine, teleporter and exchange, each with its price. A greyed item
-// still answers a tap with the reason it cannot be bought now.
+// still answers a tap with the reason it cannot be bought now. Prices come from the play view,
+// which takes them from the engine's own price rules; nothing is worked out here.
 
-import { BELT_COST, MINE_COSTS, cardCost } from '../../engine/config';
 import type { Item } from '../../play';
 import { h } from '../dom';
 import type { IconName } from '../icons';
@@ -10,34 +10,29 @@ import type { Ctx } from './context';
 
 const SHOWN: Record<string, { label: string; icon: IconName }> = {
   'bank:buyBelt': { label: 'Belt', icon: 'belt' },
-  'bank:buyCard': { label: 'Card', icon: 'card' },
+  'bank:buyCard': { label: 'Leverage card', icon: 'card' },
   'bank:buyMine': { label: 'Mine', icon: 'mine' },
   'bank:teleporter': { label: 'Teleporter', icon: 'teleporter' },
   'bank:exchange': { label: 'Exchange', icon: 'exchange' },
 };
 
-function price(ctx: Ctx, id: string): string {
-  const g = ctx.game;
-  switch (id) {
-    case 'bank:buyBelt': return String(BELT_COST);
-    case 'bank:buyCard': return String(cardCost(g.mineCount));
-    case 'bank:buyMine': {
-      const p = MINE_COSTS[g.mineCount - 1];
-      return p === undefined ? '—' : String(p);
-    }
-    case 'bank:teleporter': return String(g.globalTeleporterCount + 1);
-    default: return '';
-  }
+/** The price shown on a bank item: the play view's number, a dash when there is none to buy. */
+export function bankPrice(it: Item): string {
+  if (it.id === 'bank:exchange') return '';
+  return it.price === undefined ? '—' : String(it.price);
 }
 
 function chip(ctx: Ctx, it: Item, cls: string): HTMLElement {
   const s = SHOWN[it.id]!;
-  const p = price(ctx, it.id);
+  const p = bankPrice(it);
   const tip = it.enabled ? it.detail ?? it.label : it.reason ?? it.label;
   return h('button', {
     class: `${cls}${it.enabled ? '' : ' off'}${it.id === 'bank:exchange' ? ' wide' : ''}`,
     title: `${it.label}. ${tip}`,
-    attrs: { 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'aria-label': `${it.label}${p ? `, price ${p}` : ''}${it.enabled ? '' : `. ${tip}`}` },
+    attrs: {
+      'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': it.id,
+      'aria-label': `${it.label}${p && p !== '—' ? `, price ${p}` : ''}${it.enabled ? '' : `. ${tip}`}`,
+    },
     onclick: () => ctx.play.choose(it.id),
   }, icon(s.icon, ctx.me !== null ? ctx.room.seats[ctx.me]?.color : undefined), h('span', { class: 'lb', text: s.label }), p ? h('span', { class: 'num', text: p }) : null);
 }

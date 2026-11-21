@@ -4,7 +4,7 @@
 // Tray · Cards · Log · Rules).
 
 import type { PlayerId } from '../../engine/state';
-import { POWER_TOKEN_CAP } from '../../engine/config';
+import { MAX_CARDS_PLAYED_PER_TURN, POWER_TOKEN_CAP } from '../../engine/config';
 import { tesseractCount } from '../../engine/rules/scoring';
 import { BUILDING_NAME, MATERIAL_NAME } from '../../session/describe';
 import type { Child } from '../dom';
@@ -15,7 +15,8 @@ import type { Ctx, SheetTab } from './context';
 import { seatColor, seatHex, seatName } from './context';
 import { MATERIAL_ICON, MATERIAL_LIST, cardFace, count, materialWell, moduleTray, pips, sectionHead } from './pieces';
 import { promptList } from './prompts';
-import { BONUS_NAME, bonusSheet, logList, rulesSheet } from './rules';
+import { BONUS_NAME } from './rules';
+import { cachedBonuses, cachedLog, cachedRules } from './memo';
 import { primaryButton, stepLine, undoBeltsButton } from './turnBar';
 
 function meepleWords(ctx: Ctx): string {
@@ -62,7 +63,7 @@ function components(ctx: Ctx, cls: string): Child[] {
   const color = seatColor(ctx.room, ctx.me);
   return [
     h('div', { class: `${cls} well`, attrs: { 'aria-label': `Power Tokens: ${p.powerTokens} of ${POWER_TOKEN_CAP}` } },
-      icon('power'), h('span', { class: 'nm', text: 'Power' }), h('span', { class: 'num' }, String(p.powerTokens), h('small', { text: `/${POWER_TOKEN_CAP}` }))),
+      icon('power'), h('span', { class: 'nm', text: 'Power Tokens' }), h('span', { class: 'num' }, String(p.powerTokens), h('small', { text: `/${POWER_TOKEN_CAP}` }))),
     beltButton(ctx, cls),
     h('div', { class: `${cls} well`, attrs: { 'aria-label': `Teleporters left: ${p.teleportersRemaining}` } },
       icon('teleporter', color), h('span', { class: 'nm', text: 'Teleporters' }), h('span', { class: 'num', text: String(p.teleportersRemaining) })),
@@ -78,13 +79,14 @@ function handCards(ctx: Ctx, fan: boolean): HTMLElement {
   return h('div', { class: `tg-hand${fan ? ' fan' : ' grid'}`, style: `--n:${n}`, attrs: { role: 'list', 'aria-label': 'Your hand' } }, hand.map((c, i) => {
     const mid = (n - 1) / 2;
     const style = fan ? `--i:${i};--rot:${((i - mid) * Math.min(6, 18 / n)).toFixed(1)}deg` : '';
-    const cnt = Number(/×(\d+)$/.exec(c.label)?.[1] ?? '1');
-    return h('button', {
-      class: `tg-handcard${c.enabled ? ' playable' : ''}`, style,
+    const cnt = c.count ?? 1;
+    // The list item carries the role; the card inside stays a button.
+    return h('div', { class: 'tg-li', style, attrs: { role: 'listitem' } }, h('button', {
+      class: `tg-handcard${c.enabled ? ' playable' : ''}`,
       title: c.enabled ? `${c.label}: tap to read and play` : `${c.label}: ${c.reason ?? ''}`,
-      attrs: { role: 'listitem', 'data-card': c.card, 'aria-label': `${c.label}. ${c.text}${c.enabled ? '' : ` ${c.reason ?? ''}`}` },
+      attrs: { 'data-card': c.card, 'data-act': `card:${c.card}`, 'aria-label': `${c.label}. ${c.text}${c.enabled ? '' : ` ${c.reason ?? ''}`}` },
       onclick: () => { ctx.ui.card = c.card; ctx.redraw(); },
-    }, cardFace(c.card, { count: cnt, off: !c.enabled }));
+    }, cardFace(c.card, { count: cnt, off: !c.enabled })));
   }));
 }
 
@@ -101,9 +103,9 @@ export function yourPanel(ctx: Ctx): HTMLElement | null {
       bonusChips(ctx),
       h('div', { class: 'tg-kv2' }, icon('meeple', color), h('span', { text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
       h('div', { class: 'tg-kv2' }, h('span', { text: 'Upgrades' }), h('span', { class: 'v', text: upgrades(ctx) })),
-      ctx.view.myTurn ? h('div', { class: 'tg-kv2' }, h('span', { text: 'Cards played' }), h('span', { class: 'v num', text: `${g.cardsPlayedThisTurn} / 2` })) : null),
+      ctx.view.myTurn ? h('div', { class: 'tg-kv2' }, h('span', { text: 'Leverage cards played' }), h('span', { class: 'v num', text: `${g.cardsPlayedThisTurn} / ${MAX_CARDS_PLAYED_PER_TURN}` })) : null),
     h('div', { class: 'vr' }),
-    h('div', { class: 'tg-sec' }, h('span', { class: 'label', text: 'Modules' }), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'desk')),
+    h('div', { class: 'tg-sec' }, h('span', { class: 'label', text: 'Control Modules' }), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'desk', ctx.view.instruction)),
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec comps' }, components(ctx, 'tg-comp')),
     h('div', { class: 'vr' }),
@@ -134,7 +136,7 @@ function strip(ctx: Ctx): HTMLElement {
     MATERIAL_LIST.map(m => count(MATERIAL_ICON[m], p.inventory[m], MATERIAL_NAME[m], undefined, p.inventory[m] === 0 ? 'zero' : '')),
     h('span', { class: 'sep' }),
     count('power', p.powerTokens, 'Power Tokens'),
-    count('card', p.hand.length, 'Cards'),
+    count('card', p.hand.length, 'Leverage cards'),
     count('belt', p.beltsRemaining, 'Belts', color));
 }
 
@@ -151,22 +153,22 @@ function tabContent(ctx: Ctx): Child {
       const color = seatColor(ctx.room, ctx.me);
       return h('div', { class: 'tg-traytab' },
         h('div', { class: 'tg-trayrow' },
-          h('div', null, sectionHead('Control modules'), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'phone')),
+          h('div', null, sectionHead('Control Modules'), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'phone', ctx.view.instruction)),
           h('div', { class: 'side' }, sectionHead('Components'), components(ctx, 'tg-comp'),
             h('div', { class: 'tg-mats' }, MATERIAL_LIST.map(m => materialWell(m, p.inventory[m], 'tg-mat small'))))),
         h('div', { class: 'tg-kvs' },
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Tesseracts' }), h('span', { class: 'v' }, pips(tesseractCount(g, ctx.me as PlayerId)))),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Upgrades' }), h('span', { class: 'v', text: upgrades(ctx) })),
-          ctx.view.myTurn ? h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Cards played this turn' }), h('span', { class: 'v', text: `${g.cardsPlayedThisTurn} / 2` })) : null),
+          ctx.view.myTurn ? h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Leverage cards played this turn' }), h('span', { class: 'v', text: `${g.cardsPlayedThisTurn} / ${MAX_CARDS_PLAYED_PER_TURN}` })) : null),
         bonusChips(ctx),
         g.gameOver ? null : h('div', null, sectionHead('Bank', h('span', { class: 'muted', text: 'prices in material value' })), bankRows(ctx)));
     }
     case 'cards':
       return h('div', null, sectionHead(handTitle(ctx),
         h('span', { class: 'muted', text: 'Tap a card to read and play' })), ctx.me === null ? null : handCards(ctx, false));
-    case 'log': return logList(ctx);
-    case 'rules': return h('div', null, rulesSheet(ctx), h('h3', { text: 'Bonus Tesseracts' }), bonusSheet(ctx));
+    case 'log': return cachedLog(ctx);
+    case 'rules': return h('div', null, cachedRules(ctx), h('h3', { text: 'Bonus Tesseracts' }), cachedBonuses(ctx));
   }
 }
 
@@ -179,7 +181,7 @@ function handTitle(ctx: Ctx): string {
 export function phoneSheet(ctx: Ctx): HTMLElement {
   // A phone held sideways shows the sheet as a full-height panel on the right, always open.
   const open = ctx.ui.sheetOpen || ctx.landscape;
-  const toggle = (): void => { ctx.ui.sheetOpen = !ctx.ui.sheetOpen; ctx.redraw(); };
+  const toggle = (): void => { ctx.ui.sheetOpen = !ctx.ui.sheetOpen; if (!ctx.ui.sheetOpen) ctx.ui.sheetUserClosed = true; ctx.redraw(); };
   const cards = ctx.view.hand.length;
   const grab = ctx.landscape ? null : h('button', {
     class: 'tg-grab', title: open ? 'Pull down' : 'Pull up for your tray, cards, log and rules',

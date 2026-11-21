@@ -59,6 +59,8 @@ export class Playback<T> {
   private newestArrived = 0;
   /** When the current run of urgent states began (null: the newest state is not urgent). */
   private urgentSince: number | null = null;
+  /** Counters for checks: transitions started, and transitions skipped to keep within the lag cap. */
+  readonly counts = { played: 0, skipped: 0 };
 
   constructor(opts: PlaybackOptions = {}) {
     this.cap = opts.capMs ?? LAG_CAP_MS;
@@ -156,6 +158,7 @@ export class Playback<T> {
     }
     const skipped = this.pending.length - keep;
     if (skipped > 0) {
+      this.counts.skipped += skipped;
       const last = this.pending[skipped - 1]!.item;
       this.pending = this.pending.slice(skipped);
       this.shownItem = last;
@@ -172,6 +175,7 @@ export class Playback<T> {
         continue;
       }
       this.current = { item: next, start: now, end: now + durMs };
+      this.counts.played++;
       out.push({ kind: 'play', item: next, durMs, scale: durMs / next.baseMs });
       break;
     }

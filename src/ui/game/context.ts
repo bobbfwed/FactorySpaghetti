@@ -29,10 +29,12 @@ export interface UiState {
   topDown: boolean;
   /** Dice are still tumbling on the table: the "Rolled N" chip waits for them to land. */
   diceRolling: boolean;
+  /** The player just closed the phone sheet themselves (the screen then leaves it closed for the current choice). */
+  sheetUserClosed: boolean;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false };
 }
 
 /** What the interface may ask of the play controller (the moves a player makes). */

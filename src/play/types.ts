@@ -11,6 +11,10 @@ export interface Item {
   enabled: boolean;
   reason?: string;
   danger?: boolean;
+  /** Bank items: the price in material value, as the engine charges it (absent when there is none, e.g. all Mines are in). */
+  price?: number;
+  /** Hand items: how many copies of this Leverage card are in the hand. */
+  count?: number;
 }
 
 /** What is currently "picked up". */
@@ -23,6 +27,8 @@ export interface TrayEntry {
   module: number;
   state: 'onBoard' | 'inTray' | 'lit';
   cost?: string;
+  /** A lit module: what using it costs, in upgrades (0 = free). */
+  upgradeCost?: number;
 }
 
 export interface Prompt {

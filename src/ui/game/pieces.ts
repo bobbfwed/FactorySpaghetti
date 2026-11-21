@@ -3,7 +3,7 @@
 
 import type { AppController } from '../../app/controller';
 import type { CardType, Material } from '../../engine/config';
-import { INVENTORY_CAP, PLAY_ON_DRAW_CARDS } from '../../engine/config';
+import { CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TESSERACTS_TO_WIN } from '../../engine/config';
 import type { TrayEntry } from '../../play';
 import { CARD_NAME, CARD_TEXT, MATERIAL_NAME } from '../../play/words';
 import type { SeatColor } from '../../session/room';
@@ -16,10 +16,10 @@ import { clock } from './context';
 export const MATERIAL_ICON: Record<Material, IconName> = { ore: 'ore', plate: 'plate', sphere: 'sphere', tesseract: 'tess' };
 export const MATERIAL_LIST: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
-/** Four Tesseract pips, `n` of them filled. */
+/** One pip per Tesseract needed to win, `n` of them filled. */
 export function pips(n: number, label = 'Tesseracts'): HTMLElement {
-  return h('span', { class: 'tg-pips', attrs: { role: 'img', 'aria-label': `${label}: ${n} of 4` } },
-    [0, 1, 2, 3].map(i => icon(i < n ? 'pipOn' : 'pipOff', undefined, 'tg-pip')));
+  return h('span', { class: 'tg-pips', attrs: { role: 'img', 'aria-label': `${label}: ${n} of ${TESSERACTS_TO_WIN}` } },
+    Array.from({ length: TESSERACTS_TO_WIN }, (_, i) => icon(i < n ? 'pipOn' : 'pipOff', undefined, 'tg-pip')));
 }
 
 /** A count with an icon, e.g. ore 3. */
@@ -29,30 +29,32 @@ export function count(name: IconName, n: number | string, label: string, color?:
 }
 
 /**
- * The 3×6 Control Module tray, rows from 18 down to 1 like the printed tray. A module on the board
+ * The Control Module tray, three wide, rows from the highest module down to 1 like the printed tray. A module on the board
  * leaves an empty pocket; a lit module is a button that chooses it.
  */
-export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose: (id: string) => void, cls = ''): HTMLElement {
+export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose: (id: string) => void, cls = '', actContext = ''): HTMLElement {
   const by = new Map(tray.map(t => [t.module, t]));
   const cells: HTMLElement[] = [];
-  for (let r = 0; r < 6; r++) {
+  const rows = Math.ceil(CONTROL_MODULE_MAX / 3);
+  for (let r = 0; r < rows; r++) {
     for (let c = 0; c < 3; c++) {
-      const n = 18 - (3 * r + c);
+      const n = CONTROL_MODULE_MAX - (3 * r + c);
+      if (n < 1) continue;
       const t = by.get(n);
       const state = t?.state ?? 'onBoard';
       const under = n === 6 || n === 9 ? ' u' : '';
       if (state === 'onBoard') {
-        cells.push(h('span', { class: 'tg-mod empty', title: `Control Module ${n} is on the board`, attrs: { 'aria-label': `Module ${n}: on the board` } }));
+        cells.push(h('span', { class: 'tg-mod empty', title: `Control Module ${n} is on the board`, attrs: { 'aria-label': `Control Module ${n}: on the board` } }));
       } else if (state === 'lit') {
-        const cost = t?.cost ? (/^(\d+)/.exec(t.cost)?.[1] ?? (t.cost === 'free' ? '0' : '')) : '';
+        const cost = t?.upgradeCost === undefined ? '' : String(t.upgradeCost);
         cells.push(h('button', {
           class: `tg-mod lit${under}`, style: `background:${COLORS[color]}`,
           title: `Control Module ${n}${t?.cost ? ` · ${t.cost}` : ''}`,
-          attrs: { 'aria-label': `Use Control Module ${n}${t?.cost ? `, costs ${t.cost}` : ''}`, 'data-module': String(n) },
+          attrs: { 'aria-label': `Use Control Module ${n}${t?.cost ? `, costs ${t.cost}` : ''}`, 'data-module': String(n), 'data-act': `module:${n}:${cost}:${actContext}` },
           onclick: () => choose(`module:${n}`),
         }, h('span', { class: 'n', text: String(n) }), cost ? h('span', { class: 'cost', text: cost }) : null));
       } else {
-        cells.push(h('span', { class: `tg-mod${under}`, style: `background:${COLORS[color]}`, attrs: { 'aria-label': `Module ${n}: in the tray` } },
+        cells.push(h('span', { class: `tg-mod${under}`, style: `background:${COLORS[color]}`, attrs: { 'aria-label': `Control Module ${n}: in the tray` } },
           h('span', { class: 'n', text: String(n) })));
       }
     }
@@ -65,7 +67,7 @@ export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose:
 
 /** A Leverage card face. */
 export function cardFace(card: CardType, opts: { count?: number; big?: boolean; off?: boolean } = {}): HTMLElement {
-  const foot = PLAY_ON_DRAW_CARDS.has(card) ? 'Played as soon as it is drawn' : 'Step 3 · up to 2 per turn';
+  const foot = PLAY_ON_DRAW_CARDS.has(card) ? 'Played as soon as it is drawn' : `Step 3 · up to ${MAX_CARDS_PLAYED_PER_TURN} per turn`;
   return h('div', { class: `tg-card${opts.big ? ' big' : ''}${opts.off ? ' off' : ''}` },
     h('div', { class: 'top', text: 'LEVERAGE' }),
     h('div', { class: 'band' }, h('span', { text: CARD_NAME[card] }), opts.count && opts.count > 1 ? h('span', { class: 'x', text: `×${opts.count}` }) : null),
@@ -87,7 +89,8 @@ export function materialWell(m: Material, n: number, cls = 'tg-mat'): HTMLElemen
 
 /** Text countdown kept current by the screen's one-second ticker. */
 export function countdownText(ctrl: AppController, deadline: number, prefix = '', cls = 'tg-countdown'): HTMLElement {
-  return h('span', { class: cls, attrs: { 'data-deadline': String(deadline), 'data-prefix': prefix } }, prefix + clock(ctrl.msLeft(deadline)));
+  // A timer, not announced every second even inside a status region.
+  return h('span', { class: cls, attrs: { 'data-deadline': String(deadline), 'data-prefix': prefix, role: 'timer', 'aria-live': 'off' } }, prefix + clock(ctrl.msLeft(deadline)));
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -114,7 +117,7 @@ export function countdownRing(ctrl: AppController, deadline: number, totalMs: nu
   s.append(bg, fg);
   return h('span', {
     class: 'tg-ring',
-    attrs: { 'data-deadline': String(deadline), 'data-total': String(totalMs), 'data-ring': '1', role: 'timer', 'aria-label': `${clock(ms)} left` },
+    attrs: { 'data-deadline': String(deadline), 'data-total': String(totalMs), 'data-ring': '1', role: 'timer', 'aria-live': 'off', 'aria-label': `${clock(ms)} left` },
   }, s as unknown as Node, h('span', { class: 'v', text: String(Math.max(0, Math.ceil(ms / 1000))) }));
 }
 

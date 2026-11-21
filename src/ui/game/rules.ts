@@ -3,8 +3,9 @@
 
 import type { Material, PieceType } from '../../engine/config';
 import {
-  BELT_COST, BONUS_THRESHOLDS, FACTORY_POWER_COST, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MINE_COSTS,
-  POWER_PLANT_BASE_YIELD, POWER_PLANT_MATERIAL_YIELD, POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET, bonusesEnabled, cardCost,
+  BELT_COST, BONUS_THRESHOLDS, FACTORY_POWER_COST, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MAX_CARDS_PLAYED_PER_TURN,
+  MAX_CLAIMS_PER_BUILDING, MINE_COSTS, POWER_PLANT_BASE_YIELD, POWER_PLANT_MATERIAL_YIELD, POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET,
+  TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
 } from '../../engine/config';
 import { BUILDING_NAME, MATERIAL_NAME } from '../../session/describe';
 import type { Child } from '../dom';
@@ -49,7 +50,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     h('ol', { class: 'tg-turnlist' },
       h('li', null, h('b', { text: 'Place a piece' }), ' next to the board, from a stack that is open.'),
       h('li', null, h('b', { text: 'Roll' }), ` one die per Mine (now ${plural(mines, 'die', 'dice')}). Every building whose Control Module matches the total may run, on anyone's turn.`),
-      h('li', null, h('b', { text: 'Actions' }), ': buy and lay belts, buy cards and Mines, place teleporters, exchange materials, play up to 2 cards.'),
+      h('li', null, h('b', { text: 'Actions' }), `: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, play up to ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards.`),
       h('li', null, h('b', { text: 'Place meeple' }), ' on one of your buildings or on a Mine point.')),
     h('p', { class: 'muted', text: `Round end: each player gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, and may load, run and collect the building their meeple stands on.` }),
 
@@ -57,9 +58,9 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     row([icon('belt'), 'Belt'], String(BELT_COST)),
     row([icon('card'), 'Leverage card'], `Mines + 1 (now ${cardCost(mines)})`),
     row([icon('mine'), 'Mine'], MINE_COSTS.join(' then ')),
-    row([icon('teleporter'), 'Teleporter'], `teleporters placed + 1 (now ${g.globalTeleporterCount + 1}), paid exactly`),
-    row('Claim with module M', `M − Mines + 1 upgrades (now M − ${mines - 1})`),
-    row('Upgrade', 'new − old module, in upgrades'),
+    row([icon('teleporter'), 'Teleporter'], `teleporters placed + 1 (now ${teleporterCost(g.globalTeleporterCount)}), paid exactly`),
+    row('Claim with Control Module M', `M − Mines + 1 upgrades (now M − ${mines - 1})`),
+    row('Upgrade', 'new − old Control Module, in upgrades'),
     row('Production Increase', `${PRODUCTION_INCREASE_BUDGET} upgrades`),
     h('div', { class: 'tg-values' }, (Object.keys(MATERIAL_VALUES) as Material[]).map(m =>
       h('span', { class: 'tg-count' }, icon(MATERIAL_ICON[m]), h('span', { text: MATERIAL_NAME[m] }), h('b', { class: 'num', text: String(MATERIAL_VALUES[m]) })))),
@@ -83,12 +84,18 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     h('h3', { text: 'Limits' }),
     row('Each material', `${INVENTORY_CAP}`),
     row('Power Tokens', `${POWER_TOKEN_CAP}`),
-    row('Output buffer', '1 material'),
-    row('Cards played per turn', '2'),
-    row('Your claims on one building', '3'),
+    outputBufferRow(g),
+    row('Leverage cards played per turn', String(MAX_CARDS_PLAYED_PER_TURN)),
+    row('Your claims on one building', String(MAX_CLAIMS_PER_BUILDING)),
 
     h('h3', { text: 'How to win' }),
-    h('p', { text: 'Show 4 Tesseracts on your own turn (face-up bonus cards count). If the board pieces run out, the round is finished and the most material value wins.' }));
+    h('p', { text: `Show ${TESSERACTS_TO_WIN} Tesseracts on your own turn (face-up bonus cards count). If the board pieces run out, the round is finished and the most material value wins.` }));
+}
+
+/** The output buffer's size, read from a building on the board (the engine builds every output buffer the same). */
+function outputBufferRow(g: Ctx['game']): Child {
+  const n = g.board.find(p => p.output && p.type !== 'mine')?.output?.slots.length;
+  return n === undefined ? null : row('Output buffer', plural(n, 'material', 'materials'));
 }
 
 export function bonusSheet(ctx: Ctx): HTMLElement {

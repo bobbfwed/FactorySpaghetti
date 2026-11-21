@@ -21,7 +21,7 @@ export function buildingMenu(ctx: Ctx): HTMLElement | null {
   m.items.map(it => h('button', {
     class: `item${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
     title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,
-    attrs: { role: 'menuitem', 'aria-disabled': String(!it.enabled), 'data-item': it.id },
+    attrs: { role: 'menuitem', 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': `${JSON.stringify(m.anchor)}|${it.id}` },
     onclick: () => ctx.play.choose(it.id),
   },
   h('span', { class: 'lb', text: it.label }),
@@ -39,7 +39,7 @@ export function choicesPanel(ctx: Ctx): HTMLElement | null {
     h('div', { class: 'list' }, c.items.map(it => h('button', {
       class: `item well${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
       title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,
-      attrs: { 'aria-disabled': String(!it.enabled), 'data-item': it.id },
+      attrs: { 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': `${c.title}|${it.id}` },
       onclick: () => ctx.play.choose(it.id),
     },
     h('span', { class: 'lb', text: it.label }),
@@ -53,7 +53,7 @@ export function cardModal(ctx: Ctx): HTMLElement | null {
   const it = ctx.view.hand.find(c => c.card === card);
   const close = (): void => { ctx.ui.card = null; ctx.redraw(); };
   if (!it) { ctx.ui.card = null; return null; }
-  const cnt = Number(/×(\d+)$/.exec(it.label)?.[1] ?? '1');
+  const cnt = it.count ?? 1;
   const veil = h('div', {
     class: 'tg-veil', attrs: { 'data-veil': 'card' },
     onclick: (e) => { if (e.target === veil) close(); },
@@ -65,7 +65,7 @@ export function cardModal(ctx: Ctx): HTMLElement | null {
       h('button', { class: 'btn btn-dark btn-lg', attrs: { 'data-close': 'card' }, onclick: close }, 'Close'),
       h('button', {
         class: `btn btn-gold btn-lg${it.enabled ? '' : ' is-disabled'}`,
-        attrs: { 'aria-disabled': String(!it.enabled), 'data-play': card },
+        attrs: { 'aria-disabled': String(!it.enabled), 'data-play': card, 'data-act': `play:${card}` },
         onclick: () => { if (it.enabled) { ctx.ui.card = null; if (ctx.phone) ctx.ui.sheetOpen = false; } ctx.play.choose(it.id); },
       }, icon('play'), 'Play'))));
   return veil;
