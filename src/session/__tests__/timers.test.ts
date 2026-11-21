@@ -12,9 +12,9 @@ async function host2(game: GameState, hostSeat: number, settings: Partial<RoomSe
   const names = hostSeat === 0 ? ['Ann', 'Bea'] : ['Bea', 'Ann'];
   const room = playingRoom(game, names.map(name => ({ kind: 'human' as const, name })), hostSeat,
     { awayPolicy: 'wait', botDelayMs: 0, ...settings });
-  const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann', room, mode: 'takeover', hostSeat, scheduler: sched });
-  const ann = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann', now: (): number => sched.now() });
-  const bea = join(host, 'Bea', 'tok-bea').client;
+  const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room, mode: 'takeover', hostSeat, scheduler: sched });
+  const ann = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann-0123456789', now: (): number => sched.now() });
+  const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
   await settle();
   return { host, ann, bea, sched };
 }
@@ -50,7 +50,19 @@ describe('off-turn operate-or-skip timer', () => {
     expect(host.room.lastEvents).toContainEqual({ kind: 'timeout', seat: owner, what: 'factory-op' });
   });
 
-  it('does not run for the active player\'s own activations, nor when disabled', async () => {
+  it('does not run for the active player\'s own activations', async () => {
+    const game = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length > 0
+      && s.pendingFactoryOps.every(e => e.ownerId === activeSeat(s)));
+    const active = activeSeat(game)!;
+    const { host, sched } = await host2(game, active, { factoryOpTimeoutMs: 8000, roundEndTimeoutMs: 0 });
+    expect(host.room.opDeadline).toBeNull();
+    const before = JSON.stringify(host.room.game);
+    await sched.advance(10 * 60_000);
+    expect(JSON.stringify(host.room.game)).toBe(before);
+    expect(host.room.log.some(e => e.text.includes('did not choose'))).toBe(false);
+  });
+
+  it('does not run when disabled', async () => {
     const game = offTurnState();
     const active = activeSeat(game)!;
     const { host, sched } = await host2(game, active, { factoryOpTimeoutMs: 0, roundEndTimeoutMs: 0 });
@@ -59,6 +71,53 @@ describe('off-turn operate-or-skip timer', () => {
     await sched.advance(10 * 60_000);
     expect(JSON.stringify(host.room.game)).toBe(before);
     expect(sched.pending).toBe(0);
+  });
+
+  it('is cancelled when the owner answers in time', async () => {
+    const game = offTurnState();
+    const active = activeSeat(game)!;
+    const owner = 1 - active;
+    const { host, bea, sched } = await host2(game, active, { factoryOpTimeoutMs: 8000, roundEndTimeoutMs: 0 });
+    await sched.advance(5000);
+    for (const e of host.room.game!.pendingFactoryOps.filter(p => p.ownerId === owner)) {
+      expect(await bea.act({ type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId })).toEqual({ ok: true });
+    }
+    expect(host.room.opDeadline).toBeNull();
+    const seq = host.room.seq;
+    await sched.advance(60_000);
+    expect(host.room.seq).toBe(seq);
+    expect(host.room.log.some(e => e.text.includes('did not choose'))).toBe(false);
+  });
+
+  it('skips when running the factory is not affordable', async () => {
+    const found = offTurnState();
+    const owner = 1 - activeSeat(found)!;
+    // The owner has spent their Power Tokens since the roll: operating is no longer possible.
+    const game: GameState = { ...found, players: found.players.map(p => (p.id === owner ? { ...p, powerTokens: 0 } : p)) };
+    const { host, sched } = await host2(game, activeSeat(game)!, { factoryOpTimeoutMs: 8000, roundEndTimeoutMs: 0 });
+    await sched.advance(8000);
+    expect(host.room.game!.pendingFactoryOps.some(e => e.ownerId === owner)).toBe(false);
+    expect(host.room.log.some(e => e.seat === owner && /^Bea chose not to run the /.test(e.text))).toBe(true);
+    expect(host.room.log.some(e => e.text === 'Bea did not choose in time.')).toBe(true);
+    expect(host.room.game!.players[owner]!.powerTokens).toBe(0);
+  });
+
+  it('also answers for an owner who is away', async () => {
+    const game = offTurnState();
+    const active = activeSeat(game)!;
+    const owner = 1 - active;
+    const sched = new ManualScheduler();
+    const room = playingRoom(game, active === 0
+      ? [{ kind: 'human', name: 'Ann' }, { kind: 'human', name: 'Bea' }]
+      : [{ kind: 'human', name: 'Bea' }, { kind: 'human', name: 'Ann' }], active,
+    { awayPolicy: 'wait', botDelayMs: 0, factoryOpTimeoutMs: 8000, roundEndTimeoutMs: 0 });
+    const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room, mode: 'takeover', hostSeat: active, scheduler: sched });
+    new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann-0123456789' });
+    await settle();
+    expect(host.room.seats[owner]).toMatchObject({ connected: false, autopilot: false }); // Bea never came back
+    await sched.advance(8000);
+    expect(host.room.game!.pendingFactoryOps.some(e => e.ownerId === owner)).toBe(false);
+    expect(host.room.lastEvents).toContainEqual({ kind: 'timeout', seat: owner, what: 'factory-op' });
   });
 });
 

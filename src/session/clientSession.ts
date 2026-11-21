@@ -20,11 +20,20 @@ export type ActResult = { ok: true } | { ok: false; error: WireError };
 
 export interface ClientOptions {
   name: string;
+  /** 16 to 64 characters; keep it in this browser's storage so a reload gets the seat back. */
   token: string;
   store?: SaveStore;
   /** This device's clock; injectable for tests. */
   now?: () => number;
   appVersion?: string;
+}
+
+/** The move waiting for the host's answer. */
+export interface PendingMove {
+  id: string;
+  action: Action;
+  /** room.seq when the move was first sent (null until it has been sent). */
+  seq: number | null;
 }
 
 type CommandMsg = Exclude<ClientMsg, { t: 'hello' | 'act' }>;
@@ -37,8 +46,8 @@ export class ClientSession {
   closedWhy: ClosedWhy | null = null;
   room: Room | null = null;
   seat: number | null = null;
-  /** A move sent but not yet confirmed by the host. */
-  pending: { id: string; action: Action } | null = null;
+  /** A move sent (or about to be sent) but not yet confirmed by the host. */
+  pending: PendingMove | null = null;
 
   private conn: Conn;
   private readonly name: string;
@@ -62,16 +71,23 @@ export class ClientSession {
     this.attach(conn);
   }
 
-  // ── Connection ────────────────────────────────────────────────────────────────
+  // --- Connection ----------------------------------------------------------------
 
   private attach(conn: Conn): void {
     conn.onmessage = (m): void => { if (this.conn === conn) this.onMessage(m); };
     conn.onclose = (): void => { if (this.conn === conn) this.onConnClose(); };
-    conn.send({ t: 'hello', v: PROTOCOL, name: this.name, token: this.token } satisfies ClientMsg);
+    // Returning with a seat: name the seat and use its (possibly de-duplicated) name, so the
+    // host can match us even when our token is new to it (after a host change).
+    const seatName = this.seat !== null ? this.room?.seats[this.seat]?.name : undefined;
+    const hello: ClientMsg = this.seat !== null && seatName
+      ? { t: 'hello', v: PROTOCOL, name: seatName, token: this.token, seat: this.seat }
+      : { t: 'hello', v: PROTOCOL, name: this.name, token: this.token };
+    conn.send(hello);
   }
 
   /** After a reconnect or a host change: say hello again; the pending move is re-sent if the host lacks it. */
   reattach(conn: Conn): void {
+    if (this.status === 'closed' && this.closedWhy === null) return; // disposed
     const old = this.conn;
     this.conn = conn;
     if (old !== conn && old.open) old.close();
@@ -92,13 +108,25 @@ export class ClientSession {
     return () => { this.listeners.delete(fn); };
   }
 
+  /** Leave for good: close the connection; a waiting move and commands settle as CLOSED. */
+  dispose(): void {
+    if (this.status === 'closed' && this.closedWhy === null) return;
+    this.status = 'closed';
+    this.closedWhy = null;
+    this.failAll('This session was closed.', true);
+    if (this.conn.open) this.conn.close();
+    this.emit();
+    this.listeners.clear();
+    this.hostLost.clear();
+  }
+
   /** Milliseconds until a host-clock deadline, corrected for the clock difference. */
   msLeft(deadline: number | null): number | null {
     if (deadline === null) return null;
     return Math.max(0, deadline - (this.clock() + this.offset));
   }
 
-  // ── Moves ─────────────────────────────────────────────────────────────────────
+  // --- Moves -----------------------------------------------------------------------
 
   /** Ask the host to make a move. One move at a time; resolves when the host confirms or refuses. */
   act(action: Action): Promise<ActResult> {
@@ -106,16 +134,27 @@ export class ClientSession {
     if (this.pending) {
       return Promise.resolve({ ok: false, error: { code: 'BUSY', message: 'Still waiting for the host to confirm the last move.' } });
     }
-    const id = randomId();
-    this.pending = { id, action };
+    this.pending = { id: randomId(), action, seq: null };
     const result = new Promise<ActResult>(resolve => { this.pendingDone = resolve; });
     // Before the welcome (or while reconnecting) it is sent once the host has welcomed us.
-    if (this.status === 'joined' && this.conn.open) this.conn.send({ t: 'act', id, action } satisfies ClientMsg);
+    if (this.status === 'joined' && this.conn.open) this.sendPending();
     this.emit();
     return result;
   }
 
-  // ── Commands ──────────────────────────────────────────────────────────────────
+  /** First send carries the room.seq we saw; a re-send says so, keeping the original seq. */
+  private sendPending(): void {
+    const p = this.pending;
+    if (!p) return;
+    if (p.seq === null) {
+      p.seq = this.room?.seq ?? 0;
+      this.conn.send({ t: 'act', id: p.id, action: p.action, seq: p.seq } satisfies ClientMsg);
+    } else {
+      this.conn.send({ t: 'act', id: p.id, action: p.action, seq: p.seq, resend: true } satisfies ClientMsg);
+    }
+  }
+
+  // --- Commands --------------------------------------------------------------------
 
   setReady(ready: boolean): Promise<ActResult> { return this.command({ t: 'ready', ready }); }
   setColor(color: SeatColor): Promise<ActResult> { return this.command({ t: 'color', color }); }
@@ -127,6 +166,7 @@ export class ClientSession {
   start(): Promise<ActResult> { return this.command({ t: 'start' }); }
   resumeGame(): Promise<ActResult> { return this.command({ t: 'resume' }); }
   assign(waitingId: string, seat: number): Promise<ActResult> { return this.command({ t: 'assign', waitingId, seat }); }
+  /** The host may set any seat; a player may only turn their own autopilot off. */
   setAutopilot(seat: number, on: boolean): Promise<ActResult> { return this.command({ t: 'autopilot', seat, on }); }
   kick(seat: number): Promise<ActResult> { return this.command({ t: 'kick', seat }); }
 
@@ -138,9 +178,10 @@ export class ClientSession {
     return result;
   }
 
-  // ── Inbound ───────────────────────────────────────────────────────────────────
+  // --- Inbound ---------------------------------------------------------------------
 
   private onMessage(raw: unknown): void {
+    if (this.status === 'closed') return;
     const msg: HostMsg | null = parseHostMsg(raw);
     if (!msg) return;
     switch (msg.t) {
@@ -148,10 +189,8 @@ export class ClientSession {
         this.seat = msg.seat;
         this.status = 'joined';
         this.setRoom(msg.room, msg.now, null);
-        // Re-send the unconfirmed move only if the host never applied it.
-        if (this.pending && this.conn.open) {
-          this.conn.send({ t: 'act', id: this.pending.id, action: this.pending.action } satisfies ClientMsg);
-        }
+        // Send the unconfirmed move: for the first time, or again if the host never applied it.
+        if (this.pending && this.conn.open && this.seat !== null) this.sendPending();
         break;
       case 'room':
         this.setRoom(msg.room, msg.now, msg.re ?? null);
@@ -161,6 +200,7 @@ export class ClientSession {
         else if (msg.id !== null) this.finishCommand(msg.id, { ok: false, error: msg.error });
         break;
       case 'closed':
+        // A deliberate end (full, kicked, replaced, ...): not a lost host.
         this.status = 'closed';
         this.closedWhy = msg.why;
         this.failAll(`The room closed (${msg.why}).`, true);
@@ -172,7 +212,8 @@ export class ClientSession {
   private setRoom(room: Room, hostNow: number, re: string | null): void {
     this.room = room;
     this.offset = hostNow - this.clock();
-    if (this.pending && (re === this.pending.id || room.recent.some(r => r.id === this.pending!.id))) {
+    const p = this.pending;
+    if (p && (re === p.id || room.recent.some(r => r.id === p.id && r.seat === this.seat))) {
       this.finishPending({ ok: true });
     }
     if (re !== null) this.finishCommand(re, { ok: true });
@@ -203,7 +244,7 @@ export class ClientSession {
     done(r);
   }
 
-  /** Commands are not re-sent after a reconnect, so they fail; the pending move fails only when the room closed. */
+  /** Commands are not re-sent after a reconnect, so they fail; the pending move fails only when the session ends. */
   private failAll(message: string, includingMove: boolean): void {
     for (const id of [...this.commands.keys()]) this.finishCommand(id, closedError(message));
     if (includingMove && this.pending) this.finishPending(closedError(message));

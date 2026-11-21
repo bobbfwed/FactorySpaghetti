@@ -118,6 +118,51 @@ describe('save envelope', () => {
     await expectSaveError(() => validateSave(null), 'corrupt');
   });
 
+  it('turns every malformed save into a SaveError, never a TypeError', async () => {
+    const save = toSave(midGameRoom(), { savedAt: 1000, app: 'v-test' });
+    const mutations: Array<(s: Record<string, any>) => void> = [ // eslint-disable-line @typescript-eslint/no-explicit-any
+      (s): void => { s.room.game.stacks[0].pieces.push(null); },
+      (s): void => { s.room.game.unplacedMines = [null, null]; },
+      (s): void => { s.room.game.board.push(null); },
+      (s): void => { s.room.game.board[0].coord = null; },
+      (s): void => { s.room.game.players[0] = null; },
+      (s): void => { s.room.game.players[0].inventory = 'lots'; },
+      (s): void => { s.room.game.round = 'four'; },
+      (s): void => { s.room.game.turnOrder = [0, 0, 0]; },
+      (s): void => { s.room.game.pendingFactoryOps = [null]; },
+      (s): void => { s.room.game.belts = [{ id: 1 }]; },
+      (s): void => { s.room.seats[0] = null; },
+      (s): void => { s.room.seats[0].name = 42; },
+      (s): void => { s.room.seats[0].name = 'x'.repeat(41); },
+      (s): void => { s.room.log = [{ seq: 1, seat: null, text: 'y'.repeat(201) }]; },
+      (s): void => { s.room.log = Array.from({ length: 501 }, () => ({ seq: 1, seat: null, text: 'hi' })); },
+      (s): void => { s.room.waiting = [null]; },
+      (s): void => { s.room.settings = null; },
+      (s): void => { s.room.code = 7; },
+      (s): void => { s.room.game.stacks = null; },
+      (s): void => { s.room = []; },
+    ];
+    for (const mutate of mutations) {
+      const bad = JSON.parse(JSON.stringify(save)) as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+      mutate(bad);
+      await expectSaveError(() => validateSave(bad), 'invalid');
+    }
+  });
+
+  it('refuses oversized links and files, and stops inflating a link that expands too far', async () => {
+    await expectSaveError(unpackLink(`v1.${'A'.repeat(64_001)}`), 'invalid');
+    await expectSaveError(() => parseSaveFile(' '.repeat(2 * 1024 * 1024 + 1)), 'invalid');
+
+    // 3 MB of spaces compresses to a few kilobytes: a small link that would inflate past the 2 MB cap.
+    const big = new TextEncoder().encode(' '.repeat(3 * 1024 * 1024));
+    const deflated = new Uint8Array(await new Response(new Blob([big]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+    let bin = '';
+    for (const b of deflated) bin += String.fromCharCode(b);
+    const bomb = `v1.${btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')}`;
+    expect(bomb.length).toBeLessThan(64_000);
+    await expectSaveError(unpackLink(bomb), 'invalid');
+  });
+
   it('pulls the save out of a location hash', () => {
     expect(saveFromHash('#save=v1.abc_-')).toBe('v1.abc_-');
     expect(saveFromHash('save=v1.abc')).toBe('v1.abc');
@@ -183,7 +228,7 @@ describe('save store', () => {
   it('every client keeps the latest room of a game as its own save', async () => {
     const { host, me } = await newLobby({ settings: { playerCount: 2, botDelayMs: 0, factoryOpTimeoutMs: 0, roundEndTimeoutMs: 0 } });
     const beaStore = memoryStore();
-    const bea = join(host, 'Bea', 'tok-bea', beaStore).client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789', beaStore).client;
     await settle();
     expect(beaStore.keys()).toEqual([]); // nothing saved from the lobby
     await me.setReady(true);

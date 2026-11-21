@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { GameState } from '../../engine/state';
 import { chooseAction as greedy } from '../../bots/greedyBot';
+import { legalActions } from '../../engine';
 import { HostSession } from '../hostSession';
 import { ClientSession } from '../clientSession';
 import { activeSeat } from '../room';
@@ -17,9 +18,9 @@ async function twoHumans(game: GameState, hostSeat: number): Promise<{ host: Hos
   const sched = new ManualScheduler();
   const names = hostSeat === 0 ? ['Ann', 'Bea'] : ['Bea', 'Ann'];
   const room = playingRoom(game, names.map(name => ({ kind: 'human' as const, name })), hostSeat, NO_TIMERS);
-  const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann', room, mode: 'takeover', hostSeat, scheduler: sched });
-  const ann = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann' });
-  const bea = join(host, 'Bea', 'tok-bea').client;
+  const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room, mode: 'takeover', hostSeat, scheduler: sched });
+  const ann = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann-0123456789' });
+  const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
   await settle();
   expect(ann.seat).toBe(hostSeat);
   expect(bea.seat).toBe(1 - hostSeat);
@@ -86,12 +87,12 @@ describe('moves', () => {
     const active = activeSeat(game)!;
     const sched = new ManualScheduler();
     const room = playingRoom(game, [{ kind: 'human', name: 'Ann' }, { kind: 'human', name: 'Bea' }], 1 - active, NO_TIMERS);
-    const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann', room, mode: 'takeover', hostSeat: 1 - active, scheduler: sched });
+    const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room, mode: 'takeover', hostSeat: 1 - active, scheduler: sched });
     const [hostEnd, raw] = memoryPair();
     host.accept(hostEnd);
     const got: HostMsg[] = [];
     raw.onmessage = (m): void => { got.push(m as HostMsg); };
-    raw.send({ t: 'hello', v: PROTOCOL, name: 'Bea', token: 'tok-bea' });
+    raw.send({ t: 'hello', v: PROTOCOL, name: 'Bea', token: 'tok-bea-0123456789' });
     const action = greedy(game, active);
     raw.send({ t: 'act', id: 'move-1', action });
     raw.send({ t: 'act', id: 'move-1', action });
@@ -105,10 +106,115 @@ describe('moves', () => {
   });
 });
 
+describe('recorded moves and stale re-sends', () => {
+  /** A 2-player room in an actions phase where the active player can lay and lift belts at will. */
+  async function beltRoom(): Promise<{ host: HostSession; active: number; other: number; raw: (msg: unknown) => void; got: HostMsg[]; ann: ClientSession }> {
+    const game = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length === 0
+      && legalActions(s, activeSeat(s)!).some(a => a.type === 'PLACE_BELT'));
+    const active = activeSeat(game)!;
+    const other = 1 - active;
+    const sched = new ManualScheduler();
+    const names = active === 0 ? ['Ann', 'Bea'] : ['Bea', 'Ann'];
+    const room = playingRoom(game, names.map(name => ({ kind: 'human' as const, name })), active, NO_TIMERS);
+    // Bea's earlier move is on record.
+    const host = new HostSession({ code: 'ROOMA', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room: { ...room, recent: [{ seat: other, id: 'bea-move-1' }] }, mode: 'takeover', hostSeat: active, scheduler: sched });
+    const ann = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann-0123456789' });
+    const [hostEnd, beaEnd] = memoryPair();
+    host.accept(hostEnd);
+    const got: HostMsg[] = [];
+    beaEnd.onmessage = (m): void => { got.push(m as HostMsg); };
+    beaEnd.send({ t: 'hello', v: PROTOCOL, name: 'Bea', token: 'tok-bea-0123456789' });
+    await settle();
+    return { host, active, other, raw: m => beaEnd.send(m), got, ann };
+  }
+
+  it('remembers each seat\'s recent moves no matter how many moves others make', async () => {
+    const { host, active, other, raw, got, ann } = await beltRoom();
+    for (let i = 0; i < 20; i++) {
+      const g = host.room.game!;
+      const place = legalActions(g, active as 0 | 1).find(a => a.type === 'PLACE_BELT')!;
+      expect(await ann.act(place)).toEqual({ ok: true });
+      const belt = host.room.game!.belts.at(-1)!;
+      expect(await ann.act({ type: 'REMOVE_BELT', beltId: belt.id })).toEqual({ ok: true });
+    }
+    expect(host.room.seq).toBe(40);
+    expect(host.room.recent.filter(r => r.seat === active)).toHaveLength(4);
+    expect(host.room.recent).toContainEqual({ seat: other, id: 'bea-move-1' });
+
+    got.length = 0;
+    raw({ t: 'act', id: 'bea-move-1', action: { type: 'END_ACTIONS' }, seq: 0, resend: true });
+    await settle();
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ t: 'room', re: 'bea-move-1' }); // acknowledged, not applied, not refused
+    expect(host.room.seq).toBe(40);
+  });
+
+  it('refuses a re-sent move as stale once the game has moved on, and applies nothing', async () => {
+    const { host, active, raw, got, ann } = await beltRoom();
+    const place = legalActions(host.room.game!, active as 0 | 1).find(a => a.type === 'PLACE_BELT')!;
+    expect(await ann.act(place)).toEqual({ ok: true });
+    const before = JSON.stringify(host.room);
+    got.length = 0;
+    raw({ t: 'act', id: 'bea-move-2', action: { type: 'END_ACTIONS' }, seq: 0, resend: true });
+    await settle();
+    expect(got).toEqual([{ t: 'nope', id: 'bea-move-2', error: { code: 'STALE', message: 'The game moved on; that move was not applied.' } }]);
+    expect(JSON.stringify(host.room)).toBe(before);
+  });
+
+  it('does not refuse a first send for an older seq (off-turn answers race with other moves)', async () => {
+    const game = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.some(e => e.ownerId !== activeSeat(s)));
+    const active = activeSeat(game)!;
+    const entry = game.pendingFactoryOps.find(e => e.ownerId !== active)!;
+    const { host } = await twoHumans(game, active);
+    const [hostEnd, raw] = memoryPair();
+    host.accept(hostEnd);
+    const got: HostMsg[] = [];
+    raw.onmessage = (m): void => { got.push(m as HostMsg); };
+    raw.send({ t: 'hello', v: PROTOCOL, name: 'Bea', token: 'tok-bea-0123456789' }); // replaces Bea's first connection
+    raw.send({ t: 'act', id: 'late-answer', action: { type: 'SKIP_FACTORY_ROLL', pieceId: entry.pieceId }, seq: host.room.seq - 5 });
+    await settle();
+    expect(got.some(m => m.t === 'nope')).toBe(false);
+    expect(host.room.recent).toContainEqual({ seat: entry.ownerId, id: 'late-answer' });
+  });
+
+  it('sends a refusal only to the sender', async () => {
+    const game = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length === 0);
+    const active = activeSeat(game)!;
+    const { host, ann, bea } = await twoHumans(game, 1 - active); // Ann is not active
+    let beaHeard = 0;
+    bea.subscribe(() => { beaHeard++; });
+    const seq = host.room.seq;
+    expect(await ann.act({ type: 'END_ACTIONS' })).toMatchObject({ ok: false, error: { code: 'NOT_YOUR_TURN' } });
+    expect(await ann.act({ type: 'PLACE_BELT', pieceId: 'nope', fromPoint: 0, toPoint: 6 })).toMatchObject({ ok: false });
+    await settle();
+    expect(beaHeard).toBe(0);
+    expect(host.room.seq).toBe(seq);
+  });
+
+  it('never runs a bot for a connected player who is not on autopilot', async () => {
+    const game = findState(3, s => s.phase === 'placePiece');
+    const active = activeSeat(game)!;
+    const sched = new ManualScheduler();
+    const seats = [0, 1, 2].map(i => (i === active ? { kind: 'human' as const, name: 'Bea' } : { kind: 'bot' as const, name: `Bot ${i}` }));
+    const hostSeat = active;
+    seats[hostSeat] = { kind: 'human', name: 'Bea' };
+    for (const delay of [0, 300]) {
+      const room = playingRoom(game, seats, hostSeat, { ...NO_TIMERS, botDelayMs: delay });
+      const host = new HostSession({ code: 'ROOMA', hostName: 'Bea', hostToken: 'tok-bea-0123456789', room, mode: 'takeover', hostSeat, scheduler: sched });
+      new ClientSession(host.connectLocal(), { name: 'Bea', token: 'tok-bea-0123456789' });
+      await settle();
+      await sched.advance(60_000);
+      expect(host.room.seq).toBe(0);
+      expect(activeSeat(host.room.game)).toBe(active);
+      host.dispose();
+    }
+  });
+});
+
 describe('re-sending a move across a reconnect', () => {
   async function startTwoPlayer(): Promise<{ host: HostSession; ann: ClientSession; bea: ReturnType<typeof join> }> {
     const { host, me } = await newLobby({ settings: { playerCount: 2, ...NO_TIMERS } });
-    const bea = join(host, 'Bea', 'tok-bea');
+    const bea = join(host, 'Bea', 'tok-bea-0123456789');
     await settle();
     await me.setReady(true);
     await bea.client.setReady(true);

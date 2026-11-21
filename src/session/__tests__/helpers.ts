@@ -63,6 +63,17 @@ export class ManualScheduler implements Scheduler {
     await settle();
   }
 
+  /** Fire the timers that are already due (such as instant bots continuing their run), without moving the clock. */
+  async flushDue(): Promise<void> {
+    for (let i = 0; i < 10_000; i++) {
+      const next = this.earliest(this.t);
+      if (!next) break;
+      this.fire(next);
+      await settle();
+    }
+    await settle();
+  }
+
   /** Fire timers (synchronously, no settling) until none remain or `stop` says so. */
   runUntil(stop: () => boolean, maxFires = 200_000): void {
     for (let i = 0; i < maxFires && !stop(); i++) {
@@ -98,9 +109,9 @@ export async function newLobby(opts: Partial<HostOptions> & { settings?: Partial
   const { settings, ...hostOpts } = opts;
   const sched = new ManualScheduler();
   const host = new HostSession({
-    code: 'KQMTV', hostName: 'Ann', hostToken: 'tok-ann', scheduler: sched, randomSeed: (): number => 4242, ...hostOpts,
+    code: 'KQMTV', hostName: 'Ann', hostToken: 'tok-ann-0123456789', scheduler: sched, randomSeed: (): number => 4242, ...hostOpts,
   });
-  const me = new ClientSession(host.connectLocal(), { name: 'Ann', token: opts.hostToken ?? 'tok-ann' });
+  const me = new ClientSession(host.connectLocal(), { name: 'Ann', token: opts.hostToken ?? 'tok-ann-0123456789' });
   await settle();
   if (settings) {
     const r = await me.configure(settings);
@@ -147,9 +158,10 @@ export function findState(playerCount: 2 | 3 | 4, pred: (s: GameState) => boolea
  * Let the human clients play with the greedy policy (pending choices first, then the active
  * player) until `until(room)` holds. Bots in the room play themselves.
  */
-export async function driveHumans(host: HostSession, clients: Record<number, ClientSession>, until: (r: Room) => boolean, maxMoves = 5000): Promise<number> {
+export async function driveHumans(host: HostSession, clients: Record<number, ClientSession>, until: (r: Room) => boolean, maxMoves = 5000, sched?: ManualScheduler): Promise<number> {
   for (let n = 0; n < maxMoves; n++) {
     await settle();
+    if (sched) await sched.flushDue(); // instant bots finish their run on the next tick
     const r = host.room;
     if (until(r)) return n;
     if (r.phase !== 'playing' || !r.game) throw new Error(`driveHumans: phase ${r.phase}`);

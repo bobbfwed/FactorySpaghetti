@@ -2,23 +2,27 @@
 // and the host-succession rule every client applies identically.
 
 import type { Room, Seat, SeatColor } from './room';
-import { SEAT_COLORS, openSeat, sameName } from './room';
+import { NAME_MAX, SEAT_COLORS, openSeat, sameName } from './room';
 
 /** `name`, or `name 2`, `name 3`, ... so it differs from every name in `taken`. */
 export function dedupeName(name: string, taken: readonly string[]): string {
   if (!taken.some(t => sameName(t, name))) return name;
   for (let n = 2; ; n++) {
-    const candidate = `${name} ${n}`;
+    const suffix = ` ${n}`;
+    const candidate = name.slice(0, NAME_MAX - suffix.length).trimEnd() + suffix;
     if (!taken.some(t => sameName(t, candidate))) return candidate;
   }
 }
 
-/** Names already in use by other people at the table (connected humans, bots, waiting visitors). */
+/**
+ * Names already in use at the table: every player seat (present or away, so a newcomer never
+ * shares a name with an away player), bots, and waiting visitors.
+ */
 export function namesInUse(room: Room, exceptSeat: number | null = null): string[] {
   const names: string[] = [];
   for (const s of room.seats) {
     if (s.index === exceptSeat) continue;
-    if ((s.kind === 'human' && s.connected) || s.kind === 'bot') names.push(s.name);
+    if (s.kind === 'human' || s.kind === 'bot') names.push(s.name);
   }
   for (const w of room.waiting) names.push(w.name);
   return names;

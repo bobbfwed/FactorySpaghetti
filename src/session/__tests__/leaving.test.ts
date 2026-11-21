@@ -12,7 +12,7 @@ const QUIET = { factoryOpTimeoutMs: 0, roundEndTimeoutMs: 0, botDelayMs: 0 };
 
 async function startGame(settings: Partial<RoomSettings>, others: string[]): Promise<Lobby & { players: Joined[] }> {
   const lobby = await newLobby({ settings: { playerCount: (others.length + 1) as 2 | 3, ...QUIET, ...settings } });
-  const players = others.map(name => join(lobby.host, name, `tok-${name.toLowerCase()}`));
+  const players = others.map(name => join(lobby.host, name, `tok-${name.toLowerCase()}-0123456789`));
   await settle();
   await lobby.me.setReady(true);
   for (const p of players) await p.client.setReady(true);
@@ -61,13 +61,13 @@ describe('a player leaving during play', () => {
     back.clientEnd.close();
     await settle();
     // A new device: different token, same name (case and spaces ignored).
-    const phone = join(host, '  BEA ', 'tok-bea-phone');
+    const phone = join(host, '  BEA ', 'tok-bea-phone-0123456789');
     await settle();
     expect(phone.client.seat).toBe(1);
     expect(host.room.seats[1]).toMatchObject({ connected: true, name: 'Bea', autopilot: false });
 
     // A stranger while every seat is taken is turned away.
-    const stranger = join(host, 'Zed', 'tok-zed');
+    const stranger = join(host, 'Zed', 'tok-zed-0123456789');
     await settle();
     expect(stranger.client.closedWhy).toBe('full');
   });
@@ -99,7 +99,7 @@ describe('host take-over', () => {
     const picks = [lastRoom, ann.room!, bea.client.room!, cy.client.room!].map(chooseSuccessor);
     expect(new Set(picks)).toEqual(new Set([1]));
 
-    const newHost: HostSession = promoteToHost(bea.client.room!, 1, { hostToken: 'tok-bea', scheduler: sched });
+    const newHost: HostSession = promoteToHost(bea.client.room!, 1, { hostToken: 'tok-bea-0123456789', scheduler: sched });
     expect(newHost.room.hostSeat).toBe(1);
     expect(newHost.room.seats[0]).toMatchObject({ connected: false, autopilot: false, awaySince: sched.now() });
     bea.client.reattach(newHost.connectLocal());
@@ -139,12 +139,12 @@ describe('host take-over', () => {
 
     const sched = new ManualScheduler();
     const { HostSession } = await import('../hostSession');
-    const h2 = new HostSession({ code: 'AGAIN', hostName: 'Cy', hostToken: 'tok-cy-2', room: saved, mode: 'resume', scheduler: sched });
+    const h2 = new HostSession({ code: 'AGAIN', hostName: 'Cy', hostToken: 'tok-cy-2-0123456789', room: saved, mode: 'resume', scheduler: sched });
     expect(h2.room.hostSeat).toBe(2);
     expect(h2.room.seats.every(s => !s.connected && !s.ready)).toBe(true);
-    const cy = new ClientSession(h2.connectLocal(), { name: 'Cy', token: 'tok-cy-2' });
-    const bea = join(h2, 'bea', 'tok-bea-new');
-    const sam = join(h2, 'Sam', 'tok-sam');
+    const cy = new ClientSession(h2.connectLocal(), { name: 'Cy', token: 'tok-cy-2-0123456789' });
+    const bea = join(h2, 'bea', 'tok-bea-new-0123456789');
+    const sam = join(h2, 'Sam', 'tok-sam-0123456789');
     await settle();
     expect(cy.seat).toBe(2);
     expect(bea.client.seat).toBe(1);   // matched by name

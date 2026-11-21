@@ -14,9 +14,9 @@ async function startBotGame(seed: number, botDelayMs: number): Promise<Run> {
   const sched = new ManualScheduler();
   const store = memoryStore();
   const host = new HostSession({
-    code: 'BOTSS', hostName: 'Ann', hostToken: 'tok-ann', scheduler: sched, store, randomSeed: (): number => seed,
+    code: 'BOTSS', hostName: 'Ann', hostToken: 'tok-ann-0123456789', scheduler: sched, store, randomSeed: (): number => seed,
   });
-  const me = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann' });
+  const me = new ClientSession(host.connectLocal(), { name: 'Ann', token: 'tok-ann-0123456789' });
   await settle();
   expect((await me.configure({ playerCount: 4, botDelayMs })).ok).toBe(true);
   for (const i of [1, 2, 3]) expect((await me.setSeat(i, 'bot', 'greedy')).ok).toBe(true);
@@ -72,11 +72,11 @@ describe('a full game through the host', () => {
     // Resume on "another device": a fresh host from the save, under a new room code.
     const sched = new ManualScheduler();
     const host2 = new HostSession({
-      code: 'NEWRM', hostName: 'ann', hostToken: 'tok-ann-phone', room: save.room, mode: 'resume', scheduler: sched,
+      code: 'NEWRM', hostName: 'ann', hostToken: 'tok-ann-phone-0123456789', room: save.room, mode: 'resume', scheduler: sched,
     });
     expect(host2.room.hold).toBe(true);
     expect(host2.room.hostSeat).toBe(0);
-    const me2 = new ClientSession(host2.connectLocal(), { name: 'ann', token: 'tok-ann-phone' });
+    const me2 = new ClientSession(host2.connectLocal(), { name: 'ann', token: 'tok-ann-phone-0123456789' });
     await settle();
     expect(me2.seat).toBe(0);
     expect(await me2.act({ type: 'END_TURN' })).toMatchObject({ ok: false, error: { code: 'ON_HOLD' } });

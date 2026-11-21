@@ -12,8 +12,8 @@ describe('lobby', () => {
     expect(me.seat).toBe(0);
     expect(host.room.seats[0]).toMatchObject({ kind: 'human', name: 'Ann', connected: true });
 
-    const bea = join(host, 'Bea', 'tok-bea').client;
-    const bea2 = join(host, ' bea ', 'tok-bea2').client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
+    const bea2 = join(host, ' bea ', 'tok-bea2-0123456789').client;
     await settle();
     expect(bea.seat).toBe(1);
     expect(bea2.seat).toBe(2);
@@ -26,7 +26,7 @@ describe('lobby', () => {
 
   it('lets players pick a colour no other player uses', async () => {
     const { host } = await newLobby();
-    const bea = join(host, 'Bea', 'tok-bea').client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
     await settle();
     expect(host.room.seats[1]!.color).toBe('red');
 
@@ -40,7 +40,7 @@ describe('lobby', () => {
 
   it('tracks ready flags, and a settings change clears them', async () => {
     const { host, me } = await newLobby();
-    const bea = join(host, 'Bea', 'tok-bea').client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
     await settle();
     expect((await bea.setReady(true)).ok).toBe(true);
     expect((await me.setReady(true)).ok).toBe(true);
@@ -53,7 +53,7 @@ describe('lobby', () => {
 
   it('starts only when no seat is open and every connected human is ready', async () => {
     const { host, me } = await newLobby({ settings: { playerCount: 3, botDelayMs: 0 } });
-    const bea = join(host, 'Bea', 'tok-bea').client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
     await settle();
 
     expect(await me.start()).toMatchObject({ ok: false, error: { code: 'SEATS_OPEN' } });
@@ -74,7 +74,7 @@ describe('lobby', () => {
 
   it('refuses host-only commands from anyone else', async () => {
     const { host } = await newLobby();
-    const bea = join(host, 'Bea', 'tok-bea').client;
+    const bea = join(host, 'Bea', 'tok-bea-0123456789').client;
     await settle();
     for (const res of [
       await bea.configure({ playerCount: 2 }),
@@ -90,12 +90,12 @@ describe('lobby', () => {
   });
 
   it('turns away a fifth joiner and a client with the wrong protocol version', async () => {
-    const { host, me } = await newLobby();
-    join(host, 'Bea', 'tok-bea');
-    join(host, 'Cy', 'tok-cy');
+    const { host, me, sched } = await newLobby();
+    join(host, 'Bea', 'tok-bea-0123456789');
+    join(host, 'Cy', 'tok-cy-0123456789');
     await settle();
     await me.setSeat(3, 'bot');
-    const fifth = join(host, 'Dee', 'tok-dee').client;
+    const fifth = join(host, 'Dee', 'tok-dee-0123456789').client;
     await settle();
     expect(fifth.status).toBe('closed');
     expect(fifth.closedWhy).toBe('full');
@@ -104,16 +104,37 @@ describe('lobby', () => {
     host.accept(hostEnd);
     const got: HostMsg[] = [];
     clientEnd.onmessage = (m): void => { got.push(m as HostMsg); };
-    clientEnd.send({ t: 'hello', v: PROTOCOL + 1, name: 'Old', token: 'tok-old' });
+    clientEnd.send({ t: 'hello', v: PROTOCOL + 1, name: 'Old', token: 'tok-old-0123456789' });
     await settle();
     expect(got).toEqual([{ t: 'closed', why: 'version' }]);
+    expect(clientEnd.open).toBe(true);           // the close follows shortly, so the message gets out first
+    await sched.advance(50);
     expect(clientEnd.open).toBe(false);
+  });
+
+  it('turns away a hello with an unusable token or name', async () => {
+    const { host, sched } = await newLobby();
+    for (const [name, token] of [
+      ['Bea', 'short'],
+      ['Bea', 'x'.repeat(65)],
+      ['   ', 'tok-blank-0123456789'],
+      ['\u0007\u0001', 'tok-ctrl-0123456789'],
+      ['A'.repeat(21), 'tok-long-0123456789'],
+    ]) {
+      const j = join(host, name!, token!);
+      await settle();
+      expect(j.client.closedWhy).toBe('invalid');
+    }
+    const ok = join(host, ' Bea\u0007  Bee ', 'tok-bea-0123456789');
+    await settle();
+    expect(host.room.seats[ok.client.seat!]!.name).toBe('Bea Bee');
+    await sched.advance(50);
   });
 
   it('changes the player count, but never removes a seated player', async () => {
     const { host, me } = await newLobby();
-    join(host, 'Bea', 'tok-bea');
-    const cy = join(host, 'Cy', 'tok-cy');
+    join(host, 'Bea', 'tok-bea-0123456789');
+    const cy = join(host, 'Cy', 'tok-cy-0123456789');
     await settle();
     expect(await me.configure({ playerCount: 2 })).toMatchObject({ ok: false, error: { code: 'SEAT_OCCUPIED' } });
 
@@ -129,21 +150,36 @@ describe('lobby', () => {
     expect(await me.configure({ playerCount: 5 as 4 })).toMatchObject({ ok: false, error: { code: 'BAD_SETTINGS' } });
   });
 
-  it('a returning token never takes a seat someone else now holds', async () => {
-    const host = new HostSession({ code: 'KQMTV', hostName: 'Ann', hostToken: 'tok-ann', scheduler: new ManualScheduler() });
-    const ann = join(host, 'Ann', 'tok-ann');
+  it('the host can leave the lobby and come back, still the host', async () => {
+    const host = new HostSession({ code: 'KQMTV', hostName: 'Ann', hostToken: 'tok-ann-0123456789', scheduler: new ManualScheduler() });
+    const ann = join(host, 'Ann', 'tok-ann-0123456789');
     await settle();
     expect(ann.client.seat).toBe(0);
     ann.clientEnd.close();                       // the host player drops out of the lobby
     await settle();
-    expect(host.room.seats[0]!.kind).toBe('open');
-    const bea = join(host, 'Bea', 'tok-bea');
+    expect(host.room.seats[0]).toMatchObject({ kind: 'human', name: 'Ann', connected: false });
+    const bea = join(host, 'Bea', 'tok-bea-0123456789');
+    const fakeAnn = join(host, 'Ann', 'tok-other-ann-0123456789'); // same name, different token
     await settle();
-    expect(bea.client.seat).toBe(0);             // the freed seat went to Bea
-    const back = join(host, 'Ann', 'tok-ann');   // the host token still points at seat 0, now Bea's
+    expect(bea.client.seat).toBe(1);             // the host's seat is not handed out
+    expect(fakeAnn.client.seat).toBe(2);         // nor claimed by name
+    expect(host.room.seats[2]!.name).toBe('Ann 2');
+    const back = join(host, 'Ann', 'tok-ann-0123456789');
     await settle();
-    expect(back.client.seat).toBe(1);
-    expect(host.room.seats[0]).toMatchObject({ name: 'Bea', connected: true });
+    expect(back.client.seat).toBe(0);
+    expect(host.room.hostSeat).toBe(0);
+    expect((await back.client.configure({ botDelayMs: 0 })).ok).toBe(true);
+    expect(await bea.client.configure({ botDelayMs: 1 })).toMatchObject({ ok: false, error: { code: 'NOT_HOST' } });
+  });
+
+  it('clamps settings to sensible ranges and rejects unusable values', async () => {
+    const { host, me } = await newLobby();
+    expect(await me.configure({ factoryOpTimeoutMs: 999_999, roundEndTimeoutMs: -5, awayGraceMs: 1e12, botDelayMs: 60_000 })).toEqual({ ok: true });
+    expect(host.room.settings).toMatchObject({ factoryOpTimeoutMs: 120_000, roundEndTimeoutMs: 0, awayGraceMs: 3_600_000, botDelayMs: 5_000 });
+    for (const bad of [{ botDelayMs: NaN }, { awayGraceMs: '10' as unknown as number }, { awayPolicy: 'never' as 'bot' }]) {
+      expect(await me.configure(bad)).toMatchObject({ ok: false, error: { code: 'BAD_SETTINGS' } });
+    }
+    expect(host.room.settings.botDelayMs).toBe(5_000);
   });
 
   it('refuses moves before the game starts', async () => {

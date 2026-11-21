@@ -73,7 +73,7 @@ export interface Room {
   game: GameState | null;
   seq: number;                  // +1 per accepted move
   diceRng: RngState;
-  recent: { seat: number; id: string }[];    // last 32 accepted client move ids
+  recent: { seat: number; id: string }[];    // last RECENT_PER_SEAT accepted client move ids of each seat
   log: LogEntry[];              // capped at 60
   lastEvents: TableEvent[];     // what the last accepted move(s) caused (for animation)
   opDeadline: number | null;        // host clock ms: off-turn operate-or-skip default fires
@@ -81,8 +81,10 @@ export interface Room {
 }
 
 export const LOG_CAP = 60;
-export const RECENT_CAP = 32;
-export const NAME_MAX = 24;
+/** Accepted client move ids remembered per seat, so a re-sent move is never applied twice. */
+export const RECENT_PER_SEAT = 4;
+/** Longest player name (after trimming). */
+export const NAME_MAX = 20;
 export const DEFAULT_PLAYER_COUNT = 4;
 /** The bot that stands in for an away human. */
 export const STAND_IN_BOT = 'greedy';
@@ -150,9 +152,25 @@ export function sameName(a: string, b: string): boolean {
   return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
+/** A name without control characters or repeated spaces, trimmed. May be empty or too long. */
 export function cleanName(raw: unknown): string {
-  const s = typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ').slice(0, NAME_MAX) : '';
-  return s || 'Player';
+  return typeof raw === 'string' ? raw.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim() : '';
+}
+
+/** A usable name from trusted input (the host's own options): cleaned, clipped, never empty. */
+export function clipName(raw: unknown, fallback = 'Host'): string {
+  return cleanName(raw).slice(0, NAME_MAX).trim() || fallback;
+}
+
+/** Record an accepted client move id, keeping only the last few ids of that seat. */
+export function recordRecent(recent: readonly { seat: number; id: string }[], seat: number, id: string): { seat: number; id: string }[] {
+  const next = [...recent, { seat, id }];
+  let drop = next.filter(r => r.seat === seat).length - RECENT_PER_SEAT;
+  return next.filter(r => {
+    if (r.seat !== seat || drop <= 0) return true;
+    drop--;
+    return false;
+  });
 }
 
 export function appendLog(log: readonly LogEntry[], entries: readonly LogEntry[]): LogEntry[] {

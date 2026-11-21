@@ -2,7 +2,6 @@
 // link (`#save=v1.<text>`), a file, or an automatic save on each player's device.
 
 import * as config from '../engine/config';
-import type { GameState } from '../engine/state';
 import type { Room } from './room';
 import { SEAT_COLORS } from './room';
 
@@ -37,13 +36,22 @@ function fail(kind: SaveErrorKind, detail?: string): never {
   throw new SaveError(kind, detail ? `${SAVE_ERROR_TEXT[kind]} (${detail})` : SAVE_ERROR_TEXT[kind]);
 }
 
-// â”€â”€ Making a save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/** Longest save link text accepted (characters after any '#save=' part). */
+export const MAX_LINK_CHARS = 64_000;
+/** Largest save text accepted, from a file or after inflating a link. */
+export const MAX_SAVE_BYTES = 2 * 1024 * 1024;
+
+// --- Making a save -------------------------------------------------------------
 
 /** Strip what must not travel (presence, timers, move ids) and wrap the room. */
 export function toSave(room: Room, meta: { savedAt: number; app: string }, opts: { forLink?: boolean } = {}): SaveEnvelope {
   const clean: Room = {
     ...room,
-    seats: room.seats.map(s => ({ ...s, connected: false, ready: false, awaySince: null, autopilot: false })),
+    seats: room.seats.map(s => ({
+      ...s, connected: false, ready: false, awaySince: null, autopilot: false,
+      // The stand-in bot of an away human is presence, not a seat setting.
+      botId: s.kind === 'human' ? null : s.botId,
+    })),
     waiting: [],
     recent: [],
     lastEvents: [],
@@ -51,12 +59,10 @@ export function toSave(room: Room, meta: { savedAt: number; app: string }, opts:
     roundEndDeadline: null,
     log: opts.forLink ? [] : room.log,
   };
-  // The stand-in bot of an away human is presence, not a seat setting.
-  clean.seats = clean.seats.map(s => (s.kind === 'human' ? { ...s, botId: null } : s));
   return { format: SAVE_FORMAT, v: 1, savedAt: meta.savedAt, app: meta.app, rules: rulesFingerprint(), room: clean };
 }
 
-// â”€â”€ Rules fingerprint â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Rules fingerprint -----------------------------------------------------------
 
 function stable(x: unknown): unknown {
   if (x instanceof Set) return [...x].map(stable).sort();
@@ -115,7 +121,7 @@ export function sameRules(save: SaveEnvelope): boolean {
   return save.rules === rulesFingerprint();
 }
 
-// â”€â”€ Link form: 'v1.' + base64url(deflate-raw(JSON)) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Link form: 'v1.' + base64url(deflate-raw(JSON)) ---------------------------
 
 const LINK_PREFIX = 'v1.';
 const JSON_PREFIX = `{"format":"${SAVE_FORMAT}"`;
@@ -138,16 +144,28 @@ function fromBase64Url(text: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
-async function pipeAll(input: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream): Promise<{ bytes: Uint8Array; error: boolean }> {
+interface PipeResult { bytes: Uint8Array; error: boolean; overflow: boolean }
+
+/** Push `input` through a (de)compression stream, stopping once the output passes `limit` bytes. */
+async function pipeAll(input: Uint8Array<ArrayBuffer>, stream: CompressionStream | DecompressionStream, limit = Infinity): Promise<PipeResult> {
   const writer = stream.writable.getWriter();
   const reader = stream.readable.getReader();
   const chunks: Uint8Array[] = [];
+  let size = 0;
+  let overflow = false;
   const reading = (async (): Promise<boolean> => {
     try {
       for (;;) {
         const { done, value } = await reader.read();
         if (done) return false;
-        chunks.push(value as Uint8Array);
+        const chunk = value as Uint8Array;
+        size += chunk.length;
+        if (size > limit) {
+          overflow = true;
+          reader.cancel().catch(() => undefined);
+          return false;
+        }
+        chunks.push(chunk);
       }
     } catch {
       return true;
@@ -156,12 +174,10 @@ async function pipeAll(input: Uint8Array<ArrayBuffer>, stream: CompressionStream
   writer.write(input).catch(() => undefined);
   writer.close().catch(() => undefined);
   const error = await reading;
-  let size = 0;
-  for (const c of chunks) size += c.length;
-  const bytes = new Uint8Array(size);
+  const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0;
   for (const c of chunks) { bytes.set(c, at); at += c.length; }
-  return { bytes, error };
+  return { bytes, error, overflow };
 }
 
 /** Pack a save into link text: 'v1.' + base64url(deflate-raw(JSON)). */
@@ -182,6 +198,7 @@ export async function unpackLink(text: string): Promise<SaveEnvelope> {
   let body = text.trim();
   const fromHash = saveFromHash(body);
   if (fromHash !== null) body = fromHash;
+  if (body.length > MAX_LINK_CHARS) fail('invalid', 'link too long');
   const version = /^v(\d+)\./.exec(body);
   if (!version) fail('corrupt', 'no version marker');
   if (body.slice(0, LINK_PREFIX.length) !== LINK_PREFIX) fail('unsupported-version', `link version ${version[1]}`);
@@ -191,7 +208,8 @@ export async function unpackLink(text: string): Promise<SaveEnvelope> {
 
   let bytes: Uint8Array<ArrayBuffer>;
   try { bytes = fromBase64Url(body); } catch { fail('corrupt', 'bad encoding'); }
-  const { bytes: out, error } = await pipeAll(bytes, new DecompressionStream('deflate-raw'));
+  const { bytes: out, error, overflow } = await pipeAll(bytes, new DecompressionStream('deflate-raw'), MAX_SAVE_BYTES);
+  if (overflow) fail('invalid', 'save too large');
   const json = new TextDecoder().decode(out);
   if (error) {
     // A cut-off link still inflates to the start of a save before the stream ends early.
@@ -203,6 +221,7 @@ export async function unpackLink(text: string): Promise<SaveEnvelope> {
 }
 
 function parseJsonSave(json: string): SaveEnvelope {
+  if (json.length > MAX_SAVE_BYTES) fail('invalid', 'save too large');
   let parsed: unknown;
   try {
     parsed = JSON.parse(json);
@@ -213,13 +232,14 @@ function parseJsonSave(json: string): SaveEnvelope {
   return validateSave(parsed);
 }
 
-// â”€â”€ File form â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- File form -------------------------------------------------------------------
 
 export function serializeSaveFile(save: SaveEnvelope): string {
   return JSON.stringify(save);
 }
 
 export function parseSaveFile(text: string): SaveEnvelope {
+  if (typeof text !== 'string' || text.length > MAX_SAVE_BYTES) fail('invalid', 'save too large');
   return parseJsonSave(text);
 }
 
@@ -246,36 +266,68 @@ export function saveSummary(save: SaveEnvelope): { code: string; round: number; 
   };
 }
 
-// â”€â”€ Validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// --- Validation --------------------------------------------------------------------
+// Saves arrive from links and files, so every value is checked before the room is used.
+// Any malformed input ends as SaveError('invalid'), never as a TypeError.
 
-function isObj(x: unknown): x is Record<string, unknown> {
+type Obj = Record<string, unknown>;
+
+function isObj(x: unknown): x is Obj {
   return typeof x === 'object' && x !== null && !Array.isArray(x);
 }
 const isInt = (x: unknown): x is number => typeof x === 'number' && Number.isInteger(x);
 const isNum = (x: unknown): x is number => typeof x === 'number' && Number.isFinite(x);
+const isStr = (x: unknown, max: number): x is string => typeof x === 'string' && x.length <= max;
 
 const PIECE_TYPES = new Set(Object.keys(config.PIECE_COUNTS));
+const CARD_TYPES = new Set(Object.keys(config.CARD_COUNTS));
+const MATERIALS = new Set(Object.keys(config.MATERIAL_VALUES));
 const PHASES = new Set(['setupClaimPF', 'setupClaimPP', 'placePiece', 'roll', 'actions', 'placeMeeple', 'roundEnd']);
+
+const MAX_NAME = 40;
+const MAX_LOG_TEXT = 200;
+const MAX_ID = 64;
 
 function check(cond: boolean, what: string): asserts cond {
   if (!cond) fail('invalid', what);
 }
 
+/** An array of at most `max` elements, each passing `each`. */
+function checkList(x: unknown, max: number, what: string, each: (el: unknown) => boolean): unknown[] {
+  check(Array.isArray(x) && x.length <= max, what);
+  for (const el of x) check(each(el), what);
+  return x;
+}
+
 /** Check shape, versions, seat count against the game, and that the pieces add up. */
 export function validateSave(x: unknown): SaveEnvelope {
+  try {
+    return validateUnsafe(x);
+  } catch (e) {
+    if (e instanceof SaveError) throw e;
+    fail('invalid', 'unreadable');
+  }
+}
+
+function validateUnsafe(x: unknown): SaveEnvelope {
   if (!isObj(x) || x.format !== SAVE_FORMAT) fail('corrupt', 'not a save');
   if (isInt(x.v) && x.v > 1) fail('unsupported-version', `save format ${x.v}`);
   check(x.v === 1, 'save format');
-  check(isNum(x.savedAt) && typeof x.app === 'string' && typeof x.rules === 'string', 'envelope');
+  check(isNum(x.savedAt) && isStr(x.app, 100) && isStr(x.rules, 100), 'envelope');
   const room = x.room;
   check(isObj(room), 'room');
   if (isInt(room.v) && room.v > 1) fail('unsupported-version', `room format ${room.v}`);
   check(room.v === 1, 'room format');
-  check(typeof room.code === 'string' && room.code.length > 0, 'room code');
+  check(isStr(room.code, 16) && room.code.length > 0, 'room code');
   check(room.phase === 'lobby' || room.phase === 'playing' || room.phase === 'finished', 'room phase');
   check(typeof room.hold === 'boolean', 'hold flag');
   check(isInt(room.seq) && room.seq >= 0 && isNum(room.diceRng), 'move counter');
-  check(Array.isArray(room.waiting) && Array.isArray(room.recent) && Array.isArray(room.log) && Array.isArray(room.lastEvents), 'lists');
+  check(room.opDeadline === null || isNum(room.opDeadline), 'deadline');
+  check(room.roundEndDeadline === null || isNum(room.roundEndDeadline), 'deadline');
+  checkList(room.waiting, 50, 'waiting list', w => isObj(w) && isStr(w.id, MAX_ID) && isStr(w.name, MAX_NAME));
+  checkList(room.recent, 64, 'recent moves', r => isObj(r) && isInt(r.seat) && isStr(r.id, MAX_ID));
+  checkList(room.log, 500, 'log', e => isObj(e) && isInt(e.seq) && (e.seat === null || isInt(e.seat)) && isStr(e.text, MAX_LOG_TEXT));
+  checkList(room.lastEvents, 500, 'events', e => isObj(e) && typeof e.kind === 'string');
 
   const settings = room.settings;
   check(isObj(settings), 'settings');
@@ -285,16 +337,19 @@ export function validateSave(x: unknown): SaveEnvelope {
     && isNum(settings.awayGraceMs) && isNum(settings.botDelayMs)
     && (settings.awayPolicy === 'bot' || settings.awayPolicy === 'wait'), 'settings values');
 
-  const seats = room.seats;
-  check(Array.isArray(seats) && seats.length === pc, 'seat count');
-  const colors = new Set<string>();
-  seats.forEach((s: unknown, i: number) => {
-    check(isObj(s) && s.index === i, `seat ${i}`);
+  const seats = checkList(room.seats, 4, 'seats', s => isObj(s));
+  check(seats.length === pc, 'seat count');
+  const colors = new Set<unknown>();
+  seats.forEach((raw, i) => {
+    const s = raw as Obj;
+    check(s.index === i, `seat ${i}`);
     check(s.kind === 'human' || s.kind === 'bot' || s.kind === 'open', `seat ${i} kind`);
-    check(typeof s.name === 'string' && SEAT_COLORS.includes(s.color as never), `seat ${i} name or colour`);
-    check(!colors.has(s.color as string), 'seat colours repeat');
-    colors.add(s.color as string);
-    check(s.botId === null || typeof s.botId === 'string', `seat ${i} bot`);
+    check(isStr(s.name, MAX_NAME), `seat ${i} name`);
+    check(SEAT_COLORS.includes(s.color as never) && !colors.has(s.color), `seat ${i} colour`);
+    colors.add(s.color);
+    check(s.botId === null || isStr(s.botId, MAX_ID), `seat ${i} bot`);
+    check(typeof s.connected === 'boolean' && typeof s.ready === 'boolean' && typeof s.autopilot === 'boolean', `seat ${i} flags`);
+    check(s.awaySince === null || isNum(s.awaySince), `seat ${i} away time`);
   });
   check(isInt(room.hostSeat) && room.hostSeat >= 0 && room.hostSeat < pc, 'host seat');
 
@@ -302,23 +357,61 @@ export function validateSave(x: unknown): SaveEnvelope {
     check(room.game === null, 'lobby has no game');
   } else {
     check(isObj(room.game), 'game');
-    check(!seats.some((s: { kind: string }) => s.kind === 'open'), 'open seat in a game');
-    checkGame(room.game as unknown as GameState, pc);
+    check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
+    checkGame(room.game, pc);
   }
   return x as unknown as SaveEnvelope;
 }
 
-function checkGame(g: GameState, pc: 2 | 3 | 4): void {
-  check(g.playerCount === pc, 'game player count does not match the seats');
-  check(Array.isArray(g.players) && g.players.length === pc, 'players');
-  check(Array.isArray(g.turnOrder) && g.turnOrder.length === pc, 'turn order');
-  check(isInt(g.activePlayerIndex) && g.activePlayerIndex >= 0 && g.activePlayerIndex < pc, 'active player');
-  check(PHASES.has(g.phase) && isInt(g.round) && isNum(g.rng) && isNum(g.seed), 'game phase');
-  check(Array.isArray(g.board) && Array.isArray(g.stacks) && g.stacks.length === 3, 'board and stacks');
-  check(Array.isArray(g.unplacedMines) && Array.isArray(g.pendingMineIds) && Array.isArray(g.overstockPieces), 'piece lists');
-  check(Array.isArray(g.cardDeck) && Array.isArray(g.cardDiscard) && Array.isArray(g.belts), 'cards and belts');
-  check(Array.isArray(g.pendingFactoryOps), 'pending operations');
+const isPiece = (p: unknown): boolean => isObj(p) && isStr(p.id, MAX_ID) && PIECE_TYPES.has(p.type as string);
+const isPlayerId = (pc: number) => (p: unknown): boolean => isInt(p) && p >= 0 && p < pc;
 
+function isBuffer(b: unknown): boolean {
+  return b === null || (isObj(b)
+    && Array.isArray(b.slots) && b.slots.length <= 4
+    && b.slots.every(s => s === null || MATERIALS.has(s as string))
+    && (b.teleporterOwner === null || isInt(b.teleporterOwner)));
+}
+
+function checkGame(g: Obj, pc: 2 | 3 | 4): void {
+  const pid = isPlayerId(pc);
+  check(g.playerCount === pc, 'game player count does not match the seats');
+  check(PHASES.has(g.phase as string) && isInt(g.round) && g.round >= 1 && isNum(g.rng) && isNum(g.seed), 'game phase');
+  check(isInt(g.activePlayerIndex) && g.activePlayerIndex >= 0 && g.activePlayerIndex < pc, 'active player');
+  check(isInt(g.mineCount) && isInt(g.globalTeleporterCount) && isInt(g.cardsPlayedThisTurn), 'counters');
+  check(typeof g.gameOver === 'boolean' && (g.winner === null || pid(g.winner)), 'game over');
+  checkList(g.tiedWinners, pc, 'tied winners', pid);
+  checkList(g.turnOrder, pc, 'turn order', pid);
+  check((g.turnOrder as unknown[]).length === pc && new Set(g.turnOrder as unknown[]).size === pc, 'turn order');
+  check(g.lastRoll === null || (Array.isArray(g.lastRoll) && g.lastRoll.length <= 3 && g.lastRoll.every(isInt)), 'last roll');
+
+  checkList(g.players, pc, 'players', p => isObj(p)
+    && isObj(p.inventory) && [...MATERIALS].every(m => isInt((p.inventory as Obj)[m]))
+    && Array.isArray(p.controlModules) && p.controlModules.length <= 18 && p.controlModules.every(isInt)
+    && Array.isArray(p.hand) && p.hand.length <= 100 && p.hand.every(c => CARD_TYPES.has(c as string))
+    && isInt(p.powerTokens) && isInt(p.beltsRemaining) && isInt(p.teleportersRemaining)
+    && isObj(p.bonusTesseracts) && isObj(p.stats));
+  check((g.players as unknown[]).length === pc, 'players');
+
+  const board = checkList(g.board, 200, 'board', p => isPiece(p)
+    && isObj((p as Obj).coord) && isInt(((p as Obj).coord as Obj).q) && isInt(((p as Obj).coord as Obj).r)
+    && Array.isArray((p as Obj).claims) && ((p as Obj).claims as unknown[]).length <= 12
+    && ((p as Obj).claims as unknown[]).every(c => isObj(c) && pid(c.ownerId) && isInt(c.controlModule))
+    && isBuffer((p as Obj).input) && isBuffer((p as Obj).output)) as Obj[];
+  const stacks = checkList(g.stacks, 3, 'stacks', s => isObj(s) && isInt(s.index) && typeof s.available === 'boolean') as Obj[];
+  check(stacks.length === 3, 'stacks');
+  for (const s of stacks) checkList(s.pieces, 200, 'stack pieces', isPiece);
+  checkList(g.unplacedMines, 3, 'unplaced mines', isPiece);
+  checkList(g.pendingMineIds, 3, 'dropped mines', id => isStr(id, MAX_ID));
+  checkList(g.overstockPieces, 10, 'overstock pieces', isPiece);
+  checkList(g.cardDeck, 200, 'card deck', c => CARD_TYPES.has(c as string));
+  checkList(g.cardDiscard, 200, 'discard pile', c => CARD_TYPES.has(c as string));
+  checkList(g.belts, 500, 'belts', b => isObj(b) && isStr(b.id, MAX_ID) && pid(b.ownerId) && isStr(b.pieceId, MAX_ID)
+    && isInt(b.fromPoint) && isInt(b.toPoint));
+  checkList(g.beltsPlacedThisTurn, 500, 'belts this turn', id => isStr(id, MAX_ID));
+  checkList(g.pendingFactoryOps, 200, 'pending operations', e => isObj(e) && isStr(e.pieceId, MAX_ID) && pid(e.ownerId));
+
+  // The pieces add up: ids are unique, three mines exist, no more pieces than the game has.
   const ids = new Set<string>();
   const seen = (id: unknown): void => {
     check(typeof id === 'string' && !ids.has(id), 'piece ids repeat');
@@ -326,25 +419,17 @@ function checkGame(g: GameState, pc: 2 | 3 | 4): void {
   };
   let minesOnBoard = 0;
   let otherPieces = 0;
-  for (const p of g.board) {
-    check(isObj(p) && PIECE_TYPES.has(p.type as string) && isObj(p.coord) && isInt(p.coord.q) && isInt(p.coord.r), 'board piece');
-    check(Array.isArray(p.claims), 'board piece claims');
+  for (const p of board) {
     seen(p.id);
     if (p.type === 'mine') minesOnBoard++; else otherPieces++;
   }
-  for (const stack of g.stacks) {
-    check(isObj(stack) && Array.isArray(stack.pieces), 'stack');
-    for (const p of stack.pieces) { check(PIECE_TYPES.has(p.type), 'stack piece'); seen(p.id); otherPieces++; }
-  }
-  for (const p of g.overstockPieces) { check(PIECE_TYPES.has(p.type), 'overstock piece'); seen(p.id); otherPieces++; }
-  for (const p of g.unplacedMines) seen(p.id);
-  for (const id of g.pendingMineIds) seen(id);
-  check(minesOnBoard + g.unplacedMines.length + g.pendingMineIds.length === config.MINE_COUNT, 'mine count');
+  for (const s of stacks) for (const p of s.pieces as Obj[]) { seen(p.id); otherPieces++; }
+  for (const p of g.overstockPieces as Obj[]) { seen(p.id); otherPieces++; }
+  for (const p of g.unplacedMines as Obj[]) seen(p.id);
+  for (const id of g.pendingMineIds as unknown[]) seen(id);
+  check(minesOnBoard + (g.unplacedMines as unknown[]).length + (g.pendingMineIds as unknown[]).length === config.MINE_COUNT, 'mine count');
   check(g.mineCount === minesOnBoard, 'mines in play');
   const pool = config.STACK_COMPOSITION[pc].reduce(
     (n, c) => n + c.plateFact + c.sphereFact + c.tesseractFact + c.powerPlant + c.blank, 0);
   check(otherPieces <= pool, 'more pieces than the game has');
-  for (const pl of g.players) {
-    check(isObj(pl) && isObj(pl.inventory) && Array.isArray(pl.controlModules) && Array.isArray(pl.hand), 'player');
-  }
 }

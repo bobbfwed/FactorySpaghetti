@@ -24,6 +24,11 @@ export type SessionErrorCode =
   | 'SEATS_OPEN'      // start refused: a seat is still open
   | 'NOT_READY'       // start refused: a connected human is not ready
   | 'NOT_WAITING'     // assign refused: no such waiting visitor
+  | 'SEATS_ABSENT'    // start refused: a player's seat has nobody connected
+  | 'SEAT_REQUIRED'   // a resumed host could not be matched to a seat
+  | 'STALE'           // a re-sent move arrived after the game moved on; it was not applied
+  | 'INTERNAL'        // the host hit an unexpected error; nothing changed
+  | 'BAD_ACTION'      // the move could not be read
   | 'BUSY'            // client side: a move is already waiting for the host
   | 'CLOSED';         // client side: the room closed
 
@@ -34,8 +39,11 @@ export interface WireError { code: string; message: string }
 // back to the sender after an accepted command carries it as `re`.
 
 export type ClientMsg =
-  | { t: 'hello'; v: number; name: string; token: string }
-  | { t: 'act'; id: string; action: Action }
+  // `seat`: on a reconnect, the seat this client held (a hint; the host checks the name).
+  | { t: 'hello'; v: number; name: string; token: string; seat?: number }
+  // `seq`: room.seq when the move was first sent. `resend`: sent again after a reconnect;
+  // the host refuses it (STALE) if it was not applied and the game has moved on since.
+  | { t: 'act'; id: string; action: Action; seq?: number; resend?: boolean }
   | { t: 'ready'; ready: boolean; id?: string }
   | { t: 'color'; color: SeatColor; id?: string }
   | { t: 'sync'; id?: string }
@@ -50,7 +58,8 @@ export type ClientMsg =
 
 // ── Host → client ─────────────────────────────────────────────────────────────
 
-export type ClosedWhy = 'full' | 'version' | 'kicked' | 'ended';
+export type ClosedWhy = 'full' | 'version' | 'kicked' | 'ended' | 'replaced' | 'invalid';
+export const CLOSED_WHY: readonly ClosedWhy[] = ['full', 'version', 'kicked', 'ended', 'replaced', 'invalid'];
 
 export type HostMsg =
   | { t: 'welcome'; v: number; seat: number | null; room: Room; now: number }
@@ -72,10 +81,12 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   switch (raw.t) {
     case 'hello':
       return isInt(raw.v) && typeof raw.name === 'string' && typeof raw.token === 'string'
+        && (raw.seat === undefined || isInt(raw.seat))
         ? (raw as ClientMsg) : null;
     case 'act':
       return typeof raw.id === 'string' && raw.id.length > 0 && raw.id.length <= 64
         && isObj(raw.action) && typeof raw.action.type === 'string'
+        && (raw.seq === undefined || isInt(raw.seq)) && (raw.resend === undefined || typeof raw.resend === 'boolean')
         ? (raw as ClientMsg) : null;
     case 'ready':
       return typeof raw.ready === 'boolean' ? (raw as ClientMsg) : null;
@@ -113,8 +124,7 @@ export function parseHostMsg(raw: unknown): HostMsg | null {
         && typeof raw.error.code === 'string' && typeof raw.error.message === 'string'
         ? (raw as HostMsg) : null;
     case 'closed':
-      return raw.why === 'full' || raw.why === 'version' || raw.why === 'kicked' || raw.why === 'ended'
-        ? (raw as HostMsg) : null;
+      return CLOSED_WHY.includes(raw.why as ClosedWhy) ? (raw as HostMsg) : null;
     default:
       return null;
   }
