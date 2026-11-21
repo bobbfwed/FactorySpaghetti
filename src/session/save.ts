@@ -353,7 +353,7 @@ function validateUnsafe(x: unknown): SaveEnvelope {
   check(x.v === 1, 'save format');
   check(isNum(x.savedAt) && isStr(x.app, 100) && isStr(x.rules, 100), 'envelope');
   const room = checkRoom(x.room);
-  const save = x as unknown as SaveEnvelope;
+  const save = { ...(x as unknown as SaveEnvelope), room }; // the checked room, cleaned where needed
   if (x.journal === undefined) return save;
   // A journal that is damaged, or does not belong to this game, is dropped: the save still loads.
   const { journal: rawJournal, ...rest } = save;
@@ -407,6 +407,8 @@ function checkRoom(room: unknown): Room {
     check(isObj(room.game), 'game');
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
     checkGame(room.game, pc);
+    const game = withUsableDraw(room.game);
+    if (game !== room.game) return { ...room, game } as unknown as Room;
   }
   return room as unknown as Room;
 }
@@ -535,6 +537,22 @@ function isBuffer(b: unknown): boolean {
     && Array.isArray(b.slots) && b.slots.length <= 4
     && b.slots.every(s => s === null || MATERIALS.has(s as string))
     && (b.teleporterOwner === null || isInt(b.teleporterOwner)));
+}
+
+/**
+ * The game with its drawn stack (DRAW_PIECE, `drawnStackIndex`) usable, or reset to null so the
+ * player simply draws again. A drawn stack is usable only in the placePiece phase with no Mine
+ * waiting to be placed, and only when it is a stack (0, 1 or 2) that is open and not empty;
+ * anything else would leave the game with no legal move. Saves from before the draw step have
+ * no field, which is kept as it is. Returns `g` itself when nothing changes.
+ */
+function withUsableDraw(g: Obj): Obj {
+  const d = g.drawnStackIndex;
+  if (d === undefined || d === null) return g;
+  const stack = d === 0 || d === 1 || d === 2 ? (g.stacks as Obj[])[d] : undefined;
+  const usable = !!stack && g.phase === 'placePiece' && (g.pendingMineIds as unknown[]).length === 0
+    && stack.available === true && (stack.pieces as unknown[]).length > 0;
+  return usable ? g : { ...g, drawnStackIndex: null };
 }
 
 function checkGame(g: Obj, pc: 2 | 3 | 4): void {
