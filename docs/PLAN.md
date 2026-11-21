@@ -253,15 +253,16 @@ Feedback that makes the game readable:
 
 ### 5.4 What the printed game looks like (the reference for every visual)
 
-Taken from the designer's photos of the printed pieces (`G:\My Drive\Factory Speghetti\Factory Spaghetti\2025*.jpg`) and the print models. Sizes are from the print files.
+**The authoritative source is `G:\My Drive\Factory Speghetti\Factory Speghetti AMS.3mf`**, the designer's current multi-colour print file. Renders of the current tiles and mines are in `docs/reference/`. The photos of earlier prints (`Factory Spaghetti\2025*.jpg`) and many of the other `.3mf` files are out of date: they show gold buffer stubs, purple icons and the old starting mine. Sizes are from the print files.
 
-| Piece | Printed look | Size |
+| Piece | Current look | Size |
 |---|---|---|
-| Board tile | Matte white hexagon, 3 mm thick, with 12 half-round holes: two near each edge. The holes are the belt connection points. | 68.8 mm across flats |
-| Blank tile | Plain white, holes only | |
-| Factory tile | A black-outlined square pocket in the centre where the Control Module sits. Gold inlaid stubs run from the pocket to edge holes and end in a black half-round cap: these are the input and output buffers. Iridescent purple inlaid icons beside them show what goes in and what comes out (triangle = ore, parallelogram = plate, circle = sphere, four-point star = tesseract). | |
-| Power Plant tile | Six black-outlined rectangles in two staggered rows (solar panels) | |
-| Mine | Double hexagon. One half has a black disc with twelve tapered black rays running to the holes and fine engraved rings. The other half has two inlaid icons with a black "+": the two meeple slots. | 137.7 mm long |
+| Board tile | Light grey-white hexagon, 3 mm thick, with 12 half-round holes: two near each edge. The holes are the belt connection points. | 68.8 mm across flats |
+| Blank tile | Plain, holes only | |
+| Factory tile | A black square outline in the centre where the Control Module sits. **Black** belt stubs with arrow barbs run to the tile edges: inputs on one side pointing in (one for a Plate Factory, two for a Sphere Factory, three for a Tesseract Factory) and one output on the other side pointing out. **Light-green** icons show the materials: triangle = ore, parallelogram = plate, circle = sphere, four-point star = tesseract; the inputs are drawn as one combined shape. **Yellow lightning bolts** inside the square show the power cost (1, 2 or 3). | |
+| Power Plant tile | Six black-outlined rectangles (solar panels), one black input stub, and a yellow bolt with a black "+" | |
+| Mine 1 (starting mine) | Double hexagon. The first half has a black disc with tapered black rays running to the edges and fine engraved rings. The second half carries two black curved belt tracks running from the rays out to the far edges, a light-green double-triangle "+" (meeple slot: take ore) and a blue double-square "+" (meeple slot: Control Module upgrade). | 137.7 mm long |
+| Mines 2 and 3 | Same rayed first half. The second half is plain apart from the two meeple slots: mine 2 has a green parallelogram "+" (plate) and a blue triple-square "+"; mine 3 has a green circle "+" (sphere) and a blue quadruple-square "+". | |
 | Control Module | Matte square tile in the player's colour with a black numeral; 6 and 9 carry a bar. Eighteen sit in a black 3×6 tray; taking one out leaves an empty pocket. | ~15 mm |
 | Belt | A flexible chain of arrow-shaped links in the player's colour, with an arrowhead at each end | 74 × 6.7 mm |
 | Meeple | Flat silhouette in the player's colour | 19 mm |
@@ -280,7 +281,7 @@ The grey lunar-crater artwork in the rulebook diagrams does not appear on the pr
 ### 5.5 Asset pipeline
 
 - **Models.** A script (`tools/convert-3mf`) reads the `.3mf` print files, simplifies each mesh, and writes compact `.glb` files into `public/models`. The print files have 2,000–8,000 triangles per tile; engraved detail that is too fine for a phone is moved into a texture.
-- **Colour.** The single-piece print files carry no colour (every one is plain grey). The multi-colour print files (the ones named "AMS") hold each colour as a separate object, so the inlays can be coloured part by part. The actual colour values come from the photos and are defined in one theme file.
+- **Colour.** `Factory Speghetti AMS.3mf` holds each colour as a separate part together with the filament colours, so models and colours both come from that one file. The single-piece print files carry no colour and are used only for pieces the AMS file lacks. Colour values are collected in one theme file.
 - **Tile faces.** Plain printed look by default; see open decision D3.
 - **Control Modules** are drawn as a rounded tile with a number texture rather than the 70,000-triangle engraved set.
 - **Budget for a mid-range Android phone:** under 150 draw calls (instanced meshes per piece type), under 300,000 triangles on screen, pixel ratio capped at 2, and the scene redraws only while something moves or is touched, to save battery.
@@ -314,7 +315,7 @@ Each has a default the work will follow unless changed.
 |---|---|---|---|
 | D1 | Hidden cards: send the full state to every player? | Yes. Simple, and any client can take over as host. A player using developer tools could peek. | Send each player a redacted copy; hand-over then needs an escrow scheme and is noticeably more work. |
 | D2 | A disconnected player's turn | Wait 90 seconds, then a bot plays until they return. Host can override either way. | Always pause until they return; or skip their turn. |
-| D3 | Tile faces | White printed-plastic tiles with colour inlays, exactly as in the photos of the printed game. | Lunar crater artwork from the rulebook diagrams, as a second selectable skin. |
+| D3 | Tile faces | Printed-plastic tiles with colour inlays, exactly as in the designer's current print file. | Lunar crater artwork from the rulebook diagrams, as a second selectable skin. |
 | D4 | Teleporter piece | A simple ring marker in the owner's colour on the buffer. | A model from the designer, when one exists. |
 | D5 | TURN relay for same-wifi and strict networks | Ship with the free PeerJS relays and an empty slot; pick a relay account before relying on in-person play. | Keep the LAN WebSocket server from `vite-prototype` as the in-person option. |
 | D6 | GitHub Pages on a private repository | Assumed available on the account's plan. | Make the repository public, or publish from a separate public repository. |
