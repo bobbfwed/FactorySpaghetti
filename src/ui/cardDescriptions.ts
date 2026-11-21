@@ -1,4 +1,4 @@
-import type { CardType } from '../../engine/config';
+import type { CardType } from '../engine/config';
 
 export interface CardInfo {
   title: string;

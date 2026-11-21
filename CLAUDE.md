@@ -8,7 +8,7 @@ Priorities, in order:
 4. **Phone-friendly and installable** (Android, from the browser).
 5. **Still a playtest tool** — bots, headless balance simulation, config-driven tuning, replays.
 
-The earlier 2D prototype (Canvas 2D client + LAN WebSocket server) lives on the `vite-prototype` branch. On `main` those two folders (`src/client`, `src/server`) are still present until milestone N0 removes them.
+The earlier 2D prototype (Canvas 2D client + LAN WebSocket server) lives on the `vite-prototype` branch. Milestone N0 removes those two folders (`src/client`, `src/server`) from the online version; to read the old code use `git show vite-prototype:<path>`.
 
 ## Tech stack (decided)
 - **Language:** TypeScript everywhere. **Build:** Vite. **Tests:** Vitest.
@@ -62,7 +62,7 @@ factory-spaghetti/
 ```
 
 ## Build order
-The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are complete (264 tests). The new work follows milestones **N0–N11 in `docs/PLAN.md` §6**. Each milestone ends runnable and tested before the next starts. N1–N3 (online) and N4–N5 (3D) do not depend on each other and may be built in parallel; N6 needs both.
+The engine milestones M0–M7 and bot milestones B0–B3 of the prototype are complete (245 engine, bot and simulator tests; the prototype's 19 LAN-server tests left with the server). The new work follows milestones **N0–N11 in `docs/PLAN.md` §6**. Each milestone ends runnable and tested before the next starts. N1–N3 (online) and N4–N5 (3D) do not depend on each other and may be built in parallel; N6 needs both.
 
 | # | Milestone |
 |---|---|

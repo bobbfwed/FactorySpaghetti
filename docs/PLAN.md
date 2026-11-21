@@ -6,7 +6,7 @@ Status: plan only. Nothing below is built yet except the parts marked "exists to
 
 ## 1. Goals, in priority order
 
-1. **Rules stay correct.** The existing rules engine and its 264 tests carry over unchanged. Players still cannot make an illegal move.
+1. **Rules stay correct.** The existing rules engine and its tests carry over unchanged (245 tests for engine, bots and simulator; the prototype's other 19 tested its LAN server). Players still cannot make an illegal move.
 2. **Online play with a room code.** One player hosts, the others join with a 5-letter code or an invite link. No server of our own. A game can be saved, sent to another device as a link or a file, and resumed on a later day.
 3. **It feels like the physical game.** Someone who knows the printed game recognises every piece and every step, and someone who learns here can sit down at the real table.
 4. **Phone-friendly and installable.** Works in portrait on an Android phone and can be added to the home screen.
@@ -291,7 +291,7 @@ Each milestone ends runnable and tested, as in the original build order.
 
 | # | Milestone | Done when |
 |---|---|---|
-| N0 | **Restructure and deploy pipeline.** New folder layout on `main`, retire the 2D client and LAN server there, relative base path, version label, Pages workflow, install shell. | A placeholder page is live on GitHub Pages and installable; all 264 engine tests still pass in CI. |
+| N0 | **Restructure and deploy pipeline.** New folder layout on `main`, retire the 2D client and LAN server there, relative base path, version label, Pages workflow, install shell. | A placeholder page is live on GitHub Pages and installable; all engine, bot and simulator tests still pass in CI. |
 | N1 | **Session layer, no network.** Room object, host session, client session, protocol, host-rolled seeded dice, seat checks, timers, bot seats, and the save format (pack, unpack, validate, version). | Vitest plays full bot games through a host and clients over the in-memory transport; tests cover refused moves, the re-send rule, both timeouts, and saving a game mid-way then resuming it to the same end result. A test fails if a 4-player save link exceeds 6,000 characters. |
 | N2 | **Transports.** In-memory, same-browser tabs, PeerJS; message splitting; room codes; the three join errors; relay slot; network check page. | Two tabs play a game; two devices on different networks play a game. |
 | N3 | **Menu and lobby.** Host, join, solo, invite link, seats, colours, bots, ready flags, settings; resume from this device, from a save link, and from a save file; the resume lobby. Uses a plain text view of the game so it can be tested before the 3D table exists. | A full online game can be started, left, rejoined and handed over to a new host using only the lobby and the text view; a game saved on a computer is resumed on a phone from a pasted link. |

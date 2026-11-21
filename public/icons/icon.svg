@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- App icon: a white pointy-top hex tile with three gold chevrons, on the dark app background.
+       Source for icon-192.png and icon-512.png (rendered at those sizes with headless Chrome).
+       icon-maskable.svg is the same art shrunk into the maskable safe zone. -->
+  <rect width="512" height="512" rx="96" fill="#141416"/>
+  <polygon points="256,48 436.1,152 436.1,360 256,464 75.9,360 75.9,152" fill="#ffffff"/>
+  <g fill="none" stroke="#e8b730" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="146,190 206,256 146,322"/>
+    <polyline points="226,190 286,256 226,322"/>
+    <polyline points="306,190 366,256 306,322"/>
+  </g>
+</svg>

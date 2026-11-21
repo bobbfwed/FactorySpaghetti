@@ -45,10 +45,10 @@ These are pictures of the intended look, not a working game. The pieces are mode
 
 | Part | State |
 |---|---|
-| Rules engine (`src/engine`) | Complete. One pure function, `applyAction`, enforces every rule. 264 tests pass. |
+| Rules engine (`src/engine`) | Complete. One pure function, `applyAction`, enforces every rule. 245 engine, bot and simulator tests pass. |
 | Bots (`src/bots`) | A random bot and a one-move-lookahead "Smart Bot". |
 | Simulator (`src/sim`) | Runs many bot games for balance statistics. |
-| 2D client and LAN server (`src/client`, `src/server`) | The earlier prototype. Still in this branch until the first milestone replaces them; preserved on the [`vite-prototype`](../../tree/vite-prototype) branch, whose README has screenshots of every screen. |
+| 2D client and LAN server | The earlier prototype. Preserved on the [`vite-prototype`](../../tree/vite-prototype) branch, whose README has screenshots of every screen. |
 
 The prototype this builds on, mid-game:
 
@@ -67,8 +67,10 @@ Requires Node 20 or newer.
 
 ```
 npm install
-npm test           # 264 tests
-npm run dev        # the 2D prototype client at http://localhost:5173
+npm test           # 245 tests (engine, bots, simulator)
+npm run dev        # the placeholder app shell at http://localhost:5173
+npm run build      # static site into dist/ (what GitHub Pages serves)
+npm run preview    # serve dist/ at http://localhost:4173 (service worker and install work here)
 npm run typecheck
 npm run lint
 ```
