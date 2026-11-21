@@ -111,7 +111,6 @@ npm run lint
 ## Branches
 
 - `main` — the online version. GitHub Pages serves the game from here at https://bobbfwed.github.io/FactorySpaghetti/.
-- `online-dev` — where new work is done before it is merged into `main`.
 - `vite-prototype` — the frozen 2D prototype with LAN play.
 
 To try two players on one computer, open the game in two tabs with `?t=local` added to the address, host in one and join with the code in the other.

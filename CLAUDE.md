@@ -117,5 +117,5 @@ The printed game is the visual reference. The designer's files are outside the r
 - Interface text uses the rulebook's words (Control Module, Power Token, Leverage card), never internal names such as `placePiece`.
 - Design for a phone first: every touch target at least 44 px, no hover-only information.
 - **Always commit after each round of code changes.** When a piece of work is finished and its checks pass, commit it before starting the next; do not leave finished work uncommitted in the working tree.
-- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Do feature work on a branch and merge to `main`.
+- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site, so commit locally after each round of changes but push only when the round is finished and checked.
 - Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.
