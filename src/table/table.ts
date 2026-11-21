@@ -9,7 +9,7 @@ import { CameraRig } from './camera';
 import { TableScene } from './scene';
 import { Overlay } from './overlay';
 import { woodTexture } from './textures';
-import { TILE_TOP, boardBounds, tableBounds } from './layout';
+import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds } from './layout';
 import { BELT_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
@@ -76,6 +76,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let framedOnce = false;
   let lastBoardSize = 0;
   const pickers = new Set<(hit: Target | null, ev: { x: number; y: number }) => void>();
+  const frameListeners = new Set<() => void>();
   let disposed = false;
 
   const heights: SideHeights = {
@@ -111,6 +112,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       frameMs: performance.now() - t0,
       frames: stats.frames + 1,
     };
+    for (const fn of [...frameListeners]) fn();
     return camMoving || table.animating;
   }
 
@@ -305,8 +307,18 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       invalidate();
     },
     resize,
+    setViewport(insets, opts) {
+      const minTile = opts?.minTilePx;
+      // ACROSS_FLATS millimetres must span at least minTile CSS pixels.
+      rig.setInsets(insets, minTile && minTile > 0 ? ACROSS_FLATS / minTile : undefined);
+    },
+    onFrame(fn) {
+      frameListeners.add(fn);
+      return () => { frameListeners.delete(fn); };
+    },
     dispose() {
       disposed = true;
+      frameListeners.clear();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
@@ -319,6 +331,9 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       for (const parts of farLib.values()) for (const p of parts) p.geometry.dispose();
       for (const parts of lib.values()) for (const p of parts) { p.geometry.dispose(); p.mat.dispose(); }
       renderer.dispose();
+      // Give the WebGL context back now: browsers allow only a few at once, and a player may leave
+      // and open games many times in one visit.
+      renderer.forceContextLoss();
     },
     setDebugPoints(on) {
       overlay.debug = on;

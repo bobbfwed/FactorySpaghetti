@@ -1,0 +1,122 @@
+// The turn bar (the rulebook's four steps with the current one lit), the primary button and the
+// confirm bar (✓ confirm, ✕ cancel, ⟳ rotate) that floats beside the piece being placed.
+
+import type { Child } from '../dom';
+import { h } from '../dom';
+import { icon } from '../icons';
+import type { Ctx } from './context';
+import { activePlayer, seatHex, seatName } from './context';
+import { countdownText } from './pieces';
+
+const STEPS = ['Place a piece', 'Roll', 'Actions', 'Place meeple'] as const;
+
+/** The state shown instead of the four steps outside a normal turn. */
+function stateChip(ctx: Ctx): string | null {
+  const v = ctx.view;
+  if (ctx.game.gameOver) return 'Game over';
+  if (ctx.game.phase === 'setupClaimPF' || ctx.game.phase === 'setupClaimPP') return 'Setup';
+  if (ctx.game.phase === 'roundEnd') return 'Round end';
+  if (v.stepIndex === null) return null;
+  return null;
+}
+
+function whose(ctx: Ctx): HTMLElement | null {
+  const g = ctx.game;
+  if (g.gameOver) return null;
+  const a = activePlayer(g);
+  if (a === null) return null;
+  const mine = a === ctx.me;
+  return h('span', { class: `tg-whose${mine ? ' mine' : ''}`, style: `--seat:${seatHex(ctx.room, a)}` },
+    h('span', { class: 'sw' }), mine ? 'Your turn' : `${seatName(ctx.room, a)}'s turn`);
+}
+
+function steps(ctx: Ctx, compact: boolean): HTMLElement {
+  const chip = stateChip(ctx);
+  const a = activePlayer(ctx.game);
+  const other = a !== ctx.me && !ctx.game.gameOver;
+  const color = seatHex(ctx.room, a);
+  if (chip) {
+    return h('div', { class: 'tg-steps' }, h('span', { class: `tg-step now${other ? ' other' : ''}`, style: `--seat:${color}` }, chip));
+  }
+  const idx = ctx.view.stepIndex ?? 0;
+  return h('div', { class: 'tg-steps', attrs: { 'aria-label': `Step ${idx} of 4` } }, STEPS.map((label, i) => {
+    const n = i + 1;
+    const cls = n < idx ? ' done' : n === idx ? ` now${other ? ' other' : ''}` : '';
+    if (compact && n !== idx) return null;
+    return h('span', { class: `tg-step${cls}`, style: `--seat:${color}`, attrs: n === idx ? { 'aria-current': 'step' } : {} },
+      h('span', { class: 'n', text: String(n) }), label);
+  }));
+}
+
+function roundEndClock(ctx: Ctx): Child {
+  const d = ctx.room.roundEndDeadline;
+  return d !== null && !ctx.game.gameOver ? countdownText(ctx.ctrl, d, 'Round-end turn: ', 'tg-countdown') : null;
+}
+
+/** Desktop turn bar. */
+export function turnBar(ctx: Ctx): HTMLElement {
+  return h('div', { class: 'tray tg-turnbar', attrs: { role: 'status', 'aria-live': 'polite' } },
+    whose(ctx),
+    steps(ctx, false),
+    h('span', { class: 'tg-instr', text: ctx.view.instruction, title: ctx.view.instruction }),
+    roundEndClock(ctx),
+    h('span', { class: 'tg-round' }, 'Round ', h('span', { class: 'num', text: String(ctx.game.round) })));
+}
+
+/** Phone: the step chip, progress dots and round number, then the instruction. */
+export function stepLine(ctx: Ctx): Child[] {
+  const idx = ctx.view.stepIndex ?? 0;
+  const dots = stateChip(ctx) ? null : h('span', { class: 'tg-dots', attrs: { 'aria-hidden': 'true' } },
+    [1, 2, 3, 4].map(n => h('i', { class: n === idx ? 'on' : n < idx ? 'done' : '' })));
+  return [
+    h('div', { class: 'tg-stepline' }, steps(ctx, true), dots,
+      h('span', { class: 'tg-round' }, 'Round ', h('b', { text: String(ctx.game.round) }))),
+    h('div', { class: 'tg-instr2', attrs: { role: 'status', 'aria-live': 'polite' } },
+      whose(ctx), h('span', { text: ctx.view.instruction }), roundEndClock(ctx)),
+  ];
+}
+
+/** The big button, or the confirm button while a placement waits, or "Waiting for …". */
+export function primaryButton(ctx: Ctx, cls = ''): HTMLElement | null {
+  const v = ctx.view;
+  const p = v.primary;
+  if (p) {
+    return h('button', {
+      class: `btn btn-gold btn-lg tg-primary${p.enabled ? '' : ' is-disabled'} ${cls}`,
+      title: p.enabled ? p.label : p.hint ?? p.label,
+      attrs: { 'aria-disabled': String(!p.enabled), 'data-primary': '1' },
+      onclick: () => ctx.play.primary(),
+    }, p.label);
+  }
+  if (v.confirmBar?.confirm && !v.menu && !v.choices) {
+    return h('button', { class: `btn btn-gold btn-lg tg-primary ${cls}`, attrs: { 'data-primary': 'confirm' }, onclick: () => ctx.play.confirm() },
+      icon('check'), v.ghost ? 'Confirm placement' : 'Confirm');
+  }
+  if (ctx.game.gameOver) return null;
+  const a = activePlayer(ctx.game);
+  const text = ctx.me === null ? 'Watching'
+    : a !== ctx.me ? `Waiting for ${seatName(ctx.room, a)}` : v.selection ? v.selection.label : 'Your turn';
+  return h('div', { class: `btn btn-lg tg-primary tg-wait ${cls}`, attrs: { 'aria-live': 'polite' } }, text);
+}
+
+/** "Take back this turn's belts" when it is possible. */
+export function undoBeltsButton(ctx: Ctx): HTMLElement | null {
+  const it = ctx.view.bank.find(b => b.id === 'bank:undoBelts');
+  if (!it || !it.enabled) return null;
+  return h('button', { class: 'btn btn-dark tg-undo', title: it.detail ?? it.label, onclick: () => ctx.play.choose(it.id) }, icon('undo'), 'Undo belts');
+}
+
+/** ✕ ⟳ ✓ beside the ghost (or the last touched piece); docked when there is nothing to point at. */
+export function confirmBar(ctx: Ctx, anchor: string | null): HTMLElement | null {
+  const v = ctx.view;
+  const cb = v.confirmBar;
+  if (!cb || v.menu || v.choices) return null;
+  if (!cb.confirm && !cb.rotate && !cb.cancel) return null;
+  const attrs: Record<string, string> = { role: 'toolbar', 'aria-label': 'Confirm or cancel' };
+  if (anchor) { attrs['data-anchor'] = anchor; attrs['data-place'] = 'below'; }
+  return h('div', { class: `tg-confirm${anchor ? ' anchored' : ' docked'}`, attrs },
+    v.selection ? h('span', { class: 'tg-sel', text: v.selection.label }) : null,
+    cb.cancel ? h('button', { class: 'round tg-cbtn', title: 'Cancel', attrs: { 'aria-label': 'Cancel', 'data-confirm': 'cancel' }, onclick: () => ctx.play.cancel() }, icon('cross')) : null,
+    cb.rotate ? h('button', { class: 'round tg-cbtn', title: 'Turn it', attrs: { 'aria-label': 'Turn it', 'data-confirm': 'rotate' }, onclick: () => ctx.play.rotate(1) }, icon('rotate')) : null,
+    cb.confirm ? h('button', { class: 'round tg-cbtn ok', title: 'Confirm', attrs: { 'aria-label': 'Confirm', 'data-confirm': 'ok' }, onclick: () => ctx.play.confirm() }, icon('check')) : null);
+}

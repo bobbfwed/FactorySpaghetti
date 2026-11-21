@@ -4,12 +4,13 @@
 
 import type { AppController } from '../app/controller';
 import type { GameOption, OptionGroup } from '../app/gameText';
-import { gameOverWords, operatePrompts, optionGroups, phaseWords } from '../app/gameText';
+import { finalStandings, gameOverWords, operatePrompts, optionGroups, phaseWords } from '../app/gameText';
+import { setPreferredView, tableFailure } from './viewPref';
 import type { PlayerId } from '../engine/state';
-import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
+import { tesseractCount } from '../engine/rules/scoring';
 import type { Room, Seat } from '../session/room';
 import { activeSeat } from '../session/room';
-import { CARD_INFO } from './cardDescriptions';
+import { CARD_NAME, CARD_TEXT } from '../play/words';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import type { IconName } from './icons';
@@ -50,6 +51,9 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     actionButton([icon('link'), 'Copy save link'], 'menu-item', () => ctrl.copySaveLink()),
     h('button', { class: 'menu-item', onclick: () => ctrl.downloadSave() }, icon('download'), 'Download save file (.fsgame)'),
     ctrl.canShare ? actionButton([icon('share'), 'Share save…'], 'menu-item', () => ctrl.shareSave()) : null,
+    tableFailure() === null
+      ? h('button', { class: 'menu-item', onclick: () => setPreferredView('table') }, icon('table'), 'Switch to the table view')
+      : null,
     h('button', {
       class: 'menu-item danger',
       onclick: () => {
@@ -72,9 +76,11 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
       onclick: () => { ui.menuOpen = !ui.menuOpen; redraw(); },
     }, icon('menu')));
 
+  const failed = tableFailure();
   return [
     h('div', { class: 'gb-wrap' }, header, menuItems),
     connectionBanner(ctrl),
+    failed ? h('div', { class: 'warn', attrs: { role: 'status' }, text: `The 3D table could not start on this device, so the game is shown as text. ${failed}` }) : null,
     h('div', { class: 'game-grid' },
       h('div', { class: 'col-main' },
         g.gameOver ? gameOverPanel(ctrl, room) : null,
@@ -88,20 +94,13 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
 }
 
 function gameOverPanel(ctrl: AppController, room: Room): HTMLElement {
-  const g = room.game!;
-  const order = room.seats.map(s => ({ s, t: tesseractCount(g, s.index as PlayerId), p: resourcePoints(g.players[s.index]!) }))
-    .sort((a, b) => {
-      const won = (i: number): number => (g.winner === i || g.tiedWinners.includes(i as PlayerId) ? 1 : 0);
-      if (won(a.s.index) !== won(b.s.index)) return won(b.s.index) - won(a.s.index);
-      // A win on points ranks by points (inventory value); a Tesseract win by Tesseracts.
-      return g.gameOverReason === 'tesseracts' ? b.t - a.t || b.p - a.p : b.p - a.p || b.t - a.t;
-    });
+  const order = finalStandings(room);
   return h('section', { class: 'tray panel over' },
     h('h2', { text: 'Game over' }),
     h('p', { class: 'over-words', text: gameOverWords(room) }),
     h('ol', { class: 'standings' }, order.map(o => h('li', null,
-      h('span', { class: 'sw', style: `background:${COLORS[o.s.color]}` }), h('b', { text: o.s.name }),
-      h('span', { class: 'muted', text: ` · ${o.t} Tesseract${o.t === 1 ? '' : 's'} · ${o.p} points` })))),
+      h('span', { class: 'sw', style: `background:${COLORS[room.seats[o.seat]!.color]}` }), h('b', { text: room.seats[o.seat]!.name }),
+      h('span', { class: 'muted', text: ` · ${o.tesseracts} Tesseract${o.tesseracts === 1 ? '' : 's'} · ${o.points} points` })))),
     h('div', { class: 'row' },
       h('button', { class: 'btn btn-gold btn-lg', onclick: () => ctrl.backToMenu() }, 'Back to menu')));
 }
@@ -262,8 +261,8 @@ function handBlock(room: Room, me: number | null): HTMLElement | null {
     h('h2', { text: `Your hand · ${hand.length} card${hand.length === 1 ? '' : 's'}` }),
     hand.length === 0 ? h('p', { class: 'muted', text: 'No Leverage cards. Buy them during step 3.' }) : null,
     h('div', { class: 'cards' }, hand.map(c => h('div', { class: 'card-row well' },
-      h('b', { text: CARD_INFO[c].title }),
-      h('span', { class: 'muted', text: CARD_INFO[c].description })))));
+      h('b', { text: CARD_NAME[c] }),
+      h('span', { class: 'muted', text: CARD_TEXT[c] })))));
 }
 
 function logBlock(room: Room): HTMLElement {

@@ -11,6 +11,8 @@ export interface View {
   update(): void;
   /** Called once the element is in the page. */
   mounted?(): void;
+  /** Called when the view is taken out of the page (release timers, WebGL, listeners). */
+  unmounted?(): void;
 }
 
 export function menuView(ctrl: AppController, version: string): View {

@@ -6,10 +6,14 @@ import type { AppController, LinkBox, Screen } from '../app/controller';
 import { h } from './dom';
 import { icon } from './icons';
 import { gameView } from './gameView';
+import { tableGameView } from './game/tableGameView';
 import { lobbyView } from './lobbyView';
 import type { View } from './menuView';
 import { menuView } from './menuView';
 import { resumeView } from './resumeView';
+import { onViewChange, preferredView } from './viewPref';
+
+type ViewKey = Exclude<Screen, 'game'> | 'game-table' | 'game-text';
 
 export function mountApp(root: HTMLElement, ctrl: AppController, version: string): void {
   const screenHost = h('div', { class: 'screen-host' });
@@ -17,23 +21,28 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
   const overlay = h('div', { class: 'overlay-host' });
   root.replaceChildren(screenHost, toast, overlay);
 
-  let screen: Screen | null = null;
+  let key: ViewKey | null = null;
   let view: View | null = null;
   let frame = 0;
   let lastBox: LinkBox | null = null;
 
+  const keyFor = (s: Screen): ViewKey => (s === 'game' ? (preferredView() === 'table' ? 'game-table' : 'game-text') : s);
+
   const draw = (): void => {
     frame = 0;
-    const next = ctrl.screen;
-    if (next !== screen || !view) {
-      screen = next;
+    const screen = ctrl.screen;
+    const next = keyFor(screen);
+    if (next !== key || !view) {
+      view?.unmounted?.();
+      key = next;
       view = next === 'menu' ? menuView(ctrl, version)
         : next === 'lobby' ? lobbyView(ctrl)
-          : next === 'game' ? gameView(ctrl)
-            : resumeView(ctrl);
+          : next === 'game-table' ? tableGameView(ctrl)
+            : next === 'game-text' ? gameView(ctrl)
+              : resumeView(ctrl);
       view.update();
       screenHost.replaceChildren(view.el);
-      document.body.dataset.screen = next;
+      document.body.dataset.screen = screen;
       window.scrollTo(0, 0);
       view.mounted?.();
     } else {
@@ -65,11 +74,12 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
   document.addEventListener('pointercancel', release, true);
 
   ctrl.subscribe(schedule);
+  onViewChange(schedule);
   draw();
   // Countdowns (operate prompts, round-end turns, away grace) are drawn from the clock.
   setInterval(() => {
     const room = ctrl.room;
-    if (!room || (screen !== 'game' && screen !== 'lobby')) return;
+    if (!room || (key !== 'game-text' && key !== 'lobby')) return;
     const ticking = room.opDeadline !== null || room.roundEndDeadline !== null || room.seats.some(s => s.awaySince !== null && !s.connected);
     if (ticking) schedule();
   }, 1000);

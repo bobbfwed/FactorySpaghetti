@@ -32,6 +32,19 @@ const ICONS = {
   trash: (): string => svg('<path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>'),
   chevron: (): string => svg('<path d="M8 10l4 4 4-4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
   play: (): string => svg('<path d="M8 5.5v13l10-6.5z" fill="currentColor"/>'),
+  belt: (c: string): string => svg(`<g fill="${c}"><path d="M1 8h3.4l3 4-3 4H1l3-4z"/><path d="M7.4 8h3.4l3 4-3 4H7.4l3-4z"/><path d="M13.8 8h3.4l3 4-3 4h-3.4l3-4z"/><path d="M19.6 7.2 23.4 12l-3.8 4.8z"/></g>`),
+  teleporter: (c: string): string => svg(`<ellipse cx="12" cy="15" rx="8.5" ry="4" fill="none" stroke="${c}" stroke-width="2.6"/><path d="M3.5 15V10M20.5 15V10" stroke="${c}" stroke-width="2.6"/><ellipse cx="12" cy="10" rx="8.5" ry="4" fill="none" stroke="#fff" stroke-opacity=".85" stroke-width="1.4"/>`),
+  mine: (): string => svg('<polygon points="3,12 6,7 12,7 15,12 12,17 6,17" fill="#efede6"/><circle cx="9" cy="12" r="2.2" fill="#151515"/><g stroke="#151515" stroke-width="1.1"><path d="M9 8.2V7.4M9 15.8v.8M5.6 10l-.8-.5M12.4 14l.8.5M5.6 14l-.8.5M12.4 10l.8-.5"/></g><polygon points="15,12 18,7 22.5,9.5 22.5,14.5 18,17" fill="#efede6"/>'),
+  exchange: (): string => svg('<path d="M5 8h13l-3.5-3.5M19 16H6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  undo: (): string => svg('<path d="M9 7 4.5 11.5 9 16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11.5h9.5a5 5 0 0 1 0 10H12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'),
+  rotate: (): string => svg('<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M20 3.5v4.6h-4.6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'),
+  recenter: (): string => svg('<circle cx="12" cy="12" r="3.2" fill="currentColor"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><circle cx="12" cy="12" r="7.5" fill="none" stroke="currentColor" stroke-width="1.6"/>'),
+  topdown: (): string => svg('<polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'),
+  book: (): string => svg('<path d="M4 5.5c2.8-1.2 5.5-1.2 8 .5 2.5-1.7 5.2-1.7 8-.5v13c-2.8-1.2-5.5-1.2-8 .5-2.5-1.7-5.2-1.7-8-.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 6v13" stroke="currentColor" stroke-width="1.8"/>'),
+  table: (): string => svg('<polygon points="12,3 20,7.5 20,16.5 12,21 4,16.5 4,7.5" fill="none" stroke="currentColor" stroke-width="2"/><polygon points="12,8 15.5,10 15.5,14 12,16 8.5,14 8.5,10" fill="currentColor"/>'),
+  list: (): string => svg('<path d="M9 7h11M9 12h11M9 17h11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4.5" cy="7" r="1.4" fill="currentColor"/><circle cx="4.5" cy="12" r="1.4" fill="currentColor"/><circle cx="4.5" cy="17" r="1.4" fill="currentColor"/>'),
+  pipOn: (): string => svg('<path d="M12 2.5l2.6 6.9 6.9 2.6-6.9 2.6L12 21.5l-2.6-6.9L2.5 12l6.9-2.6z" fill="#e8b730" stroke="#e8b730" stroke-width="1.8" stroke-linejoin="round"/>'),
+  pipOff: (): string => svg('<path d="M12 2.5l2.6 6.9 6.9 2.6-6.9 2.6L12 21.5l-2.6-6.9L2.5 12l6.9-2.6z" fill="none" stroke="#6d6a64" stroke-width="1.8" stroke-linejoin="round"/>'),
   dice: (): string => svg('<rect x="3.5" y="3.5" width="17" height="17" rx="3.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.5" fill="currentColor"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>'),
 };
 
@@ -41,7 +54,10 @@ export function icon(name: IconName, color?: SeatColor, cls = 'ic'): HTMLElement
   const el = document.createElement('i');
   el.className = cls;
   // Constant SVG markup from this file; `color` can only be one of the four fixed colours.
-  el.innerHTML = name === 'meeple' ? ICONS.meeple(color ? COLORS[color] : '#75716a') : (ICONS[name] as () => string)();
+  const c = color ? COLORS[color] : name === 'meeple' ? '#75716a' : '#b9b4aa';
+  el.innerHTML = name === 'meeple' || name === 'belt' || name === 'teleporter'
+    ? ICONS[name](c)
+    : (ICONS[name] as () => string)();
   return el;
 }
 

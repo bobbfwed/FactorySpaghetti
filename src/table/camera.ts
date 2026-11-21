@@ -79,6 +79,17 @@ export class CameraRig {
 
   get topDown(): boolean { return (this.tween ? this.tween.to.el : this.view.el) > 1.4; }
 
+  /** Screen area covered by HTML (CSS px from each edge); framing fits into the rest. */
+  private insets = { top: 0, right: 0, bottom: 0, left: 0 };
+  /** Framing never zooms out further than this (millimetres per CSS pixel). */
+  private frameMaxScale = MAX_SCALE;
+
+  setInsets(insets: { top: number; right: number; bottom: number; left: number }, maxScale = MAX_SCALE): void {
+    const c = (v: number): number => Math.max(0, Number.isFinite(v) ? v : 0);
+    this.insets = { top: c(insets.top), right: c(insets.right), bottom: c(insets.bottom), left: c(insets.left) };
+    this.frameMaxScale = clamp(maxScale, MIN_SCALE, MAX_SCALE);
+  }
+
   /** Frame the given table area (a height `top` above the table is included for stacks). */
   frame(b: Bounds, animate: boolean, top = 30, margin = 1.08): void {
     const goal = this.tween ? this.tween.to : this.view;
@@ -88,6 +99,13 @@ export class CameraRig {
   }
 
   private fitView(b: Bounds, az: number, el: number, top: number, margin: number): View {
+    const ins = this.insets;
+    // The free area must keep a usable size even if the panels cover most of the canvas.
+    const freeW = Math.max(this.width * 0.3, this.width - ins.left - ins.right);
+    const freeH = Math.max(this.height * 0.3, this.height - ins.top - ins.bottom);
+    // Where the free area's centre sits relative to the canvas centre (CSS px, y down).
+    const offX = (Math.min(ins.left, this.width * 0.35) - Math.min(ins.right, this.width * 0.35)) / 2;
+    const offY = (Math.min(ins.top, this.height * 0.35) - Math.min(ins.bottom, this.height * 0.35)) / 2;
     // Camera axes for this azimuth/elevation.
     const { right, up } = axes(az, el);
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
@@ -98,10 +116,11 @@ export class CameraRig {
       const v = dx * up.x + y * up.y + dz * up.z;
       minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v);
     }
-    const scale = clamp(Math.max((maxU - minU) / this.width, (maxV - minV) / this.height) * margin, MIN_SCALE, MAX_SCALE);
-    // Shift the target so the box centre lands mid-screen: a move of d along the ground "forward"
-    // direction shifts screen v by d * sin(el).
-    const du = (minU + maxU) / 2, dv = (minV + maxV) / 2;
+    const fit = Math.max((maxU - minU) / freeW, (maxV - minV) / freeH) * margin;
+    const scale = clamp(Math.min(fit, this.frameMaxScale), MIN_SCALE, MAX_SCALE);
+    // Shift the target so the box centre lands in the middle of the free area: a move of d along
+    // the ground "forward" direction shifts screen v by d * sin(el).
+    const du = (minU + maxU) / 2 - offX * scale, dv = (minV + maxV) / 2 + offY * scale;
     const fwd = { x: -Math.sin(az), z: -Math.cos(az) };
     const rgt = { x: Math.cos(az), z: -Math.sin(az) };
     const s = Math.max(0.2, Math.sin(el));

@@ -5,7 +5,7 @@ import { applyAction, createGame, legalActions } from '../../engine';
 import type { GameState, PlayerId } from '../../engine/state';
 import type { Room } from '../../session/room';
 import { newLobbyRoom } from '../../session/room';
-import { COLLAPSE_OVER, gameOverWords, operatePrompts, optionGroups, phaseWords } from '../gameText';
+import { COLLAPSE_OVER, finalStandings, gameOverWords, operatePrompts, optionGroups, phaseWords } from '../gameText';
 import { colorChoices, durationWords, listNames, stepValue, OPERATE_STEPS } from '../lobby';
 
 function playingRoom(game: GameState): Room {
@@ -81,6 +81,18 @@ describe('game text', () => {
     expect(gameOverWords(room)).toBe('Bea wins with 4 Tesseracts.');
     const tie = playingRoom({ ...g, gameOver: true, winner: null, tiedWinners: [0, 1], gameOverReason: 'boardExhausted' });
     expect(gameOverWords(tie)).toBe('Ann and Bea share the win on points (the board pieces ran out).');
+  });
+
+  it('orders the final standings: winners first, then by the measure the game was won on', () => {
+    const g = createGame(5, 3);
+    const inv = (ore: number, tesseract: number): GameState['players'][number]['inventory'] => ({ ore, plate: 0, sphere: 0, tesseract });
+    const players = g.players.map((p, i) => ({ ...p, inventory: [inv(9, 0), inv(0, 2), inv(30, 1)][i]! }));
+    const byPoints = finalStandings(playingRoom({ ...g, players, gameOver: true, winner: 0, gameOverReason: 'boardExhausted' }));
+    expect(byPoints.map(s => s.seat)).toEqual([0, 2, 1]);
+    expect(byPoints[0]!.won).toBe(true);
+    const byTess = finalStandings(playingRoom({ ...g, players, gameOver: true, winner: 0, gameOverReason: 'tesseracts' }));
+    expect(byTess.map(s => s.seat)).toEqual([0, 1, 2]);
+    expect(byTess[1]!.tesseracts).toBe(2);
   });
 });
 

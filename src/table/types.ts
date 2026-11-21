@@ -21,6 +21,8 @@ export type Target =
   | { kind: 'stack'; index: number }
   | { kind: 'deck' };
 
+export interface ViewInsets { top: number; right: number; bottom: number; left: number }
+
 export interface Ghost { pieceType: PieceType; q: number; r: number; rotation: number; valid: boolean }
 
 /** Numbers for performance checks (renderer.info of the last frame, and how long it took). */
@@ -46,6 +48,13 @@ export interface Table {
   setTopDown(on: boolean): void;
   resize(): void;
   dispose(): void;
+  /**
+   * The part of the canvas not covered by HTML panels (CSS pixels from each edge), and the smallest
+   * size a board tile may be drawn at when framing. Re-centring frames the board inside that area.
+   */
+  setViewport(insets: ViewInsets, opts?: { minTilePx?: number }): void;
+  /** Called after every drawn frame (camera moves, zoom, re-render), e.g. to move HTML anchored to pieces. */
+  onFrame(fn: () => void): () => void;
   // ── Additions (development aids) ──
   /** Draw a small marker on every connection point, coloured by engine role. */
   setDebugPoints(on: boolean): void;

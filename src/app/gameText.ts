@@ -6,6 +6,7 @@ import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
 import { legalActions } from '../engine';
+import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
@@ -234,6 +235,25 @@ export function operatePrompts(room: Room): OperatePrompt[] {
     operate: { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: e.ownerId },
     skip: { type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: e.ownerId },
   }));
+}
+
+export interface Standing { seat: number; won: boolean; tesseracts: number; points: number }
+
+/** Final order: winners first; a Tesseract win ranks by Tesseracts, a points win by points. */
+export function finalStandings(room: Room): Standing[] {
+  const g = room.game;
+  if (!g) return [];
+  return room.seats.map((s): Standing => ({
+    seat: s.index,
+    won: g.winner === s.index || g.tiedWinners.includes(s.index as PlayerId),
+    tesseracts: tesseractCount(g, s.index as PlayerId),
+    points: g.players[s.index] ? resourcePoints(g.players[s.index]!) : 0,
+  })).sort((a, b) => {
+    if (a.won !== b.won) return a.won ? -1 : 1;
+    return g.gameOverReason === 'tesseracts'
+      ? b.tesseracts - a.tesseracts || b.points - a.points
+      : b.points - a.points || b.tesseracts - a.tesseracts;
+  });
 }
 
 /** "Bea wins with 4 Tesseracts." and the like. */
