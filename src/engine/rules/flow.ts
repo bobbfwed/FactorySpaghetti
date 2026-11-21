@@ -351,6 +351,14 @@ export function applyPlaceTeleporter(
 
 // ── PLACE_BELT ────────────────────────────────────────────────────────────────
 
+// Endpoint order (a deliberate contract, see PlaceBeltAction): both orders are accepted and the
+// belt is stored exactly as given, because the 3D belt draws its arrowhead at fromPoint and the
+// interface lays a route in the direction the player tapped it. Every check below treats the
+// two endpoints alike, and no rule reads the stored order: material flow (beltPartner) takes
+// whichever end is the other one, the Belt Weaver chain and the router use both ends as an
+// unordered pair, and removal/undo work by belt id. The one visible difference is the belt id,
+// which spells the points in the given order. legalActions lists each belt once, lower point
+// first (sameMove / canonicalAction in actions.ts treat the two orders as the same move).
 export function applyPlaceBelt(state: GameState, action: PlaceBeltAction): ActionResult {
   if (state.phase !== 'actions') {
     return err('WRONG_PHASE', `Expected actions phase, got ${state.phase}`);

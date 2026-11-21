@@ -6,7 +6,9 @@ import { chooseAction as greedyBotFn } from '../../bots/greedyBot';
 import { runGame, runGames } from '../../sim/runGames';
 import { createRng, nextIntBelow } from '../rng';
 import type { Action } from '../actions';
-import type { PlayerId } from '../state';
+import { canonicalAction, sameMove } from '../actions';
+import type { GameState, PlayerId } from '../state';
+import { sameUpToBeltOrder } from './beltOrderHelpers';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -85,18 +87,44 @@ describe('legalActions correctness', () => {
 // Seeded property check over whole random games: at EVERY step and for EVERY player (not just
 // the active one — owners of a pending factory activation may act off-turn), every action that
 // legalActions lists is accepted by applyAction. The policy picks an action type first, then an
-// action of that type, so rare kinds (card plays, pending operations) are exercised too.
+// action of that type, so rare kinds (card plays, pending operations) are exercised too; it also
+// steers towards a second player's claim on an already-claimed building (Short Sale / Changing
+// Priorities), so co-owned buildings occur. On sampled states it checks the other direction too:
+// every PLACE_BELT (every piece, every ordered pair of points) and every DRAW_PIECE (every stack)
+// that applyAction accepts is listed — a belt up to endpoint order (sameMove), with the same
+// effect as its listed form apart from the stored order.
+
+// A claim by `p` that makes a building co-owned: Short Sale or Changing Priorities onto a
+// building someone else has claimed and `p` has not.
+function coOwningPlay(state: GameState, p: PlayerId, a: Action): boolean {
+  if (a.type !== 'PLAY_CARD') return false;
+  const target = a.cardType === 'shortSale' ? a.pieceId : a.cardType === 'changingPriorities' ? a.toPieceId : undefined;
+  const piece = target === undefined ? undefined : state.board.find(b => b.id === target);
+  return !!piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === p);
+}
+
+const isCoOwned = (state: GameState): boolean =>
+  state.board.some(b => new Set(b.claims.map(c => c.ownerId)).size >= 2);
+
 describe('legalActions ⊆ applyAction, every player, seeded games', () => {
-  it('holds at every step of several 2-, 3- and 4-player games', { timeout: 60_000 }, () => {
+  it('holds at every step of several 2-, 3- and 4-player games; accepted belts and draws are listed', { timeout: 180_000 }, () => {
     let rng = createRng(2024);
     const below = (n: number): number => { const [v, next] = nextIntBelow(rng, n); rng = next; return v; };
     const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
-    const checked = { steps: 0, actions: 0, offTurnPending: 0, staleOperates: 0, drones: 0 };
+    const checked = {
+      steps: 0, actions: 0, offTurnPending: 0, staleOperates: 0, drones: 0,
+      drawsApplied: 0, laterMineStates: 0, coOwnedStates: 0, minesBought: 0, buyMineListed: 0,
+      beltSweeps: 0, beltsAccepted: 0, reversedAccepted: 0, drawSweeps: 0, drawsAccepted: 0,
+    };
 
-    for (const [pc, seed] of [[2, 1], [2, 2], [3, 3], [3, 22], [4, 5], [4, 6]] as const) {
+    // `saving` games steer towards an early Mine purchase (two open stacks: the draw step); the
+    // others towards co-owned buildings.
+    for (const [pc, seed, saving] of [[2, 1, false], [2, 2, true], [3, 3, false], [3, 22, true], [4, 5, false], [4, 6, true], [3, 7, false], [4, 8, true]] as const) {
       let state = createGame(seed, pc);
-      for (let step = 0; step < 250 && !state.gameOver; step++) {
+      for (let step = 0; step < 400 && !state.gameOver; step++) {
         checked.steps++;
+        if (state.board.some(b => b.id === 'mine-2' || b.id === 'mine-3')) checked.laterMineStates++;
+        if (isCoOwned(state)) checked.coOwnedStates++;
         const active = state.turnOrder[state.activePlayerIndex]!;
         const choices: Array<{ p: PlayerId; a: Action }> = [];
         for (let p = 0; p < pc; p++) {
@@ -107,6 +135,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             checked.actions++;
             if (a.type === 'OPERATE_BUILDING' && a.ownerId !== undefined && p !== active) checked.offTurnPending++;
             if (a.type === 'PLAY_CARD' && a.cardType === 'scoutingDrone') checked.drones++;
+            if (a.type === 'BUY_MINE') checked.buyMineListed++;
             choices.push({ p: p as PlayerId, a });
           }
           // A pending entry whose operate is not listed is a stale one (now only skippable). These
@@ -115,18 +144,88 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             if (e.ownerId === p && !legal.some(a => a.type === 'OPERATE_BUILDING' && a.pieceId === e.pieceId)) checked.staleOperates++;
           }
         }
+        // Accepted ⇒ listed, for the active player (applyAction acts for the active player). Only
+        // where that player has no factory decision of their own pending: legalActions then offers
+        // only operate/skip by design, while applyAction does not check it.
+        const ownPending = state.pendingFactoryOps.some(e => e.ownerId === active);
+        const activeLegal = choices.filter(c => c.p === active).map(c => c.a);
+        // Index the listed belts and draws by their canonical form (one lookup per probe instead of
+        // a scan of the whole list); the match found is then confirmed with sameMove itself.
+        const listedByKey = new Map<string, Action>();
+        for (const l of activeLegal) {
+          if (l.type === 'PLACE_BELT' || l.type === 'DRAW_PIECE') listedByKey.set(JSON.stringify(canonicalAction(l)), l);
+        }
+        const listedAs = (a: Action): Action | undefined => {
+          const l = listedByKey.get(JSON.stringify(canonicalAction(a)));
+          return l && sameMove(l, a) ? l : undefined;
+        };
+        if (state.phase === 'placePiece' && !ownPending) {
+          checked.drawSweeps++;
+          for (const stackIndex of [0, 1, 2] as const) {
+            const a: Action = { type: 'DRAW_PIECE', stackIndex };
+            const accepted = applyAction(state, a).ok;
+            if (accepted) checked.drawsAccepted++;
+            expect(listedAs(a) !== undefined, `seed ${seed} step ${step}: ${JSON.stringify(a)}`).toBe(accepted);
+          }
+        }
+        if (state.phase === 'actions' && !ownPending && step % 12 === 0) {
+          checked.beltSweeps++;
+          for (const piece of state.board) {
+            const n = piece.type === 'mine' ? 24 : 12;
+            for (let i = 0; i < n; i++) {
+              for (let j = 0; j < n; j++) {
+                if (i === j) continue;
+                const a: Action = { type: 'PLACE_BELT', pieceId: piece.id, fromPoint: i, toPoint: j };
+                const r = applyAction(state, a);
+                const listed = listedAs(a);
+                expect(!!listed, `seed ${seed} step ${step}: ${JSON.stringify(a)} accepted=${r.ok}`).toBe(r.ok);
+                if (!r.ok || !listed) continue;
+                checked.beltsAccepted++;
+                if (i > j) {
+                  checked.reversedAccepted++;
+                  const viaListed = applyAction(state, listed);
+                  expect(viaListed.ok && sameUpToBeltOrder(r.state, viaListed.state), `${JSON.stringify(a)} differs from its listed form`).toBe(true);
+                }
+              }
+            }
+          }
+        }
+
         let action: Action;
         if (state.phase === 'roll' && state.pendingFactoryOps.length === 0) {
           action = { type: 'ROLL_DICE', rolls: Array.from({ length: state.mineCount }, () => 1 + below(6)) };
         } else {
           if (choices.length === 0) break;
-          const types = [...new Set(choices.map(c => c.a.type))].filter(t => t !== 'REMOVE_BELT' || below(5) === 0);
-          const t = types.length ? pick(types) : choices[0]!.a.type;
-          action = pick(choices.filter(c => c.a.type === t)).a;
+          const coOwning = choices.filter(c => coOwningPlay(state, c.p, c.a));
+          const buyCard = choices.filter(c => c.a.type === 'BUY_CARD');
+          // Buying a Mine before a stack runs out is what leaves two stacks open (the draw step);
+          // an auto-dropped Mine only arrives once the earlier stack is empty. So the "saving" games
+          // spend nothing on cards, belts or teleporters and buy a Mine as soon as they can.
+          const buyMine = choices.filter(c => c.a.type === 'BUY_MINE');
+          const SPENDING = new Set<Action['type']>(['BUY_CARD', 'BUY_BELT', 'PLACE_TELEPORTER']);
+          // ...and they gather: meeple on a Mine's resource point, collect every output.
+          const gather = choices.filter(c => (c.a.type === 'PLACE_MEEPLE' && c.a.slotIndex === 0) || c.a.type === 'COLLECT_OUTPUT');
+          if (saving && buyMine.length > 0) {
+            action = pick(buyMine).a;
+          } else if (saving && gather.length > 0) {
+            action = pick(gather).a;
+          } else if (!saving && coOwning.length > 0) {
+            action = pick(coOwning).a;
+          } else if (!saving && buyCard.length > 0 && below(3) === 0) {
+            action = buyCard[0]!.a; // Short Sale / Changing Priorities are how a building gets co-owned
+          } else {
+            const types = [...new Set(choices.map(c => c.a.type))]
+              .filter(t => t !== 'REMOVE_BELT' || below(5) === 0)
+              .filter(t => !saving || !SPENDING.has(t));
+            const t = types.length ? pick(types) : choices[0]!.a.type;
+            action = pick(choices.filter(c => c.a.type === t)).a;
+          }
         }
         const result = applyAction(state, action);
         expect(result.ok).toBe(true);
         if (!result.ok) break;
+        if (action.type === 'DRAW_PIECE') checked.drawsApplied++;
+        if (action.type === 'BUY_MINE') checked.minesBought++;
         state = result.state;
       }
     }
@@ -134,6 +233,12 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
     // eslint-disable-next-line no-console -- coverage figures for the report
     console.log(`legalActions property: ${JSON.stringify(checked)}`);
     expect(checked.offTurnPending).toBeGreaterThan(0); // non-active owners' operations were checked
+    expect(checked.drawsApplied).toBeGreaterThan(0);    // the draw step was played
+    expect(checked.laterMineStates).toBeGreaterThan(0); // Mine 2 or 3 was on the board
+    expect(checked.coOwnedStates).toBeGreaterThan(0);   // a building was claimed by two players
+    expect(checked.beltSweeps).toBeGreaterThan(0);
+    expect(checked.reversedAccepted).toBeGreaterThan(0);
+    expect(checked.drawsAccepted).toBeGreaterThan(0);
   });
 });
 

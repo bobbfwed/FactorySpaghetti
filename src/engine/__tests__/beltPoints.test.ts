@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
-import { fillInputsFromAdjacentMines, resolveDirectAdjacency } from '../rules/flow';
+import { adjAt, fillInputsFromAdjacentMines, resolveDirectAdjacency } from '../rules/flow';
 import { oreConnectionCost } from '../connectivity';
 import { pieceTemplate } from '../config';
 import type { Action } from '../actions';
@@ -171,5 +171,136 @@ describe('mines 2 and 3 have ore exits only on their rich hex (#32)', () => {
     const g = createGame(7, 3);
     expect(g.board.filter(p => p.type === 'mine').map(p => p.id)).toEqual(['mine-1']);
     expect(g.unplacedMines.map(m => m.id)).toEqual(['mine-2', 'mine-3']);
+  });
+});
+
+// The same reservation rule with every rotation of both pieces and every side: the pieces are
+// put down at all 6 × 6 rotations and the belt points facing a buffer are found through the
+// engine's own edge geometry (adjAt), so these cases do not depend on hand-worked positions.
+describe('reservation with rotated neighbours (#31)', () => {
+  const CELLS = [{ q: 1, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 0, r: -1 }, { q: 1, r: -1 }, { q: -1, r: 1 }];
+  const P0: Claims = [{ ownerId: 0, controlModule: 4 }];
+  const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
+  const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
+  const OWNER_CASES: Array<{ claims: Claims; reserved: boolean }> = [
+    { claims: [], reserved: false }, { claims: P0, reserved: false }, { claims: BOTH, reserved: false }, { claims: P1, reserved: true },
+  ];
+
+  const beltPointsOf = (p: BoardPiece): number[] => pieceTemplate(p).points.filter(d => d.enabled && d.role === 'belt').map(d => d.position);
+  const isBuffer = (p: BoardPiece, pos: number): boolean => {
+    const role = pieceTemplate(p).points.find(d => d.position === pos)?.role;
+    return role === 'input_buffer' || role === 'output_buffer';
+  };
+  // What point `pos` of `p` faces across its edge, on this board.
+  const facing = (board: BoardPiece[], p: BoardPiece, pos: number): { piece: BoardPiece; pos: number } | null =>
+    adjAt(p.coord, p.rotation ?? 0, pos, board);
+  const far = (a: number, b: number): boolean => Math.min(Math.abs(a - b), 12 - Math.abs(a - b)) > 2;
+
+  for (const type of ['plateFact', 'sphereFact', 'tesseractFact', 'powerPlant'] as const) {
+    it(`${type}: a blank beside it, every rotation of both, every side`, () => {
+      let cases = 0;
+      for (let rf = 0; rf < 6; rf++) {
+        let facedThisRotation = 0;
+        for (const cell of CELLS) {
+          for (let rb = 0; rb < 6; rb++) {
+            for (const { claims, reserved } of OWNER_CASES) {
+              const X = piece('X', type, 0, 0, rf, claims);
+              const N = piece('N', 'blank', cell.q, cell.r, rb);
+              const board = [X, N];
+              const s = actionsState(board);
+              for (const i of beltPointsOf(N)) {
+                const f = facing(board, N, i);
+                if (!f || f.piece.id !== 'X' || !isBuffer(X, f.pos)) continue;
+                const j = beltPointsOf(N).find(k => far(i, k) && facing(board, N, k) === null)!;
+                for (const a of [belt('N', i, j), belt('N', j, i)]) {
+                  expect(errCode(s, a), `${type} rf${rf} cell ${cell.q},${cell.r} rb${rb} ${JSON.stringify(claims)} ${i}-${j}`)
+                    .toBe(reserved ? 'POINT_RESERVED' : null);
+                }
+                expect(listed(s, belt('N', Math.min(i, j), Math.max(i, j)))).toBe(!reserved);
+                cases++;
+                facedThisRotation++;
+              }
+              // Points that face no buffer of X are never reserved, whoever owns X.
+              for (const i of beltPointsOf(N)) {
+                const f = facing(board, N, i);
+                if (f && f.piece.id === 'X' && isBuffer(X, f.pos)) continue;
+                const j = beltPointsOf(N).find(k => far(i, k) && !(facing(board, N, k)?.piece.id === 'X' && isBuffer(X, facing(board, N, k)!.pos)));
+                if (j !== undefined) expect(errCode(s, belt('N', i, j))).toBeNull();
+              }
+            }
+          }
+        }
+        expect(facedThisRotation, `${type} rotation ${rf}`).toBeGreaterThan(0);
+      }
+      expect(cases).toBeGreaterThan(0);
+    });
+  }
+
+  it("a building beside a building: a belt on one building's own belt points facing the other's buffer", () => {
+    let cases = 0;
+    for (let rx = 0; rx < 6; rx++) {
+      for (let ry = 0; ry < 6; ry++) {
+        for (const cell of CELLS) {
+          // X is the building the belt lies on; its own claims never matter for its belt points.
+          for (const xClaims of [[], P0, P1] as Claims[]) {
+            for (const { claims, reserved } of OWNER_CASES) {
+              const X = piece('X', 'plateFact', 0, 0, rx, xClaims);
+              const Y = piece('Y', 'sphereFact', cell.q, cell.r, ry, claims);
+              const board = [X, Y];
+              const s = actionsState(board);
+              for (const i of beltPointsOf(X)) {
+                const f = facing(board, X, i);
+                if (!f || f.piece.id !== 'Y' || !isBuffer(Y, f.pos)) continue;
+                const j = beltPointsOf(X).find(k => far(i, k) && facing(board, X, k) === null);
+                if (j === undefined) continue;
+                expect(errCode(s, belt('X', i, j)), `rx${rx} ry${ry} ${cell.q},${cell.r} X${JSON.stringify(xClaims)} Y${JSON.stringify(claims)}`)
+                  .toBe(reserved ? 'POINT_RESERVED' : null);
+                cases++;
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(cases).toBeGreaterThan(100);
+  });
+
+  it('a belt whose two ends face two different claimed buildings', () => {
+    // Blank N at (0,0) between L at (-1,0) and R at (1,0); every rotation of all three.
+    const PAIRS: Array<{ l: Claims; r: Claims; reserved: boolean }> = [
+      { l: [], r: [], reserved: false },
+      { l: P0, r: P0, reserved: false },
+      { l: P0, r: BOTH, reserved: false },
+      { l: [], r: P0, reserved: false },
+      { l: P0, r: P1, reserved: true },
+      { l: P1, r: P0, reserved: true },
+      { l: P1, r: P1, reserved: true },
+      { l: BOTH, r: P1, reserved: true },
+    ];
+    let cases = 0;
+    for (let rl = 0; rl < 6; rl++) {
+      for (let rr = 0; rr < 6; rr++) {
+        for (let rb = 0; rb < 6; rb++) {
+          for (const { l, r, reserved } of PAIRS) {
+            const L = piece('L', 'plateFact', -1, 0, rl, l);
+            const R = piece('R', 'tesseractFact', 1, 0, rr, r);
+            const N = piece('N', 'blank', 0, 0, rb);
+            const board = [L, R, N];
+            const s = actionsState(board);
+            const toward = (id: string): number[] => beltPointsOf(N).filter(i => {
+              const f = facing(board, N, i);
+              return !!f && f.piece.id === id && isBuffer(f.piece, f.pos);
+            });
+            for (const i of toward('L')) for (const j of toward('R')) {
+              if (!far(i, j)) continue;
+              expect(errCode(s, belt('N', i, j)), `rl${rl} rr${rr} rb${rb} L${JSON.stringify(l)} R${JSON.stringify(r)} ${i}-${j}`)
+                .toBe(reserved ? 'POINT_RESERVED' : null);
+              cases++;
+            }
+          }
+        }
+      }
+    }
+    expect(cases).toBeGreaterThan(50);
   });
 });

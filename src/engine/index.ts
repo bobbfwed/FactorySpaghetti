@@ -4,6 +4,7 @@ export { createGame } from './rules/setup';
 export { applyAction, legalActions } from './reducer';
 export { revealedStack } from './rules/pieces';
 export { upcomingTurnOrder } from './rules/production';
+export { canonicalAction, sameMove } from './actions';
 
 export type {
   GameState,

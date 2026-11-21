@@ -471,6 +471,9 @@ function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]) {
   }
 }
 
+// Each belt is listed ONCE, lower point first (fromPoint < toPoint). applyPlaceBelt also accepts
+// the reversed order and stores the belt as given (the arrowhead is drawn at fromPoint), with the
+// same effect on the rules; compare with sameMove / canonicalAction (actions.ts), not ===.
 function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
   const player = state.players[playerId];
   if (!player || player.beltsRemaining <= 0) return;

@@ -56,6 +56,10 @@ export interface EndTurnAction {
 // Place a belt on a board piece, linking two perimeter connection points.
 // fromPoint and toPoint are indices [0, CONNECTION_POINTS_PER_PIECE[pieceType]).
 // The circular distance between the two points must be > 2 (straight-through routing).
+// ENDPOINT ORDER IS A CONTRACT: the engine accepts both orders and stores the belt exactly as
+// given (the 3D belt draws its arrowhead at fromPoint; the interface lays a route in the
+// direction the player tapped it). No rule depends on the order. legalActions lists each belt
+// once, lower point first; use sameMove()/canonicalAction() to compare (see below).
 export interface PlaceBeltAction {
   readonly type: 'PLACE_BELT';
   readonly pieceId: string;
@@ -253,3 +257,27 @@ export type Action =
   | CollectOutputAction
   | SkipFactoryRollAction
   | ExchangeMaterialsAction;
+
+// ── Comparing moves ───────────────────────────────────────────────────────────
+
+// The listed form of a move. Only PLACE_BELT has more than one form: its two endpoint orders
+// are the same move (legalActions lists the lower point first), so this swaps them into that
+// order. Every other action is returned unchanged.
+export function canonicalAction(a: Action): Action {
+  if (a.type === 'PLACE_BELT' && a.fromPoint > a.toPoint) {
+    return { ...a, fromPoint: a.toPoint, toPoint: a.fromPoint };
+  }
+  return a;
+}
+
+// True when two actions are the same move: equal fields after canonicalAction (so a PLACE_BELT
+// matches its reversed form). Field order and absent-vs-undefined optional fields are ignored.
+export function sameMove(a: Action, b: Action): boolean {
+  const ca = canonicalAction(a) as unknown as Record<string, unknown>;
+  const cb = canonicalAction(b) as unknown as Record<string, unknown>;
+  const keys = new Set([...Object.keys(ca), ...Object.keys(cb)]);
+  for (const k of keys) {
+    if (JSON.stringify(ca[k]) !== JSON.stringify(cb[k])) return false;
+  }
+  return true;
+}
