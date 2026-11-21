@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Net test bench · Factory Spaghetti</title>
+  <style>
+    body { font: 14px/1.4 ui-monospace, Consolas, monospace; margin: 12px; background: #141416; color: #f3f1ec; }
+    fieldset { border: 1px solid #444; margin: 0 0 10px; }
+    button, input, select { font: inherit; margin: 2px; }
+    pre { white-space: pre-wrap; background: #1f1f23; padding: 8px; margin: 0 0 10px; }
+    textarea { width: 100%; height: 4em; }
+  </style>
+</head>
+<body>
+  <h3>Factory Spaghetti: network test bench (development only)</h3>
+  <fieldset id="setup">
+    <label>Transport
+      <select id="transport">
+        <option value="local">Same-browser tabs</option>
+        <option value="peer">Internet (PeerJS)</option>
+      </select>
+    </label>
+    <label>Name <input id="name" size="12" maxlength="20" /></label>
+    <label>Players <select id="players"><option>2</option><option>3</option><option selected>4</option></select></label>
+    <button id="host">Host</button>
+    <label>Code <input id="code" size="7" /></label>
+    <button id="join">Join</button>
+  </fieldset>
+  <fieldset id="controls">
+    <button id="ready">Ready</button>
+    <button id="bots">Add bots to open seats</button>
+    <button id="start">Start</button>
+    <button id="resume">Continue (lift hold)</button>
+    <button id="autoplay">Autoplay my seat with a bot</button>
+    <button id="leave">Leave</button>
+    <button id="savelink">Copy save link</button>
+  </fieldset>
+  <pre id="state">Not connected.</pre>
+  <pre id="log"></pre>
+  <textarea id="link" readonly placeholder="Invite / save link"></textarea>
+  <script type="module" src="./net.ts"></script>
+</body>
+</html>

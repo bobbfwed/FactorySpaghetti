@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#141416" />
+  <meta name="color-scheme" content="dark" />
+  <title>Network check · Factory Spaghetti</title>
+  <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+  <style>
+    :root { --bg: #141416; --text: #f3f1ec; --muted: #a9a69f; --gold: #e8b730; --panel: #1f1f23;
+            --ok: #86efac; --bad: #fca5a5; --warn: #fcd34d; color-scheme: dark; }
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; background: var(--bg); color: var(--text);
+                 font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+    main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { margin: 0 0 8px; color: var(--gold); font-size: 1.6rem; }
+    h2 { margin: 20px 0 6px; font-size: 1rem; color: var(--muted); font-weight: 600; }
+    p { color: var(--muted); line-height: 1.45; margin: 0 0 12px; }
+    #out { background: var(--panel); border-radius: 10px; padding: 12px 14px; overflow-wrap: anywhere;
+           font: 13px/1.5 ui-monospace, Consolas, monospace; }
+    .line { padding: 2px 0; }
+    .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); }
+    button { margin-top: 14px; background: var(--gold); color: #141416; border: 0; border-radius: 8px;
+             padding: 8px 16px; font-weight: 700; font-size: 0.95rem; cursor: pointer; }
+    a { color: var(--gold); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Network check</h1>
+    <p>Checks whether this device can play Factory Spaghetti over the internet. It asks each helper
+      server the game uses how this device can be reached, which takes up to a minute. Run it on
+      every player's device if someone cannot connect.</p>
+    <div id="out">Checking…</div>
+    <button id="again" type="button">Check again</button>
+    <p style="margin-top:16px"><a href="./">Back to the game</a></p>
+  </main>
+  <script type="module" src="./src/net/netCheck.ts"></script>
+</body>
+</html>

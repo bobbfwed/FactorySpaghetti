@@ -2,6 +2,7 @@ import { defineConfig, type Plugin } from 'vite';
 import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Version label shown in the app: "<package.json version>+<short git SHA>".
 // Falls back to "dev" when git is unavailable (e.g. building from a source archive).
@@ -51,5 +52,15 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
   plugins: [serviceWorkerManifest()],
-  build: { outDir: 'dist', emptyOutDir: true },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+    rollupOptions: {
+      // net-check.html: the network check page, shipped so players can open it on their device.
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        netCheck: fileURLToPath(new URL('./net-check.html', import.meta.url)),
+      },
+    },
+  },
 });
