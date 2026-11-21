@@ -56,3 +56,24 @@ export function skipButton(ctx: Ctx): HTMLElement | null {
     onclick: () => ctx.skip(),
   }, 'Skip', h('span', { class: 'chev', text: '»' }));
 }
+
+/** The wording matches the game menu's save entries (gameMenu.ts) and the text view. */
+export const CANNOT_STORE_TEXT = 'This device cannot store the game; use Copy save link or Download save file in the game menu.';
+
+/**
+ * A lasting strip (not a toast) while the automatic save cannot be written to this device, with a
+ * button that opens the game menu where the save entries are. The player can put it away.
+ */
+export function storageStrip(ctx: Ctx): HTMLElement | null {
+  if (!ctx.ctrl.state.cannotStore || ctx.ui.storeDismissed || ctx.ui.menuOpen) return null;
+  return h('div', { class: 'tg-store', attrs: { role: 'alert', 'data-store': '1' } },
+    h('span', { class: 'tx', text: CANNOT_STORE_TEXT }),
+    h('button', {
+      class: 'btn btn-dark tg-storebtn', attrs: { 'data-store-menu': '1' },
+      onclick: () => { ctx.ui.menuOpen = true; ctx.ui.seat = null; ctx.redraw(); },
+    }, icon('menu'), 'Game menu'),
+    h('button', {
+      class: 'x round small', title: 'Dismiss', attrs: { 'aria-label': 'Dismiss', 'data-store-dismiss': '1' },
+      onclick: () => { ctx.ui.storeDismissed = true; ctx.redraw(); },
+    }, icon('cross')));
+}

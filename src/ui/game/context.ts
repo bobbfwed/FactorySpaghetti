@@ -31,10 +31,12 @@ export interface UiState {
   diceRolling: boolean;
   /** The player just closed the phone sheet themselves (the screen then leaves it closed for the current choice). */
   sheetUserClosed: boolean;
+  /** The player put away the "cannot store the game" strip (shown again if storage recovers and fails again). */
+  storeDismissed: boolean;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false };
 }
 
 /** What the interface may ask of the play controller (the moves a player makes). */

@@ -30,7 +30,8 @@ import { bankPanel } from './bank';
 import type { Ctx, FeelCtl, PlayInput } from './context';
 import { activePlayer, clock, initialUi, seatColor, seatHex, seatName } from './context';
 import type { Flash } from './feedback';
-import { errorStrip, flashMarkers, rollChip, skipButton } from './feedback';
+import { errorStrip, flashMarkers, rollChip, skipButton, storageStrip } from './feedback';
+import { appliedSince, refusalIsStale, type SentMove } from './refusals';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
 import { FxLayer } from './fx';
@@ -92,6 +93,8 @@ export interface GameDebug {
   readonly shownSeq: number;
   /** Inputs that arrived while the picture lagged (each only caught the picture up). */
   readonly blocked: number;
+  /** Refusals not shown because the room already showed the move made. */
+  readonly staleRefusals: number;
   readonly stage: Stage;
   readonly feel: FeelCtl;
   readonly ui: ReturnType<typeof initialUi>;
@@ -168,6 +171,9 @@ export function tableGameView(ctrl: AppController): View {
   let displayGame: GameState | null = null;
   let displaySeat: number | null = null;
   let blocked = 0;
+  /** Refusals dropped because the move had been made anyway (refusals.ts). */
+  let staleRefusals = 0;
+  let lastCannotStore = false;
   let promptIds = new Set<string>();
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   /** The player has dragged or zoomed the table (until they press Re-centre). */
@@ -189,12 +195,19 @@ export function tableGameView(ctrl: AppController): View {
     sendStartedAt = performance.now();
     if (sendingTimer) clearTimeout(sendingTimer);
     sendingTimer = setTimeout(() => { sendingTimer = null; schedule(); }, SENDING_AFTER_MS + 10);
+    const me = ctrl.mySeat;
+    const sent: SentMove | null = me === null ? null : { action, seat: me, seq: ctrl.room?.seq ?? 0 };
     client.act(action).then(
       (res) => {
         if (disposed) return;
         schedule();
         // BUSY only means another move was still in flight: ignore it (the selection stays).
-        if (!res.ok && res.error.code !== 'BUSY') refuse(refusalText(res.error));
+        if (res.ok || res.error.code === 'BUSY') return;
+        // During a host change the same move can be applied and then refused as a second copy
+        // (refusals.ts): when the room already shows it made, the refusal is not shown.
+        const now = ctrl.state.online?.client;
+        if (sent && now?.room && refusalIsStale(res.error.code, sent, appliedSince(now.journal, now.room.log, sent.seq))) { staleRefusals++; return; }
+        refuse(refusalText(res.error));
       },
       () => { if (!disposed) { schedule(); refuse('The move could not be sent.'); } },
     );
@@ -399,6 +412,12 @@ export function tableGameView(ctrl: AppController): View {
     };
   }
 
+  /** Notices at the top of the table: a failed menu command, and the storage warning. */
+  function notes(ctx: Ctx): HTMLElement | null {
+    const a = errorStrip(ctx), b = storageStrip(ctx);
+    return a || b ? h('div', { class: 'tg-notes' }, a, b) : null;
+  }
+
   function confirmAnchor(ctx: Ctx): string | null {
     const v = ctx.view;
     if (v.ghost) return JSON.stringify({ kind: 'cell', q: v.ghost.q, r: v.ghost.r });
@@ -415,7 +434,7 @@ export function tableGameView(ctrl: AppController): View {
     phone = isPhoneLayout();
     const parts: Child[] = phone
       ? [
-        slot('banner', connectionBanner(ctrl)), slot('err', errorStrip(ctx)),
+        slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
         slot('top', h('div', { class: 'tg-toprow' }, menuButton(ctx), seatChips(ctx))),
         slot('menu', gameMenu(ctx)), slot('seatpop', seatDetails(ctx)),
         slot('cam', cameraButtons(ctx)), slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)),
@@ -425,7 +444,7 @@ export function tableGameView(ctrl: AppController): View {
         slot('over', gameOverCard(ctx)), slot('modal', cardModal(ctx)),
       ]
       : [
-        slot('banner', connectionBanner(ctrl)), slot('err', errorStrip(ctx)),
+        slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
         slot('menubtn', menuButton(ctx)), slot('menu', gameMenu(ctx)),
         slot('seats', seatPlates(ctx)), slot('seatpop', seatDetails(ctx)),
         slot('cam', cameraButtons(ctx)), slot('bank', bankPanel(ctx)),
@@ -736,6 +755,7 @@ export function tableGameView(ctrl: AppController): View {
     get lag() { return stage.lagMs(); },
     get shownSeq() { return shownRoom?.seq ?? -1; },
     get blocked() { return blocked; },
+    get staleRefusals() { return staleRefusals; },
     stage,
     feel,
     ui,
@@ -760,6 +780,12 @@ export function tableGameView(ctrl: AppController): View {
       let changed = false;
       const pending = !!ctrl.state.online?.client.pending;
       if (pending !== lastPending) { lastPending = pending; changed = true; }
+      // The storage strip comes back only if storage recovers and then fails again.
+      if (ctrl.state.cannotStore !== lastCannotStore) {
+        lastCannotStore = ctrl.state.cannotStore;
+        if (!lastCannotStore) ui.storeDismissed = false;
+        changed = true;
+      }
       if (r !== room) { syncRoom(r); changed = true; }
       if (ctrl.state !== lastState) { lastState = ctrl.state; changed = true; }
       if (changed) schedule();
