@@ -4,7 +4,7 @@
 
 import type { AppController } from '../app/controller';
 import type { GameOption, OptionGroup } from '../app/gameText';
-import { finalStandings, gameOverWords, operatePrompts, optionGroups, phaseWords } from '../app/gameText';
+import { finalStandings, gameOverWords, operatePrompts, optionGroups, phaseWords, refusalText } from '../app/gameText';
 import { setPreferredView, tableFailure } from './viewPref';
 import type { PlayerId } from '../engine/state';
 import { tesseractCount } from '../engine/rules/scoring';
@@ -121,7 +121,7 @@ function promptsBlock(ctrl: AppController, room: Room): HTMLElement | null {
   const others = prompts.filter(p => p.seat !== me);
   return h('section', { class: 'prompts', attrs: { 'aria-live': 'polite' } },
     ctrl.state.moveError ? h('div', { class: 'error', attrs: { role: 'alert' } },
-      h('span', { text: ctrl.state.moveError }),
+      h('span', { text: refusalText(ctrl.state.moveError) }),
       h('button', { class: 'x', title: 'Dismiss', attrs: { 'aria-label': 'Dismiss' }, onclick: () => ctrl.dismissError() }, icon('cross'))) : null,
     mine.map(p => h('div', { class: 'prompt tray' },
       h('div', { class: 'prompt-text' },

@@ -128,7 +128,8 @@ export interface AppState {
   online: OnlineRoom | null;
   solo: boolean;
   autoplay: boolean;
-  moveError: string | null;
+  /** The last refused move of this player (the code says why; see refusalText in gameText.ts). */
+  moveError: { code: string; message: string } | null;
   installAvailable: boolean;
   /** The replay viewer, when open (it shows over whatever else is going on). */
   replay: ReplayScreen | null;
@@ -580,7 +581,7 @@ export class AppController {
     const client = this.client;
     if (!client) return false;
     const res = await client.act(action);
-    if (!res.ok) { this.set({ moveError: res.error.message }); return false; }
+    if (!res.ok) { this.set({ moveError: res.error }); return false; }
     if (this.state.moveError) this.set({ moveError: null });
     return true;
   }
@@ -629,6 +630,11 @@ export class AppController {
   get journal(): JournalData | null {
     const client = this.client;
     return client && client.journalCurrent ? client.journal : null;
+  }
+
+  /** Write this device's move journal now (the page is being hidden or closed). */
+  flushJournal(): void {
+    this.state.online?.client.flushJournal();
   }
 
   /** The last move of this player the host refused in this session, with the reason. */

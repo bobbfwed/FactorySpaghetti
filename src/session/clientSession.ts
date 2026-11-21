@@ -7,7 +7,9 @@ import type { Action } from '../engine/actions';
 import type { Room, RoomSettings, SeatColor } from './room';
 import type { ClientMsg, ClosedWhy, HostMsg, MovesBlock, WireError } from './protocol';
 import { PROTOCOL, parseHostMsg } from './protocol';
-import { randomId } from './scheduler';
+import type { Scheduler } from './scheduler';
+import { randomId, realScheduler } from './scheduler';
+import { acceptHostRoom } from './save';
 import type { SaveStore } from './store';
 import { readJournal, writeJournal, writeSave } from './store';
 import type { JournalData } from './journal';
@@ -29,8 +31,16 @@ export interface ClientOptions {
   store?: SaveStore;
   /** This device's clock; injectable for tests. */
   now?: () => number;
+  /** Timers (the throttled journal write); defaults to the real clock. */
+  scheduler?: Scheduler;
   appVersion?: string;
 }
+
+/**
+ * The stored journal is written at most this often while moves arrive (it can be 100 KB or
+ * more). A crash loses at most this much of it; the host fills such a gap on the next visit.
+ */
+export const JOURNAL_WRITE_MS = 2000;
 
 /** The move waiting for the host's answer. */
 export interface PendingMove {
@@ -69,7 +79,10 @@ export class ClientSession {
   private moveJournal: JournalData | null = null;
   private journalAsk: string | null = null;      // id of the unanswered journal request
   private storedJournalTried = false;
-  private persisted: { j: JournalData; end: number } | null = null;
+  private persisted: { j: JournalData; end: number; code: string } | null = null;
+  private lastJournalWrite = -Infinity;
+  private journalTimer: unknown = null;
+  private readonly sched: Scheduler;
 
   private conn: Conn;
   private readonly name: string;
@@ -88,6 +101,7 @@ export class ClientSession {
     this.token = opts.token;
     this.store = opts.store;
     this.clock = opts.now ?? ((): number => Date.now());
+    this.sched = opts.scheduler ?? realScheduler;
     this.app = opts.appVersion ?? 'dev';
     this.conn = conn;
     this.attach(conn);
@@ -116,6 +130,7 @@ export class ClientSession {
     this.status = 'connecting';
     this.closedWhy = null;
     this.journalAsk = null; // a request to the old connection will not be answered
+    this.flushJournal();
     this.attach(conn);
     this.emit();
   }
@@ -145,6 +160,7 @@ export class ClientSession {
   /** Leave for good: close the connection; a waiting move and commands settle as CLOSED. */
   dispose(): void {
     if (this.status === 'closed' && this.closedWhy === null) return;
+    this.flushJournal();
     this.status = 'closed';
     this.closedWhy = null;
     this.failAll('This session was closed.', true);
@@ -219,16 +235,23 @@ export class ClientSession {
     const msg: HostMsg | null = parseHostMsg(raw);
     if (!msg) return;
     switch (msg.t) {
-      case 'welcome':
+      case 'welcome': {
+        // The host is another browser: a room of the wrong shape is refused, seats are cleaned.
+        const room = acceptHostRoom(msg.room);
+        if (!room || (msg.seat !== null && (msg.seat < 0 || msg.seat >= room.seats.length))) return;
         this.seat = msg.seat;
         this.status = 'joined';
-        this.setRoom(msg.room, msg.now, null, msg.moves ?? null);
+        this.setRoom(room, msg.now, null, msg.moves ?? null);
         // Send the unconfirmed move: for the first time, or again if the host never applied it.
         if (this.pending && this.conn.open && this.seat !== null) this.sendPending();
         break;
-      case 'room':
-        this.setRoom(msg.room, msg.now, msg.re ?? null, msg.moves ?? null);
+      }
+      case 'room': {
+        const room = acceptHostRoom(msg.room);
+        if (!room) return;
+        this.setRoom(room, msg.now, msg.re ?? null, msg.moves ?? null);
         break;
+      }
       case 'journal':
         this.onJournal(msg);
         break;
@@ -339,14 +362,31 @@ export class ClientSession {
     this.persistJournal();
   }
 
+  /** Store the journal: at once when the game is over, otherwise at most every JOURNAL_WRITE_MS. */
   private persistJournal(): void {
+    if (!this.store || !this.moveJournal || !this.room) return;
+    if (this.room.game?.gameOver) { this.flushJournal(); return; }
+    if (this.journalTimer !== null) return; // a write is already due
+    const wait = this.lastJournalWrite + JOURNAL_WRITE_MS - this.sched.now();
+    if (wait <= 0) { this.flushJournal(); return; }
+    this.journalTimer = this.sched.setTimeout(() => { this.journalTimer = null; this.flushJournal(); }, wait);
+  }
+
+  /**
+   * Write this device's journal now, if it changed since the last write. The app calls this
+   * when the page is hidden or closed; the session calls it when it ends or changes host.
+   */
+  flushJournal(): void {
+    if (this.journalTimer !== null) { this.sched.clearTimeout(this.journalTimer); this.journalTimer = null; }
     const j = this.moveJournal;
     const room = this.room;
     if (!this.store || !j || !room) return;
     const end = journalEnd(j);
-    if (this.persisted && this.persisted.j === j && this.persisted.end === end) return;
+    const p = this.persisted;
+    if (p && p.j === j && p.end === end && p.code === room.code) return;
     writeJournal(this.store, room.code, j);
-    this.persisted = { j, end };
+    this.persisted = { j, end, code: room.code };
+    this.lastJournalWrite = this.sched.now();
   }
 
   /** The move number this device's journal starts from (0 for the whole game), or null. */

@@ -80,7 +80,7 @@ function settingsFrom(o: OnlineOptions): Settings {
 
 function clientSession(conn: Conn, s: Settings): ClientSession {
   return new ClientSession(conn, {
-    name: s.name, token: s.token, now: (): number => s.sched.now(),
+    name: s.name, token: s.token, now: (): number => s.sched.now(), scheduler: s.sched,
     ...(s.store ? { store: s.store } : {}),
     ...(s.appVersion !== undefined ? { appVersion: s.appVersion } : {}),
   });
@@ -333,6 +333,7 @@ export class OnlineRoom {
 
   private async takeOver(epoch: number): Promise<void> {
     this.setStatus('taking-over');
+    this.client.flushJournal(); // the journal goes to the new host session; keep this device's copy current too
     const door = new Doorway();
     let handle: HostHandle | null = null;
     for (let n = 1; ; n++) {

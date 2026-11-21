@@ -101,6 +101,11 @@ window.addEventListener('hashchange', () => {
   if (ctrl.screen === 'menu') void ctrl.loadSaveText(text, 'link');
 });
 
+// The move journal is written to storage at most every 2 seconds; write it now when the page
+// may be closed or frozen (a phone switching apps).
+window.addEventListener('pagehide', () => ctrl.flushJournal());
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') ctrl.flushJournal(); });
+
 watchInstall(fn => ctrl.setInstaller(fn));
 
 if (import.meta.env.PROD) {

@@ -267,3 +267,125 @@ export function gameOverWords(room: Room): string {
   if (g.tiedWinners.length > 0) return `${g.tiedWinners.map(name).join(' and ')} share the win ${how}.`.replace(' .', '.');
   return 'The game is over.';
 }
+
+// ── Refused moves, in the rulebook's words ─────────────────────────────────────────
+
+/**
+ * A sentence for every refusal code: the engine's rule errors (RulesError.code) and the
+ * session's own (SessionErrorCode in session/protocol.ts). The engine's messages name internal
+ * things ("Expected placePiece phase, got roll"), so they are never shown; these are.
+ */
+export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
+  // Engine: whose turn and which step
+  WRONG_PHASE: 'That is not allowed at this step of the turn.',
+  GAME_OVER: 'The game is over.',
+  PENDING_FACTORY_OPS: 'Every activated factory must be run or skipped first.',
+  NOT_PENDING: 'That building was not activated by this roll.',
+  OVERSTOCK_PENDING: 'Place the Overstock Supplies pieces first.',
+  PENDING_MINE: 'Place the dropped Mine first.',
+  PENDING_MINE_UNPLACED: 'Place the dropped Mine before buying another.',
+  // Engine: dice
+  INVALID_ROLL: 'Each die must show 1 to 6.',
+  WRONG_DICE_COUNT: 'Roll one die for each Mine on the board.',
+  // Engine: board pieces and Mines
+  COORD_OCCUPIED: 'That space is already taken.',
+  NOT_ADJACENT: 'It must be placed next to a piece already on the board.',
+  STACK_EMPTY: 'That stack is empty.',
+  STACK_LOCKED: 'That stack is still covered by its Mine.',
+  INVALID_PIECE_INDEX: 'There is no such piece in that stack.',
+  PIECE_NOT_FOUND: 'That piece is not on the board.',
+  WRONG_PIECE_TYPE: 'That is the wrong kind of piece for this.',
+  PIECE_CLAIMED: 'A claimed building cannot be removed.',
+  CANNOT_SINK_MINE: 'A Mine cannot be removed.',
+  NO_MINES_AVAILABLE: 'All the Mines are already in play.',
+  NO_PENDING_MINE: 'No Mine is waiting to be placed.',
+  NO_OVERSTOCK: 'There is no Overstock Supplies piece to place.',
+  // Engine: Control Modules
+  ALREADY_CLAIMED: 'That building is already claimed.',
+  NOT_CLAIMABLE: 'Only factories and Power Plants can be claimed.',
+  TOO_MANY_CLAIMS: 'You already have 3 Control Modules on that building.',
+  MODULE_NOT_AVAILABLE: 'That Control Module is not in your supply.',
+  NO_VALID_MODULE: 'You have no Control Module high enough for that.',
+  CLAIM_FLOOR_VIOLATION: 'That Control Module is too low: it must be at least the number of Mines on the board.',
+  CLAIM_NOT_FOUND: 'You do not have that Control Module on that building.',
+  MUST_UPGRADE: 'The new Control Module must be higher than the old one.',
+  UNFUNDED_UPGRADE: 'You cannot pay for that upgrade.',
+  FREE_CLAIM_USED: 'You have already used the free claim from the Mine this round.',
+  INSUFFICIENT_CREDITS: 'You do not have enough Mine credits for that.',
+  INSUFFICIENT_FREE_UPGRADES: 'You do not have enough free upgrades left.',
+  WRONG_FREE_UPGRADE_TARGET: 'Your free upgrades this round belong to another building.',
+  INSUFFICIENT_PI_BUDGET: 'Production Increase does not have enough upgrades left for that.',
+  PI_CLAIM_USED: 'Production Increase allows only one claim per turn.',
+  // Engine: buildings, materials and Power Tokens
+  CANNOT_AFFORD: 'You cannot afford that.',
+  INSUFFICIENT_MATERIAL: 'You do not have that material.',
+  CANNOT_EXCHANGE: 'Ore cannot be broken down any further.',
+  CANNOT_OPERATE: 'That building cannot run: it needs a full recipe in its input, an empty output and enough Power Tokens.',
+  INVALID_RECIPE: 'That material does not fit any recipe of this building.',
+  INPUT_FULL: 'That building\'s input is already full.',
+  NOTHING_TO_COLLECT: 'There is nothing to collect there, or you hold the most of that material you may.',
+  NO_INPUT: 'That building has no input.',
+  NO_OUTPUT: 'That building has no output.',
+  NO_BUFFER: 'That piece has no buffer there.',
+  ALREADY_OPERATED: 'At round end you may run the building with your meeple only once.',
+  INVALID_TARGET: 'You can only do that with the building your meeple is on.',
+  // Engine: meeple
+  INVALID_MEEPLE_TARGET: 'Your meeple can go only on one of your buildings or on a Mine.',
+  MINE_SLOT_OCCUPIED: 'Another meeple is already on that spot of the Mine.',
+  // Engine: belts and teleporters
+  NO_BELTS: 'You have no belts left.',
+  BELT_NOT_FOUND: 'That belt is no longer on the board.',
+  NOT_YOUR_BELT: 'You can pick up only your own belts.',
+  NOTHING_TO_UNDO: 'You have placed no belts this turn.',
+  INVALID_POINT: 'That is not a connection point on this piece.',
+  NOT_A_BELT_POINT: 'A belt cannot connect there.',
+  SAME_POINT: 'A belt needs two different connection points.',
+  POINTS_TOO_CLOSE: 'The two ends of a belt must be more than 2 holes apart.',
+  POINT_OCCUPIED: 'A belt already uses that connection point.',
+  BELT_BLOCKED: 'A belt may not join another player\'s belt or block another player\'s building input.',
+  MINE_BELT_LIMIT: 'Only one belt touching a Mine may be placed per turn.',
+  NO_TELEPORTERS: 'You have no teleporters left.',
+  TELEPORTER_EXISTS: 'There is already a teleporter there.',
+  BUFFER_OCCUPIED: 'That buffer already has a teleporter.',
+  NOT_OWNER: 'You must own that building.',
+  NOT_YOUR_BUILDING: 'You need a Control Module on that building.',
+  // Engine: Leverage cards
+  DECK_EMPTY: 'The Leverage deck is empty.',
+  CARD_NOT_IN_HAND: 'That Leverage card is not in your hand.',
+  CARD_LIMIT_REACHED: 'You may play only 2 Leverage cards per turn.',
+  PLAY_ON_DRAW: 'That Leverage card is played when it is drawn, not from your hand.',
+  UNKNOWN_CARD: 'That is not a Leverage card of this game.',
+  MISSING_PARAMS: 'That Leverage card needs a choice first.',
+  // Engine and host: something unexpected
+  INTERNAL: 'Something went wrong, and nothing changed. Please try again.',
+  // Session: the host's own refusals
+  BAD_MESSAGE: 'The host did not understand that. Reload the page to update the game.',
+  HELLO_FIRST: 'Not connected to the game yet.',
+  NOT_HOST: 'Only the host can do that.',
+  NOT_IN_LOBBY: 'That can only be changed before the game starts.',
+  NOT_PLAYING: 'No game is in progress.',
+  ON_HOLD: 'The game is paused until the host continues it.',
+  NO_SEAT: 'You do not have a seat in this game.',
+  NOT_YOUR_TURN: 'It is not your turn.',
+  BAD_SETTINGS: 'Those settings are not allowed.',
+  BAD_SEAT: 'That seat cannot be changed that way.',
+  SEAT_OCCUPIED: 'A player is sitting in that seat.',
+  COLOR_TAKEN: 'Another player already uses that colour.',
+  SEATS_OPEN: 'Every seat needs a player or a bot.',
+  NOT_READY: 'Every player must be ready.',
+  NOT_WAITING: 'That person is no longer waiting.',
+  SEATS_ABSENT: 'A player is not connected. Wait for them, or open their seat or give it to a bot.',
+  SEAT_REQUIRED: 'Choose which player you are.',
+  STALE: 'The game moved on, so that move was not made.',
+  BAD_ACTION: 'That move could not be read.',
+  BUSY: 'Still waiting for the host to confirm your last move.',
+  CLOSED: 'Not connected to the game.',
+};
+
+/** Shown for a refusal code this build does not know. */
+export const REFUSAL_FALLBACK = 'That move is not allowed right now.';
+
+/** A refused move or command in the rulebook's words. Never contains the raw message. */
+export function refusalText(error: { code: string; message?: string }): string {
+  return Object.prototype.hasOwnProperty.call(REFUSAL_TEXT, error.code) ? REFUSAL_TEXT[error.code]! : REFUSAL_FALLBACK;
+}

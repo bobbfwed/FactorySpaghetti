@@ -3,8 +3,8 @@
 
 import * as config from '../engine/config';
 import type { GameState } from '../engine/state';
-import type { Room } from './room';
-import { SEAT_COLORS } from './room';
+import type { Room, SeatColor } from './room';
+import { NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import type { JournalData } from './journal';
 import { parseJournal } from './journal';
 
@@ -334,7 +334,17 @@ function validateUnsafe(x: unknown): SaveEnvelope {
   if (isInt(x.v) && x.v > 1) fail('unsupported-version', `save format ${x.v}`);
   check(x.v === 1, 'save format');
   check(isNum(x.savedAt) && isStr(x.app, 100) && isStr(x.rules, 100), 'envelope');
-  const room = x.room;
+  const room = checkRoom(x.room);
+  const save = x as unknown as SaveEnvelope;
+  if (x.journal === undefined) return save;
+  // A journal that is damaged, or does not belong to this game, is dropped: the save still loads.
+  const { journal: rawJournal, ...rest } = save;
+  const journal = room.game ? parseJournal(rawJournal) : null;
+  return journal && room.game && journalFits(journal, room.game, room.seq) ? { ...rest, journal } : rest;
+}
+
+/** Check a room's shape, versions, seat count against the game, and that the pieces add up. */
+function checkRoom(room: unknown): Room {
   check(isObj(room), 'room');
   if (isInt(room.v) && room.v > 1) fail('unsupported-version', `room format ${room.v}`);
   check(room.v === 1, 'room format');
@@ -380,13 +390,49 @@ function validateUnsafe(x: unknown): SaveEnvelope {
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
     checkGame(room.game, pc);
   }
-  const save = x as unknown as SaveEnvelope;
-  if (x.journal === undefined) return save;
-  // A journal that is damaged, or does not belong to this game, is dropped: the save still loads.
-  const { journal: rawJournal, ...rest } = save;
-  const journal = room.game ? parseJournal(rawJournal) : null;
-  const game = room.game as GameState | null;
-  return journal && game && journalFits(journal, game, room.seq as number) ? { ...rest, journal } : rest;
+  return room as unknown as Room;
+}
+
+/** A room from outside, checked the same way as a save's room. Throws SaveError('invalid'). */
+export function validateRoom(x: unknown): Room {
+  try {
+    return checkRoom(x);
+  } catch (e) {
+    if (e instanceof SaveError) throw e;
+    fail('invalid', 'unreadable');
+  }
+}
+
+/**
+ * A room as sent by the host, made safe to show, or null when its shape is wrong. A host is
+ * another person's browser, so nothing in it is trusted: a seat colour that is not one of the
+ * four printed colours (or repeats another seat's) becomes that seat's own default colour, and
+ * names are cleaned and clipped to 1 to 20 characters, as `hello` names are. Then the whole
+ * room gets the checks a save gets (seat count against the game, pieces adding up, ...).
+ */
+export function acceptHostRoom(x: unknown): Room | null {
+  if (!isObj(x) || !Array.isArray(x.seats) || x.seats.length > 4) return null;
+  const used = new Set<SeatColor>();
+  const seats = x.seats.map((raw, i) => {
+    if (!isObj(raw)) return raw;
+    let color = SEAT_COLORS.includes(raw.color as SeatColor) && !used.has(raw.color as SeatColor) ? raw.color as SeatColor : null;
+    if (!color) color = [SEAT_COLORS[i]!, ...SEAT_COLORS].find(c => !used.has(c))!;
+    used.add(color);
+    const name = clipReceivedName(raw.name);
+    return { ...raw, color, name: name || (raw.kind === 'open' ? '' : `Seat ${i + 1}`) };
+  });
+  const waiting = Array.isArray(x.waiting)
+    ? x.waiting.map(w => (isObj(w) ? { ...w, name: clipReceivedName(w.name) || 'Guest' } : w))
+    : x.waiting;
+  try {
+    return validateRoom({ ...x, seats, waiting });
+  } catch {
+    return null;
+  }
+}
+
+function clipReceivedName(raw: unknown): string {
+  return cleanName(raw).slice(0, NAME_MAX).trim();
 }
 
 /** The journal is of this game and reaches exactly this move (a cheap check; see journalMatches for the full one). */

@@ -6,12 +6,13 @@ import { describe, it, expect } from 'vitest';
 import type { GameState } from '../../engine/state';
 import type { HostSession } from '../hostSession';
 import { HostSession as Host } from '../hostSession';
-import { ClientSession, promoteToHost } from '../clientSession';
+import { ClientSession, JOURNAL_WRITE_MS, promoteToHost } from '../clientSession';
 import type { JournalData } from '../journal';
 import {
   MAX_JOURNAL_MOVES, extendJournal, fullJournal, journalEnd, journalFrom, journalMatches, parseJournal, replayTo,
 } from '../journal';
 import { memoryPair } from '../memoryConn';
+import type { SaveStore } from '../store';
 import { journalKey, memoryStore, readJournal, saveKey } from '../store';
 import { packLink, parseSaveFile, serializeSaveFile, toSave, unpackLink } from '../save';
 import type { Room } from '../room';
@@ -205,33 +206,106 @@ describe('the move journal through a host and its clients', () => {
     c.dispose();
   });
 
-  it('is stored on the device beside the automatic save, and picked up again after a reload', async () => {
+  /** Bea's device, with its own storage, on the test's clock; counts the writes of her stored journal. */
+  function beaDevice(host: HostSession, sched: ManualScheduler, store: SaveStore, token = 'tok-bea-0123456789'): Joined & { writes: () => number } {
+    const [hostEnd, clientEnd] = memoryPair();
+    host.accept(hostEnd);
+    let writes = 0;
+    const counting: SaveStore = {
+      ...store,
+      set: (k, v): void => { if (k === journalKey('KQMTV')) writes++; store.set(k, v); },
+    };
+    const client = new ClientSession(clientEnd, { name: 'Bea', token, store: counting, scheduler: sched, now: (): number => sched.now() });
+    return { client, hostEnd, clientEnd, writes: () => writes };
+  }
+
+  async function storedGame(botDelayMs: number): Promise<{ host: HostSession; sched: ManualScheduler; me: ClientSession; bea: ReturnType<typeof beaDevice>; store: SaveStore }> {
     const store = memoryStore();
-    const { host, sched, me } = await newLobby({ settings: { playerCount: 2, ...QUIET, awayGraceMs: 0 } });
-    const bea = join(host, 'Bea', 'tok-bea-0123456789', store);
+    const { host, sched, me } = await newLobby({ settings: { playerCount: 2, ...QUIET, botDelayMs, awayGraceMs: 0 } });
+    const bea = beaDevice(host, sched, store);
     await settle();
     for (const c of [me, bea.client]) expect((await c.setReady(true)).ok).toBe(true);
     expect((await me.start()).ok).toBe(true);
-    expect((await me.setAutopilot(0, true)).ok).toBe(true);
-    await driveHumans(host, { 1: bea.client }, r => r.seq >= 40, 5000, sched);
+    for (const i of [0, 1]) expect((await me.setAutopilot(i, true)).ok).toBe(true);
     await settle();
+    return { host, sched, me, bea, store };
+  }
+
+  it('is stored beside the automatic save at most every 2 seconds, and at once when the game ends', async () => {
+    const { host, sched, bea, store } = await storedGame(100); // one move every 100 ms
+    const t0 = sched.now();
+    let broadcasts = 0;
+    bea.client.subscribe(() => { broadcasts++; });
+    await botsUntil(host, sched, r => r.phase === 'finished');
+    const elapsed = sched.now() - t0;
+    // The room save keeps its timing (every update); the journal is written far less often.
     expect(store.get(saveKey('KQMTV'))).not.toBeNull();
-    const stored = readJournal(store, 'KQMTV');
-    expect(stored).toEqual(host.journal);
-    // A reload: the page closes (a bot plays Bea's seat meanwhile); a fresh session on this
-    // device rejoins, finds the stored journal, and only needs the moves since.
+    expect(JSON.parse(store.get(saveKey('KQMTV'))!).room.seq).toBe(host.room.seq);
+    expect(bea.writes()).toBeLessThanOrEqual(Math.ceil(elapsed / JOURNAL_WRITE_MS) + 3);
+    expect(bea.writes()).toBeLessThan(broadcasts / 5);
+    // The game is over: the whole journal was written without waiting.
+    expect(readJournal(store, 'KQMTV')).toEqual(host.journal);
+    host.dispose();
+  }, 60_000);
+
+  it('is written at once when the session ends or the app asks (page hidden)', async () => {
+    const { host, sched, bea, store } = await storedGame(0);
+    await botsUntil(host, sched, r => r.seq >= 60);
+    // Bots played many moves without the clock moving: the stored copy is behind.
+    expect(journalEnd(readJournal(store, 'KQMTV')!)).toBeLessThan(host.room.seq);
+    bea.client.flushJournal();
+    expect(readJournal(store, 'KQMTV')).toEqual(bea.client.journal);
+    await botsUntil(host, sched, r => r.seq >= 90);
     bea.client.dispose();
-    await botsUntil(host, sched, r => r.seq >= journalEnd(stored!) + 20);
-    const again = join(host, 'Bea', 'tok-bea-0123456789', store);
+    expect(journalEnd(readJournal(store, 'KQMTV')!)).toBe(bea.client.room!.seq);
+    host.dispose();
+  }, 60_000);
+
+  it('after a crash that missed the last write, a reload fills the gap from the host', async () => {
+    const { host, sched, bea, store } = await storedGame(0);
+    await botsUntil(host, sched, r => r.seq >= 80);
+    const stored = readJournal(store, 'KQMTV')!;
+    expect(journalEnd(stored)).toBeLessThan(host.room.seq); // the last moves never reached storage
+    // The tab dies: no flush, the connection just drops.
+    bea.hostEnd.close();
+    await settle();
+    await botsUntil(host, sched, r => r.seq >= 110);
+    const again = beaDevice(host, sched, store);
     const asked: unknown[] = [];
     const send = again.clientEnd.send.bind(again.clientEnd);
     again.clientEnd.send = (m: unknown): void => { if ((m as { t: string }).t === 'journal') asked.push(m); send(m); };
     await settle();
     await settle();
-    expect(asked).toMatchObject([{ t: 'journal', have: journalEnd(stored!) }]);
+    expect(asked).toMatchObject([{ t: 'journal', have: journalEnd(stored) }]);
+    expect(again.client.journalStart).toBe(0);
     expect(again.client.journal).toEqual(host.journal);
-    expect(JSON.parse(store.get(journalKey('KQMTV'))!)).toEqual(host.journal);
+    again.client.flushJournal();
+    expect(readJournal(store, 'KQMTV')).toEqual(host.journal);
     host.dispose();
+  }, 60_000);
+
+  it('after a crash, when the host cannot fill the gap, the device keeps a correct partial journal', async () => {
+    const { host, sched, bea, store } = await storedGame(0);
+    await botsUntil(host, sched, r => r.seq >= 80);
+    const stored = readJournal(store, 'KQMTV')!;
+    bea.hostEnd.close();
+    await settle();
+    await botsUntil(host, sched, r => r.seq >= 110);
+    // The game goes on from a save link (no moves in it), hosted again under the same code.
+    const save = await unpackLink(await packLink(toSave(host.room, { savedAt: 1, app: 't' }, { forLink: true })));
+    host.dispose();
+    const sched2 = new ManualScheduler();
+    const host2 = new Host({ code: 'KQMTV', hostName: 'Ann', hostToken: 'tok-ann-0123456789', room: save.room, mode: 'resume', scheduler: sched2 });
+    expect(journalFrom(host2.journal!)).toBe(save.room.seq);
+    const again = beaDevice(host2, sched2, store);
+    await settle();
+    await settle();
+    // Bea's stored journal (to move journalEnd(stored)) cannot be continued: she takes the host's.
+    expect(journalEnd(stored)).toBeLessThan(save.room.seq);
+    expect(again.client.journalStart).toBe(save.room.seq);
+    expect(again.client.journal).toEqual(host2.journal);
+    expect(replayTo(again.client.journal!, save.room.seq)).toEqual(save.room.game);
+    host2.dispose();
   }, 60_000);
 });
 

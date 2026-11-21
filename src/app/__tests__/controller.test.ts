@@ -269,7 +269,7 @@ describe('playing', () => {
     expect(groups[0]!.options[0]!.label.length).toBeGreaterThan(0);
     expect(optionGroups(other.ctrl.room!, other.ctrl.mySeat)).toEqual([]);
     expect(await run(w, other.ctrl.act(groups[0]!.options[0]!.action))).toBe(false);
-    expect(other.ctrl.state.moveError).toMatch(/not your turn/i);
+    expect(other.ctrl.state.moveError?.code).toBe('NOT_YOUR_TURN');
     expect(await run(w, mine.ctrl.act(groups[0]!.options[0]!.action))).toBe(true);
     expect(mine.ctrl.state.moveError).toBeNull();
   }, 30_000);
