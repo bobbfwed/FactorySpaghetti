@@ -11,8 +11,11 @@ import { realScheduler } from '../session/scheduler';
 
 export interface AutoplayOptions {
   botId?: string;
-  /** Pause before each move (ms), so a person can follow it. Default 0. */
-  delayMs?: number;
+  /**
+   * Pause before each move (ms), so a person can follow it: a number, or a function of the room
+   * and whether the move answers an operate choice on someone else's turn (see pacing.ts). Default 0.
+   */
+  delayMs?: number | ((room: Room, offTurnAnswer: boolean) => number);
   scheduler?: Scheduler;
 }
 
@@ -30,7 +33,13 @@ export function seatMustAct(room: Room | null, seat: number | null): boolean {
 export function autoplay(client: ClientSession, opts: AutoplayOptions = {}): () => void {
   const bot = botById(opts.botId ?? 'greedy').fn;
   const sched = opts.scheduler ?? realScheduler;
-  const delay = opts.delayMs ?? 0;
+  const delayOf = (room: Room, seat: number): number => {
+    const d = opts.delayMs ?? 0;
+    if (typeof d === 'number') return d;
+    const g = room.game;
+    const offTurn = !!g && g.pendingFactoryOps.some(e => e.ownerId === seat) && activeSeat(g) !== seat;
+    return d(room, offTurn);
+  };
   let stopped = false;
   let busy = false;
   let timer: unknown = null;
@@ -62,8 +71,9 @@ export function autoplay(client: ClientSession, opts: AutoplayOptions = {}): () 
 
   const tick = (): void => {
     if (stopped || busy || timer !== null) return;
-    if (delay <= 0) { void move(); return; }
     if (!seatMustAct(client.room, client.seat)) return;
+    const delay = delayOf(client.room!, client.seat!);
+    if (delay <= 0) { void move(); return; }
     timer = sched.setTimeout(() => { timer = null; void move(); }, delay);
   };
 

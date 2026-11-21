@@ -123,6 +123,8 @@ export async function newLobby(opts: Partial<HostOptions> & { settings?: Partial
 /** A playing room built around a given engine state. */
 export function playingRoom(game: GameState, seats: Array<{ kind: 'human' | 'bot'; name: string }>, hostSeat: number, settings: Partial<RoomSettings> = {}): Room {
   const base = newLobbyRoom('ROOMA', seats[hostSeat]!.name, { ...defaultSettings(), playerCount: game.playerCount, ...settings });
+  // A fixed pause of 0 has always meant instant bots in these fixtures.
+  if (settings.botDelayMs === 0 && settings.botSpeed === undefined) base.settings = { ...base.settings, botSpeed: 'instant' };
   const roomSeats: Seat[] = seats.map((s, i) => ({
     ...openSeat(i, SEAT_COLORS[i]!), kind: s.kind, name: s.name, botId: s.kind === 'bot' ? 'greedy' : null,
   }));

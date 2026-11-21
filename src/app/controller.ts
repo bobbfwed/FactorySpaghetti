@@ -23,6 +23,8 @@ import type { SaveListing, SaveStore } from '../session/store';
 import { findJournals, journalKey, listSaves, readJournal } from '../session/store';
 import type { Scheduler } from '../session/scheduler';
 import { realScheduler } from '../session/scheduler';
+import type { BotSpeed } from '../session/pacing';
+import { botPauseMs, lastMoveOf } from '../session/pacing';
 import type { JournalData } from '../session/journal';
 import { journalMatches, partialJournal } from '../session/journal';
 import type { RefusedMove } from '../session/clientSession';
@@ -92,7 +94,7 @@ export interface AppDeps {
   randomToken?: () => string;
   /** Overrides for every OnlineRoom (tests shorten retries and timeouts). */
   online?: Partial<OnlineOptions>;
-  /** Pause before each autoplay move. Default 400 ms. */
+  /** Pause before each autoplay move. Default: the room's bot speed (see session/pacing.ts). */
   autoplayDelayMs?: number;
   /** True when the device knows it has no connection (navigator.onLine === false). */
   isOffline?: () => boolean;
@@ -506,7 +508,6 @@ export class AppController {
     if (!name) return;
     const online = await this.connect('Setting up the table…', null, () => OnlineRoom.host(this.options('solo', name)), true);
     if (!online) return;
-    await online.client.configure({ botDelayMs: 300 });
     await this.fillSolo();
   }
 
@@ -556,6 +557,11 @@ export class AppController {
   assign(waitingId: string, seat: number): Promise<boolean> { return this.command(this.client?.assign(waitingId, seat) ?? null); }
   seatToBot(seat: number): Promise<boolean> { return this.command(this.client?.setSeat(seat, 'bot', 'greedy') ?? null); }
   openSeat(seat: number): Promise<boolean> { return this.command(this.client?.setSeat(seat, 'open') ?? null); }
+
+  /** The host sets how fast bots move (lobby or game): 'instant', 'fast' or 'normal'. */
+  setBotSpeed(speed: BotSpeed): Promise<boolean> {
+    return this.command(this.client?.configure({ botSpeed: speed }) ?? null);
+  }
 
   async configure(patch: Partial<RoomSettings>): Promise<boolean> {
     const ok = await this.command(this.client?.configure(patch) ?? null);
@@ -612,7 +618,8 @@ export class AppController {
     const client = this.client;
     if (!client) return;
     this.stopAuto = autoplay(client, {
-      delayMs: this.deps.autoplayDelayMs ?? 400,
+      // As fast as the room's bot speed: paced so each move can be followed on the table.
+      delayMs: this.deps.autoplayDelayMs ?? ((room, offTurn): number => botPauseMs(room.settings, lastMoveOf(room.lastEvents), offTurn)),
       ...(this.deps.scheduler ? { scheduler: this.deps.scheduler } : {}),
     });
     this.set({ autoplay: true });

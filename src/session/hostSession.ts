@@ -23,6 +23,7 @@ import { cryptoUint32, realScheduler } from './scheduler';
 import type { SaveStore } from './store';
 import { writeSave } from './store';
 import { memoryPair } from './memoryConn';
+import { BOT_SPEEDS, botPauseMs, botSpeedOf, lastMoveOf, normalizeSettings } from './pacing';
 import type { JournalData } from './journal';
 import {
   capJournal, copyJournal, fullJournal, journalEnd, journalFrom, journalSeed, movesAfter, partialJournal,
@@ -163,7 +164,7 @@ export class HostSession {
         hostSeat = match.index;
       }
       this.room = {
-        ...base, code: opts.code, seats, hostSeat, hold: true, waiting: [], recent: [],
+        ...base, settings: normalizeSettings(base.settings), code: opts.code, seats, hostSeat, hold: true, waiting: [], recent: [],
         lastEvents: [], opDeadline: null, roundEndDeadline: null,
       };
       this.tokens.set(opts.hostToken, hostSeat);
@@ -179,7 +180,7 @@ export class HostSession {
         return { ...s, connected: false, awaySince: s.connected ? away : (s.awaySince ?? away) };
       });
       this.room = {
-        ...base, code: opts.code, seats, hostSeat, hold: base.hold, waiting: [],
+        ...base, settings: normalizeSettings(base.settings), code: opts.code, seats, hostSeat, hold: base.hold, waiting: [],
         opDeadline: null, roundEndDeadline: null,
       };
       this.tokens.set(opts.hostToken, hostSeat);
@@ -504,9 +505,15 @@ export class HostSession {
 
     switch (msg.t) {
       case 'cfg': {
-        if (r.phase !== 'lobby') return err('NOT_IN_LOBBY', 'Settings can only change in the lobby.');
         const next = mergeSettings(r.settings, msg.settings);
         if (!next) return err('BAD_SETTINGS', 'Those settings are not valid.');
+        if (r.phase !== 'lobby') {
+          // During a game only the bot speed may change; it applies from the next bot move.
+          if (Object.keys(msg.settings).some(k => k !== 'botSpeed')) return err('NOT_IN_LOBBY', 'Settings can only change in the lobby.');
+          this.room = { ...r, settings: next };
+          this.clearTimer('bot');
+          return done();
+        }
         let seats: Seat[] | null = r.seats;
         if (next.playerCount !== r.settings.playerCount) {
           seats = resizeSeats(r.seats, next.playerCount);
@@ -773,7 +780,7 @@ export class HostSession {
 
   private afterChange(re?: Reply): void {
     if (this.disposed) return;
-    if (this.room.settings.botDelayMs <= 0) this.runBots(BOT_BATCH);
+    if (botSpeedOf(this.room.settings) === 'instant') this.runBots(BOT_BATCH);
     this.updateTimers();
     this.scheduleBot();
     this.save();
@@ -808,12 +815,22 @@ export class HostSession {
   /** Bots with a delay play one move per tick; instant bots continue their batch on the next tick. */
   private scheduleBot(): void {
     if (this.botTimer !== null || this.botStalledAt === this.room.seq || !this.nextBotTurn()) return;
-    const delay = Math.max(0, this.room.settings.botDelayMs);
+    const instant = botSpeedOf(this.room.settings) === 'instant';
+    const delay = instant ? 0 : this.botPause();
     this.botTimer = this.timer(() => {
       this.botTimer = null;
-      if (delay > 0) this.runBots(1);
-      this.afterChange();
+      if (!instant) this.runBots(1);
+      this.afterChange(); // instant bots play their next run here
     }, delay);
+  }
+
+  /** How long the next bot waits, so the previous move can be followed on the table (pacing.ts). */
+  private botPause(): number {
+    const turn = this.nextBotTurn();
+    const g = this.room.game;
+    if (!turn || !g) return 0;
+    const offTurn = turn.pendingPieceId !== null && activeSeat(g) !== turn.seat;
+    return botPauseMs(this.room.settings, lastMoveOf(this.room.lastEvents), offTurn);
   }
 
   /** One bot move. Falls back to a safe move if the bot fails; false if nothing worked. */
@@ -1014,6 +1031,13 @@ function mergeSettings(cur: RoomSettings, patch: Partial<RoomSettings>): RoomSet
   if (patch.awayPolicy !== undefined) {
     if (patch.awayPolicy !== 'bot' && patch.awayPolicy !== 'wait') return null;
     next.awayPolicy = patch.awayPolicy;
+  }
+  if (patch.botSpeed !== undefined) {
+    if (!BOT_SPEEDS.includes(patch.botSpeed)) return null;
+    next.botSpeed = patch.botSpeed;
+  } else if (patch.botDelayMs !== undefined) {
+    // A fixed pause asked for directly (tests, the network bench): 0 is instant, more is fast.
+    next.botSpeed = next.botDelayMs > 0 ? 'fast' : 'instant';
   }
   return next;
 }

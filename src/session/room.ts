@@ -7,6 +7,8 @@ import type { GameState, PlayerId } from '../engine/state';
 import type { CardType, Material, PieceType } from '../engine/config';
 import type { RngState } from '../engine/rng';
 import { FACTORY_OP_TIMEOUT_MS, ROUND_END_TIMEOUT_MS } from '../engine/config';
+import type { BotSpeed } from './pacing';
+import { DEFAULT_BOT_SPEED } from './pacing';
 
 export type SeatColor = 'blue' | 'red' | 'orange' | 'green';
 export const SEAT_COLORS: readonly SeatColor[] = ['blue', 'red', 'orange', 'green'];
@@ -29,7 +31,8 @@ export interface RoomSettings {
   roundEndTimeoutMs: number;    // idle round-end turn auto-ends; <= 0 disables
   awayPolicy: 'bot' | 'wait';   // what happens to a seat whose player dropped
   awayGraceMs: number;          // how long an away seat waits before a bot plays it
-  botDelayMs: number;           // pause before each bot move; 0 = bots act immediately
+  botDelayMs: number;           // the pause at "fast" bot speed (see pacing.ts)
+  botSpeed: BotSpeed;           // how fast bots move: instant, fast, or paced to the animations
 }
 
 /** One line of the game log, in rulebook words. `seat` is null for table-wide notes. */
@@ -96,7 +99,8 @@ export function defaultSettings(): RoomSettings {
     roundEndTimeoutMs: ROUND_END_TIMEOUT_MS,
     awayPolicy: 'bot',
     awayGraceMs: 90_000,
-    botDelayMs: 600,
+    botDelayMs: 300,
+    botSpeed: DEFAULT_BOT_SPEED,
   };
 }
 

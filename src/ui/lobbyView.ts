@@ -1,6 +1,8 @@
 // The room lobby (mock-up 05), and the same screen in "resuming" mode for a held saved game.
 // Rebuilt whole on every change: it has buttons only, no text fields.
 
+import type { BotSpeed } from '../session/pacing';
+import { botSpeedOf } from '../session/pacing';
 import type { AppController } from '../app/controller';
 import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
 import type { Room, RoomSettings, Seat } from '../session/room';
@@ -139,6 +141,12 @@ function stepper(label: string, sub: string, value: number, steps: readonly numb
     h('div', { class: 'v' }, stepControl(label, value, steps, editable, set)));
 }
 
+const BOT_SPEED_HINT: Record<BotSpeed, string> = {
+  normal: 'Bots wait until each move can be seen on the table',
+  fast: 'Bots move quickly; some moves are not shown',
+  instant: 'Bots move at once',
+};
+
 function settingsBlock(ctrl: AppController, st: RoomSettings, isHost: boolean): HTMLElement {
   const cfg = (patch: Partial<RoomSettings>): Promise<boolean> => ctrl.configure(patch);
   const seg = <T extends string | number>(items: { v: T; label: string }[], cur: T, set: (v: T) => unknown, name: string): HTMLElement =>
@@ -149,6 +157,11 @@ function settingsBlock(ctrl: AppController, st: RoomSettings, isHost: boolean): 
     h('div', { class: 'set' },
       h('div', { class: 'k' }, 'Players'),
       h('div', { class: 'v' }, seg([2, 3, 4].map(n => ({ v: n as 2 | 3 | 4, label: String(n) })), st.playerCount, v => cfg({ playerCount: v }), 'Players'))),
+    h('div', { class: 'set' },
+      h('div', { class: 'k' }, 'Bot speed', h('small', { text: BOT_SPEED_HINT[botSpeedOf(st)] })),
+      h('div', { class: 'v' }, seg([
+        { v: 'instant' as const, label: 'Instant' }, { v: 'fast' as const, label: 'Fast' }, { v: 'normal' as const, label: 'Normal' },
+      ], botSpeedOf(st), v => ctrl.setBotSpeed(v), 'Bot speed'))),
     stepper('Operate timer', 'Time to answer an off-turn operate-or-skip prompt', st.factoryOpTimeoutMs, OPERATE_STEPS, isHost, v => cfg({ factoryOpTimeoutMs: v })),
     stepper('Round-end timer', 'An idle round-end turn ends after this', st.roundEndTimeoutMs, ROUND_END_STEPS, isHost, v => cfg({ roundEndTimeoutMs: v })),
     h('div', { class: 'set wide' },
