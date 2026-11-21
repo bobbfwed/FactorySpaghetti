@@ -5,11 +5,15 @@
 import type { Conn } from '../net/conn';
 import type { Action } from '../engine/actions';
 import type { Room, RoomSettings, SeatColor } from './room';
-import type { ClientMsg, ClosedWhy, HostMsg, WireError } from './protocol';
+import type { ClientMsg, ClosedWhy, HostMsg, MovesBlock, WireError } from './protocol';
 import { PROTOCOL, parseHostMsg } from './protocol';
 import { randomId } from './scheduler';
 import type { SaveStore } from './store';
-import { writeSave } from './store';
+import { readJournal, writeJournal, writeSave } from './store';
+import type { JournalData } from './journal';
+import {
+  capJournal, copyJournal, extendJournal, journalEnd, journalFrom, journalSeed, partialJournal,
+} from './journal';
 import type { HostOptions } from './hostSession';
 import { HostSession } from './hostSession';
 import { chooseSuccessor } from './seating';
@@ -36,6 +40,14 @@ export interface PendingMove {
   seq: number | null;
 }
 
+/** A move of this player that the host (or the engine behind it) refused. */
+export interface RefusedMove {
+  action: Action;
+  error: WireError;
+  /** room.seq when it was refused. */
+  seq: number;
+}
+
 type CommandMsg = Exclude<ClientMsg, { t: 'hello' | 'act' }>;
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 
@@ -48,6 +60,16 @@ export class ClientSession {
   seat: number | null = null;
   /** A move sent (or about to be sent) but not yet confirmed by the host. */
   pending: PendingMove | null = null;
+  /** The last move of ours the host refused in this session (for a rules-problem report). */
+  lastRefused: RefusedMove | null = null;
+  /**
+   * This device's copy of the game's moves (see journal.ts). It reaches room.seq, except
+   * briefly while the missing part is being fetched from the host.
+   */
+  private moveJournal: JournalData | null = null;
+  private journalAsk: string | null = null;      // id of the unanswered journal request
+  private storedJournalTried = false;
+  private persisted: { j: JournalData; end: number } | null = null;
 
   private conn: Conn;
   private readonly name: string;
@@ -93,8 +115,20 @@ export class ClientSession {
     if (old !== conn && old.open) old.close();
     this.status = 'connecting';
     this.closedWhy = null;
+    this.journalAsk = null; // a request to the old connection will not be answered
     this.attach(conn);
     this.emit();
+  }
+
+  /** A copy of this device's journal of the current game, or null. */
+  get journal(): JournalData | null {
+    return this.moveJournal ? copyJournal(this.moveJournal) : null;
+  }
+
+  /** True while this device's journal reaches the room's current move. */
+  get journalCurrent(): boolean {
+    const j = this.moveJournal;
+    return !!j && !!this.room?.game && journalEnd(j) === this.room.seq;
   }
 
   /** The connection closed without the host saying why (the host is gone). */
@@ -188,16 +222,26 @@ export class ClientSession {
       case 'welcome':
         this.seat = msg.seat;
         this.status = 'joined';
-        this.setRoom(msg.room, msg.now, null);
+        this.setRoom(msg.room, msg.now, null, msg.moves ?? null);
         // Send the unconfirmed move: for the first time, or again if the host never applied it.
         if (this.pending && this.conn.open && this.seat !== null) this.sendPending();
         break;
       case 'room':
-        this.setRoom(msg.room, msg.now, msg.re ?? null);
+        this.setRoom(msg.room, msg.now, msg.re ?? null, msg.moves ?? null);
+        break;
+      case 'journal':
+        this.onJournal(msg);
         break;
       case 'nope':
-        if (msg.id !== null && this.pending?.id === msg.id) this.finishPending({ ok: false, error: msg.error });
-        else if (msg.id !== null) this.finishCommand(msg.id, { ok: false, error: msg.error });
+        if (msg.id !== null && msg.id === this.journalAsk) {
+          // A host without journal support: keep a journal from this position on.
+          this.journalAsk = null;
+          this.startPartialJournal();
+        } else if (msg.id !== null && this.pending?.id === msg.id) {
+          const p = this.pending;
+          this.lastRefused = { action: p.action, error: msg.error, seq: this.room?.seq ?? 0 };
+          this.finishPending({ ok: false, error: msg.error });
+        } else if (msg.id !== null) this.finishCommand(msg.id, { ok: false, error: msg.error });
         break;
       case 'closed':
         // A deliberate end (full, kicked, replaced, ...): not a lost host.
@@ -209,7 +253,7 @@ export class ClientSession {
     this.emit();
   }
 
-  private setRoom(room: Room, hostNow: number, re: string | null): void {
+  private setRoom(room: Room, hostNow: number, re: string | null, moves: MovesBlock | null): void {
     this.room = room;
     this.offset = hostNow - this.clock();
     const p = this.pending;
@@ -217,9 +261,97 @@ export class ClientSession {
       this.finishPending({ ok: true });
     }
     if (re !== null) this.finishCommand(re, { ok: true });
+    this.syncJournal(moves);
     if (this.store && room.phase !== 'lobby' && room.game) {
       writeSave(this.store, room, { savedAt: this.clock(), app: this.app });
     }
+  }
+
+  // --- The move journal --------------------------------------------------------------
+
+  /** Follow the room: add the broadcast's moves, and ask the host for anything missing. */
+  private syncJournal(moves: MovesBlock | null): void {
+    const room = this.room;
+    const game = room?.game;
+    if (!room || !game || room.phase === 'lobby') { this.moveJournal = null; this.journalAsk = null; return; }
+    let j = this.moveJournal;
+    // A journal of another game, or one that went further than this room, is of no use.
+    if (j && (journalSeed(j) !== game.seed || journalEnd(j) > room.seq)) j = null;
+    if (!j && !this.storedJournalTried && this.store) {
+      // After a reload, this device's stored journal of the room usually only lacks the last moves.
+      this.storedJournalTried = true;
+      const stored = readJournal(this.store, room.code);
+      if (stored && journalSeed(stored) === game.seed && journalEnd(stored) <= room.seq) j = stored;
+    }
+    if (j && moves) extendJournal(j, moves.from, moves.list);
+    this.moveJournal = j;
+    if (j && journalEnd(j) === room.seq) {
+      this.moveJournal = capJournal(j, game, room.seq);
+      this.persistJournal();
+      return;
+    }
+    this.askForJournal();
+  }
+
+  private askForJournal(): void {
+    const game = this.room?.game;
+    if (!game || this.journalAsk !== null || this.status !== 'joined' || !this.conn.open) return;
+    const j = this.moveJournal;
+    const id = randomId();
+    this.journalAsk = id;
+    this.conn.send({ t: 'journal', seed: game.seed, have: j ? journalEnd(j) : null, id } satisfies ClientMsg);
+  }
+
+  private onJournal(msg: Extract<HostMsg, { t: 'journal' }>): void {
+    if (msg.re !== undefined && msg.re !== this.journalAsk) return; // an answer to an older request
+    this.journalAsk = null;
+    const room = this.room;
+    const game = room?.game;
+    if (!room || !game) return;
+    const before = this.moveJournal ? journalEnd(this.moveJournal) : -1;
+    if (msg.from !== undefined && msg.moves) {
+      if (msg.start) {
+        const theirs: JournalData = { start: msg.start, moves: [...msg.moves] };
+        const mine = this.moveJournal;
+        const mineOk = mine && journalEnd(mine) === room.seq;
+        if (!mineOk && journalSeed(theirs) === game.seed && journalEnd(theirs) === room.seq) this.moveJournal = theirs;
+      } else if (this.moveJournal && journalSeed(this.moveJournal) === game.seed) {
+        extendJournal(this.moveJournal, msg.from, msg.moves);
+      }
+    }
+    const j = this.moveJournal;
+    if (j && journalEnd(j) === room.seq) {
+      this.moveJournal = capJournal(j, game, room.seq);
+      this.persistJournal();
+    } else if (j && journalEnd(j) < room.seq && journalEnd(j) > before) {
+      // The game moved on while the answer was on its way: ask again for the rest.
+      this.askForJournal();
+    } else {
+      // The host does not have the missing part either: keep a journal from this position on.
+      this.startPartialJournal();
+    }
+  }
+
+  private startPartialJournal(): void {
+    const room = this.room;
+    if (!room?.game || room.phase === 'lobby') return;
+    this.moveJournal = partialJournal(room.game, room.seq);
+    this.persistJournal();
+  }
+
+  private persistJournal(): void {
+    const j = this.moveJournal;
+    const room = this.room;
+    if (!this.store || !j || !room) return;
+    const end = journalEnd(j);
+    if (this.persisted && this.persisted.j === j && this.persisted.end === end) return;
+    writeJournal(this.store, room.code, j);
+    this.persisted = { j, end };
+  }
+
+  /** The move number this device's journal starts from (0 for the whole game), or null. */
+  get journalStart(): number | null {
+    return this.moveJournal ? journalFrom(this.moveJournal) : null;
   }
 
   private onConnClose(): void {

@@ -20,11 +20,38 @@ import { NAME_MAX, cleanName } from '../session/room';
 import type { SaveEnvelope, SaveErrorKind } from '../session/save';
 import { SaveError, packLink, parseSaveFile, sameRules, saveFromHash, saveSummary, serializeSaveFile, toSave, unpackLink } from '../session/save';
 import type { SaveListing, SaveStore } from '../session/store';
-import { listSaves } from '../session/store';
+import { findJournals, journalKey, listSaves, readJournal } from '../session/store';
 import type { Scheduler } from '../session/scheduler';
 import { realScheduler } from '../session/scheduler';
+import type { JournalData } from '../session/journal';
+import { journalMatches, partialJournal } from '../session/journal';
+import type { RefusedMove } from '../session/clientSession';
+import type { ReplayCursor, ReplayFile } from '../session/replay';
+import { ReplayError, makeReplay, replayFileName, serializeReplay, verifyReplay } from '../session/replay';
+import type { ReportFile } from '../session/report';
+import { makeReport, openPlaytestText, reportFileName, serializeReport } from '../session/report';
 
-export type Screen = 'menu' | 'lobby' | 'game' | 'resume-setup';
+export type Screen = 'menu' | 'lobby' | 'game' | 'resume-setup' | 'replay';
+
+/** The replay viewer: a replay being checked, then ready to step through. */
+export interface ReplayScreen {
+  status: 'checking' | 'ready';
+  /** Share of the moves checked so far (0 to 1). */
+  progress: number;
+  /** What was opened: a replay file, a rules-problem report, a save file, or the game on this device. */
+  kind: 'replay' | 'report' | 'save' | 'this-game';
+  replay: ReplayFile;
+  cursor: ReplayCursor | null;
+  report: ReportFile | null;
+  /** For a report: the replay's last position is the reported position (null until checked). */
+  matchesReport: boolean | null;
+}
+
+/** The "Report a rules problem" dialog. */
+export interface ReportDialog {
+  /** The file name once it was made (the dialog then says what to do with it). */
+  saved: string | null;
+}
 export type TransportKind = 'internet' | 'local' | 'solo';
 
 export interface AppLocation {
@@ -103,6 +130,10 @@ export interface AppState {
   autoplay: boolean;
   moveError: string | null;
   installAvailable: boolean;
+  /** The replay viewer, when open (it shows over whatever else is going on). */
+  replay: ReplayScreen | null;
+  /** The rules-problem dialog, when open. */
+  report: ReportDialog | null;
 }
 
 export interface Banner {
@@ -276,6 +307,8 @@ export class AppController {
       autoplay: false,
       moveError: null,
       installAvailable: false,
+      replay: null,
+      report: null,
     };
     const fromHash = saveFromHash(deps.location.hash);
     if (fromHash !== null) {
@@ -303,6 +336,7 @@ export class AppController {
   }
 
   get screen(): Screen {
+    if (this.state.replay) return 'replay';
     if (this.state.resume) return 'resume-setup';
     const room = this.state.online?.client.room;
     if (!this.state.online || !room) return 'menu';
@@ -474,7 +508,9 @@ export class AppController {
     const solo = this.state.solo;
     this.detach();
     online?.leave(solo ? { endRoom: true } : {});
-    this.set({ online: null, solo: false, error: null, moveError: null, linkBox: null, saves: listSaves(this.deps.saves), focus: null });
+    this.set({
+      online: null, solo: false, error: null, moveError: null, linkBox: null, report: null, saves: listSaves(this.deps.saves), focus: null,
+    });
   }
 
   backToMenu(): void {
@@ -585,7 +621,19 @@ export class AppController {
       this.set({ error: 'There is no game to save yet.' });
       return null;
     }
-    return toSave(room, { savedAt: this.sched.now(), app: this.deps.appVersion }, { forLink });
+    // A save file carries the moves so far (for the replay tool); a save link never does.
+    return toSave(room, { savedAt: this.sched.now(), app: this.deps.appVersion }, { forLink, journal: forLink ? null : this.journal });
+  }
+
+  /** This device's journal of the current game, when it reaches the current move. */
+  get journal(): JournalData | null {
+    const client = this.client;
+    return client && client.journalCurrent ? client.journal : null;
+  }
+
+  /** The last move of this player the host refused in this session, with the reason. */
+  get lastRefused(): RefusedMove | null {
+    return this.client?.lastRefused ?? null;
   }
 
   /** The save link for the current game, or null. */
@@ -640,6 +688,130 @@ export class AppController {
     }
   }
 
+  // ── Replays ─────────────────────────────────────────────────────────────────────
+
+  /** A replay of the current game: from the start when this device has every move. */
+  private currentReplay(): ReplayFile | null {
+    const room = this.room;
+    if (!room || !room.game) {
+      this.set({ error: 'There is no game to replay yet.' });
+      return null;
+    }
+    const journal = this.journal ?? partialJournal(room.game, room.seq);
+    return makeReplay(room, journal, { savedAt: this.sched.now(), app: this.deps.appVersion });
+  }
+
+  /** The replay file of the current game (`.fsreplay`, JSON). */
+  replayFile(): { name: string; text: string } | null {
+    const replay = this.currentReplay();
+    if (!replay) return null;
+    return { name: replayFileName(replay, this.room?.game ?? null), text: serializeReplay(replay) };
+  }
+
+  /** "Save replay": hand the browser the replay file. */
+  downloadReplay(): void {
+    const file = this.replayFile();
+    if (!file) return;
+    this.handOver(file, 'Replay file', 'Downloading is not available here. Copy this text into a file ending in .fsreplay.');
+  }
+
+  private handOver(file: { name: string; text: string }, title: string, hint: string): void {
+    if (!this.deps.download) {
+      this.set({ linkBox: { title, text: file.text, hint } });
+      return;
+    }
+    this.deps.download(file.name, file.text);
+    this.notify(`Saved ${file.name}.`);
+  }
+
+  /** "Watch this game again": open the viewer on the game this device is in. */
+  watchThisGame(): Promise<void> {
+    const replay = this.currentReplay();
+    if (!replay) return Promise.resolve();
+    return this.openReplay({ kind: 'this-game', replay, report: null });
+  }
+
+  /** A replay, report or save file, pasted or read from a file, opened in the viewer. */
+  openReplayText(text: string, source: 'paste' | 'file'): Promise<void> {
+    let opened: ReturnType<typeof openPlaytestText>;
+    try {
+      opened = openPlaytestText(text);
+    } catch (e) {
+      const msg = e instanceof ReplayError ? e.message : 'Could not read this replay.';
+      const empty = e instanceof ReplayError && e.kind === 'empty' && source === 'file';
+      this.set({ error: empty ? 'That file is empty.' : msg });
+      return Promise.resolve();
+    }
+    return this.openReplay(opened);
+  }
+
+  /** A replay file over the size limit was chosen (refused before it is read). */
+  replayFileTooLarge(): void {
+    this.set({ error: 'This file is too large to be a Factory Spaghetti replay.' });
+  }
+
+  private async openReplay(opened: { kind: ReplayScreen['kind']; replay: ReplayFile; report: ReportFile | null }): Promise<void> {
+    const screen: ReplayScreen = {
+      status: 'checking', progress: 0, kind: opened.kind, replay: opened.replay, cursor: null, report: opened.report, matchesReport: null,
+    };
+    this.set({ replay: screen, error: null, report: null });
+    const cursor = await verifyReplay(opened.replay, {
+      // Let the page draw the progress between batches of moves (on the app's clock, so tests control it).
+      pause: () => new Promise<void>(resolve => { this.sched.setTimeout(resolve, 0); }),
+      onProgress: (done, total) => {
+        if (this.state.replay?.replay !== opened.replay) return;
+        this.set({ replay: { ...this.state.replay, progress: total > 0 ? done / total : 1 } });
+      },
+    });
+    const cur = this.state.replay;
+    if (cur?.replay !== opened.replay) return; // closed (or replaced) while checking
+    const reported = opened.report?.room.room.game ?? null;
+    const matchesReport = reported && !cursor.refused
+      ? JSON.stringify(cursor.stateAt(cursor.length)) === JSON.stringify(reported) : null;
+    this.set({ replay: { ...cur, status: 'ready', progress: 1, cursor, matchesReport } });
+  }
+
+  closeReplay(): void {
+    this.set({ replay: null, error: null, saves: listSaves(this.deps.saves) });
+  }
+
+  // ── Report a rules problem ─────────────────────────────────────────────────────
+
+  openReport(): void {
+    if (!this.room?.game) return;
+    this.set({ report: { saved: null } });
+  }
+
+  closeReport(): void {
+    this.set({ report: null });
+  }
+
+  /** The report file for the current game, with the player's note. */
+  reportFile(note: string): { name: string; text: string } | null {
+    const room = this.room;
+    if (!room || !room.game) return null;
+    const report = makeReport({
+      room, journal: this.journal, seat: this.mySeat, note, lastRefused: this.lastRefused,
+      now: this.sched.now(), app: this.deps.appVersion,
+    });
+    return { name: reportFileName(report), text: serializeReport(report) };
+  }
+
+  /** Make the report file and hand it to the browser to save; the player sends it on. */
+  saveReport(note: string): void {
+    const file = this.reportFile(note);
+    if (!file) { this.set({ report: null, error: 'There is no game to report on.' }); return; }
+    if (!this.deps.download) {
+      this.set({
+        report: null,
+        linkBox: { title: 'Rules problem report', text: file.text, hint: 'Downloading is not available here. Copy this text into a file ending in .fsreport and send it to the designer.' },
+      });
+      return;
+    }
+    this.deps.download(file.name, file.text);
+    this.set({ report: { saved: file.name } });
+  }
+
   // ── Saved games and resuming ───────────────────────────────────────────────────
 
   refreshSaves(): void {
@@ -647,7 +819,11 @@ export class AppController {
   }
 
   deleteSave(key: string): void {
+    const text = this.deps.saves.get(key);
     this.deps.saves.remove(key);
+    if (text !== null) {
+      try { this.deps.saves.remove(journalKey(parseSaveFile(text).room.code)); } catch { /* an unreadable save has no journal to find */ }
+    }
     this.refreshSaves();
   }
 
@@ -656,10 +832,31 @@ export class AppController {
     const text = this.deps.saves.get(key);
     if (text === null) { this.refreshSaves(); return; }
     try {
-      this.openResume(parseSaveFile(text), 'device');
+      const save = parseSaveFile(text);
+      this.openResume(this.withJournal(save, readJournal(this.deps.saves, save.room.code)), 'device');
     } catch (e) {
       this.set({ error: saveErrorMessage(e, 'device') });
     }
+  }
+
+  /**
+   * The save with the moves that lead to it, for the replay tool: the save file's own journal,
+   * or one kept on this device (a save link carries none). Each candidate is replayed to the
+   * saved position first; a journal that does not lead there is not used.
+   */
+  private withJournal(save: SaveEnvelope, ...candidates: (JournalData | null | undefined)[]): SaveEnvelope {
+    const { journal: own, ...rest } = save;
+    const game = save.room.game;
+    if (!game) return rest;
+    const fit = (list: (JournalData | null | undefined)[]): JournalData | null => {
+      for (const j of list) {
+        const fits = j ? journalMatches(j, game, save.room.seq) : null;
+        if (fits) return fits;
+      }
+      return null;
+    };
+    const journal = fit([own, ...candidates]) ?? fit(findJournals(this.deps.saves, game.seed));
+    return journal ? { ...rest, journal } : rest;
   }
 
   /** A pasted link (whole address, `#save=…` part or bare text), or a save file's text. */
@@ -682,7 +879,8 @@ export class AppController {
     }
   }
 
-  private openResume(save: SaveEnvelope, source: ResumeSetup['source']): void {
+  private openResume(loaded: SaveEnvelope, source: ResumeSetup['source']): void {
+    const save = source === 'device' ? loaded : this.withJournal(loaded);
     const seats = save.room.seats.filter(s => s.kind === 'human').map(s => ({ index: s.index, name: s.name, color: s.color }));
     const mine = cleanName(this.state.name).toLowerCase();
     const match = seats.find(s => s.name.trim().toLowerCase() === mine && mine.length > 0);
@@ -730,7 +928,8 @@ export class AppController {
     online.leave();
     this.set({ online: null });
     if (room.phase === 'lobby' || !room.game) { await this.host(); return; }
-    const save = toSave(room, { savedAt: this.sched.now(), app: this.deps.appVersion });
+    const journal = online.client.journalCurrent ? online.client.journal : null;
+    const save = toSave(room, { savedAt: this.sched.now(), app: this.deps.appVersion }, { journal });
     await this.hostSave(save, seat);
   }
 }

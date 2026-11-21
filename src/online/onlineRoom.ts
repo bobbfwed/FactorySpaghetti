@@ -173,7 +173,7 @@ export class OnlineRoom {
         code, hostName: s.name, hostToken: s.token, scheduler: s.sched,
         ...(s.appVersion !== undefined ? { appVersion: s.appVersion } : {}),
         ...(s.randomSeed ? { randomSeed: s.randomSeed } : {}),
-        ...(opts.resume ? { room: opts.resume.room, mode: 'resume' as const } : {}),
+        ...(opts.resume ? { room: opts.resume.room, mode: 'resume' as const, journal: opts.resume.journal ?? null } : {}),
         ...(opts.resume && opts.seat !== undefined ? { hostSeat: opts.seat } : {}),
       };
       session = new HostSession(hostOpts);
@@ -363,6 +363,8 @@ export class OnlineRoom {
       if (!room || me === null) throw new Error('no room to take over');
       session = promoteToHost(room, me, {
         hostToken: this.s.token, scheduler: this.s.sched,
+        // The moves so far, which every client keeps, so the replay survives the hand-over.
+        journal: this.client.journal,
         ...(this.s.appVersion !== undefined ? { appVersion: this.s.appVersion } : {}),
         ...(this.s.randomSeed ? { randomSeed: this.s.randomSeed } : {}),
       });

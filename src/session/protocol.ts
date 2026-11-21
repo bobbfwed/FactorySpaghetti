@@ -4,7 +4,11 @@
 import type { Action } from '../engine/actions';
 import type { Room, RoomSettings, SeatColor } from './room';
 import { SEAT_COLORS } from './room';
+import type { ReplayStart } from './journal';
+import { parseMoves, parseStart } from './journal';
 
+// The move journal (N11) only added optional fields and one request/answer pair, which older
+// builds ignore or refuse with BAD_MESSAGE, so the protocol version did not change.
 export const PROTOCOL = 1;
 
 /** Error codes the host uses for refusals it makes itself (the engine adds its own codes). */
@@ -47,6 +51,9 @@ export type ClientMsg =
   | { t: 'ready'; ready: boolean; id?: string }
   | { t: 'color'; color: SeatColor; id?: string }
   | { t: 'sync'; id?: string }
+  // Ask for the moves this client's journal is missing. `have`: the move number its journal of
+  // the game with this `seed` reaches, or null when it has none. Answered with `journal`.
+  | { t: 'journal'; seed: number; have: number | null; id?: string }
   // host only
   | { t: 'cfg'; settings: Partial<RoomSettings>; id?: string }
   | { t: 'setSeat'; index: number; kind: 'bot' | 'open'; botId?: string; id?: string }
@@ -61,11 +68,17 @@ export type ClientMsg =
 export type ClosedWhy = 'full' | 'version' | 'kicked' | 'ended' | 'replaced' | 'invalid';
 export const CLOSED_WHY: readonly ClosedWhy[] = ['full', 'version', 'kicked', 'ended', 'replaced', 'invalid'];
 
+/** Moves applied since the previous broadcast: list[i] is move number from + i + 1. */
+export interface MovesBlock { from: number; list: Action[] }
+
 export type HostMsg =
-  | { t: 'welcome'; v: number; seat: number | null; room: Room; now: number }
-  | { t: 'room'; room: Room; now: number; re?: string }
+  | { t: 'welcome'; v: number; seat: number | null; room: Room; now: number; moves?: MovesBlock }
+  | { t: 'room'; room: Room; now: number; re?: string; moves?: MovesBlock }
   | { t: 'nope'; id: string | null; error: WireError }
-  | { t: 'closed'; why: ClosedWhy };
+  | { t: 'closed'; why: ClosedWhy }
+  // The answer to `journal`. With `start`: the host's whole journal (the client's could not be
+  // continued). Without: the moves after move number `from`. With neither: the host has none.
+  | { t: 'journal'; re?: string; from?: number; moves?: Action[]; start?: ReplayStart };
 
 // ── Parsing (messages arrive from other browsers, so check their shape) ────────
 
@@ -94,6 +107,8 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
       return SEAT_COLORS.includes(raw.color as SeatColor) ? (raw as ClientMsg) : null;
     case 'sync': case 'start': case 'resume':
       return raw as ClientMsg;
+    case 'journal':
+      return isInt(raw.seed) && (raw.have === null || isInt(raw.have)) ? (raw as ClientMsg) : null;
     case 'cfg':
       return isObj(raw.settings) ? (raw as ClientMsg) : null;
     case 'setSeat':
@@ -111,14 +126,33 @@ export function parseClientMsg(raw: unknown): ClientMsg | null {
   }
 }
 
+/** A room message, with its moves block only when that block is well formed (the room counts more). */
+function withMoves(raw: Record<string, unknown>): HostMsg {
+  if (raw.moves === undefined) return raw as HostMsg;
+  const { moves, ...rest } = raw;
+  const block = isObj(moves) && isInt(moves.from) && moves.from >= 0 ? parseMoves(moves.list) : null;
+  return (block && isObj(moves) ? { ...rest, moves: { from: moves.from, list: block } } : rest) as HostMsg;
+}
+
 export function parseHostMsg(raw: unknown): HostMsg | null {
   if (!isObj(raw) || typeof raw.t !== 'string') return null;
   switch (raw.t) {
     case 'welcome':
       return isInt(raw.v) && (raw.seat === null || isInt(raw.seat)) && isObj(raw.room) && typeof raw.now === 'number'
-        ? (raw as HostMsg) : null;
+        ? withMoves(raw) : null;
     case 'room':
-      return isObj(raw.room) && typeof raw.now === 'number' ? (raw as HostMsg) : null;
+      return isObj(raw.room) && typeof raw.now === 'number' ? withMoves(raw) : null;
+    case 'journal': {
+      if (!optId(raw.re)) return null;
+      if (raw.from === undefined) return { t: 'journal', ...(typeof raw.re === 'string' ? { re: raw.re } : {}) };
+      const moves = parseMoves(raw.moves);
+      const start = raw.start === undefined ? undefined : parseStart(raw.start);
+      if (!isInt(raw.from) || raw.from < 0 || !moves || start === null) return null;
+      return {
+        t: 'journal', from: raw.from, moves,
+        ...(start ? { start } : {}), ...(typeof raw.re === 'string' ? { re: raw.re } : {}),
+      };
+    }
     case 'nope':
       return (raw.id === null || typeof raw.id === 'string') && isObj(raw.error)
         && typeof raw.error.code === 'string' && typeof raw.error.message === 'string'

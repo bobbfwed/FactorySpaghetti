@@ -3,6 +3,7 @@
 
 import type { AppController } from '../app/controller';
 import { savedWhen } from '../app/controller';
+import { MAX_REPLAY_BYTES } from '../session/replay';
 import { h } from './dom';
 import { icon, mark } from './icons';
 
@@ -94,6 +95,36 @@ export function menuView(ctrl: AppController, version: string): View {
     },
   }, icon('file'), 'Load a save (link or file)');
 
+  // ── Watch a replay (a replay, a rules-problem report, or a save file with its moves) ──
+  const replayPaste = h('textarea', {
+    class: 'paste', placeholder: 'Paste the text of a replay file here',
+    attrs: { rows: '3', 'aria-label': 'Replay text', spellcheck: 'false', autocomplete: 'off' },
+  });
+  const replayFileInput = h('input', {
+    type: 'file', class: 'file-input',
+    attrs: { accept: '.fsreplay,.fsreport,.fsgame,application/json,text/plain', 'aria-label': 'Replay file' },
+    onchange: () => {
+      const file = replayFileInput.files?.[0];
+      if (!file) return;
+      if (file.size > MAX_REPLAY_BYTES) { ctrl.replayFileTooLarge(); replayFileInput.value = ''; return; }
+      void file.text().then(text => ctrl.openReplayText(text, 'file')).finally(() => { replayFileInput.value = ''; });
+    },
+  });
+  const replayPanel = h('div', { class: 'load-panel tray', hidden: true },
+    h('p', { class: 'hint first', text: 'Open a replay (.fsreplay), a rules-problem report (.fsreport) or a save file (.fsgame) to step through the game move by move.' }),
+    replayPaste,
+    h('div', { class: 'row' },
+      h('button', { class: 'btn btn-gold', onclick: () => { void ctrl.openReplayText(replayPaste.value, 'paste'); } }, 'Open pasted replay'),
+      h('label', { class: 'btn btn-dark file-btn' }, icon('file'), 'Choose a file', replayFileInput)));
+  const replayBtn = h('button', {
+    class: 'btn btn-quiet big load-btn', attrs: { 'aria-expanded': 'false', 'data-replay': '1' },
+    onclick: () => {
+      replayPanel.hidden = !replayPanel.hidden;
+      replayBtn.setAttribute('aria-expanded', String(!replayPanel.hidden));
+      if (!replayPanel.hidden) replayPaste.focus();
+    },
+  }, icon('replay'), 'Watch a replay');
+
   const errorBox = h('div', { class: 'error-box', attrs: { role: 'alert' } });
   const install = h('div', { class: 'install-slot' });
 
@@ -110,7 +141,9 @@ export function menuView(ctrl: AppController, version: string): View {
       soloBtn,
       savesBox,
       loadBtn,
-      loadPanel),
+      loadPanel,
+      replayBtn,
+      replayPanel),
     h('div', { class: 'foot' },
       install,
       h('div', { class: 'ver' },

@@ -23,6 +23,10 @@ import { cryptoUint32, realScheduler } from './scheduler';
 import type { SaveStore } from './store';
 import { writeSave } from './store';
 import { memoryPair } from './memoryConn';
+import type { JournalData } from './journal';
+import {
+  capJournal, copyJournal, fullJournal, journalEnd, journalFrom, journalSeed, movesAfter, partialJournal,
+} from './journal';
 
 export interface HostOptions {
   code: string;
@@ -43,6 +47,12 @@ export interface HostOptions {
   /** uint32 seed source for a new game; injected so tests are deterministic. */
   randomSeed?: () => number;
   appVersion?: string;
+  /**
+   * Resume and take-over: the moves of the game so far (the new host's own copy, or the one in
+   * a save file). Used when it is of this game and reaches room.seq; otherwise the host starts
+   * a partial journal from the room's position.
+   */
+  journal?: JournalData | null;
 }
 
 /** Thrown when a HostSession cannot be built from its options. */
@@ -113,6 +123,10 @@ export class HostSession {
   private savedRoom: Room | null = null;
   private waitingSeq = 0;
   private disposed = false;
+  /** Every move applied in this game (see journal.ts); null outside a game. */
+  private moveJournal: JournalData | null = null;
+  /** The move number the last broadcast reached (its moves block ends there). */
+  private broadcastSeq: number | null = null;
 
   constructor(opts: HostOptions) {
     this.hostToken = opts.hostToken;
@@ -172,7 +186,22 @@ export class HostSession {
       this.note(null, `${seats[hostSeat]?.name ?? 'A player'} took over as host.`);
       for (const s of seats) if (s.kind === 'human' && !s.connected) this.armAway(s.index);
     }
+    this.moveJournal = this.initialJournal(opts.journal ?? null);
+    this.broadcastSeq = this.moveJournal ? journalEnd(this.moveJournal) : null;
     this.afterChange();
+  }
+
+  /** The given journal when it is of this game and reaches room.seq; else a partial one from here. */
+  private initialJournal(given: JournalData | null): JournalData | null {
+    const g = this.room.game;
+    if (!g) return null;
+    if (given && journalSeed(given) === g.seed && journalEnd(given) === this.room.seq) return copyJournal(given);
+    return partialJournal(g, this.room.seq);
+  }
+
+  /** A copy of the host's journal (for tests and for a host that is also a player). */
+  get journal(): JournalData | null {
+    return this.moveJournal ? copyJournal(this.moveJournal) : null;
   }
 
   // --- Public surface ------------------------------------------------------------
@@ -221,10 +250,14 @@ export class HostSession {
   /** Run `fn`; an unexpected exception restores the room, is logged, and is answered with INTERNAL. */
   private guard(fn: () => void, reply?: Reply): void {
     const snapshot = this.room;
+    const journal = this.moveJournal;
+    const journalLength = journal?.moves.length ?? 0;
     try {
       fn();
     } catch (e) {
       this.room = snapshot;
+      this.moveJournal = journal;
+      if (journal) journal.moves.length = journalLength;
       this.burst = false;
       this.welcomes.clear();
       // eslint-disable-next-line no-console
@@ -257,6 +290,7 @@ export class HostSession {
 
     if (msg.t === 'act') { this.onAct(conn, info, msg); return; }
     if (msg.t === 'sync') { this.sendRoom(conn, id); return; }
+    if (msg.t === 'journal') { this.sendJournal(conn, msg, id); return; }
 
     const refusal = this.command(conn, info, msg);
     if (refusal) this.nope(conn, id, refusal);
@@ -410,6 +444,12 @@ export class HostSession {
       log: appendLog(r.log, log),
       lastEvents: this.mergeEvents(events),
     };
+    // The journal records the move exactly as applied, dice included, so it replays without chance.
+    if (!this.moveJournal || journalEnd(this.moveJournal) !== r.seq || journalSeed(this.moveJournal) !== game.seed) {
+      this.moveJournal = partialJournal(game, r.seq);
+    }
+    this.moveJournal.moves.push(action);
+    this.moveJournal = capJournal(this.moveJournal, after, seq);
     this.burst = true;
     if (source === 'human') this.clearTimer('roundEnd'); // any move by the player restarts their idle clock
     return { ok: true };
@@ -423,7 +463,7 @@ export class HostSession {
   // --- Commands --------------------------------------------------------------------
 
   /** Handle a non-move command. Returns a refusal, or null after applying it. */
-  private command(conn: Conn, info: ConnInfo, msg: Exclude<ClientMsg, { t: 'hello' | 'act' | 'sync' }>): WireError | null {
+  private command(conn: Conn, info: ConnInfo, msg: Exclude<ClientMsg, { t: 'hello' | 'act' | 'sync' | 'journal' }>): WireError | null {
     const r = this.room;
     const done = (): null => {
       this.afterChange({ conn, id: msg.id ?? null });
@@ -514,6 +554,7 @@ export class HostSession {
           ...r, phase: 'playing', game, seq: 0, diceRng: diceRngFromSeed(seed),
           recent: [], lastEvents: [], log: [{ seq: 0, seat: null, text: `The game begins: ${names}.` }],
         };
+        this.moveJournal = fullJournal(seed, r.settings.playerCount);
         return done();
       }
 
@@ -898,21 +939,44 @@ export class HostSession {
 
   private broadcast(re?: Reply): void {
     const now = this.sched.now();
+    const moves = this.movesSinceBroadcast();
     for (const [conn, info] of this.conns) {
       if (info.token === null) continue;
       if (this.welcomes.has(conn)) {
-        this.send(conn, { t: 'welcome', v: PROTOCOL, seat: info.seat, room: this.room, now });
+        this.send(conn, { t: 'welcome', v: PROTOCOL, seat: info.seat, room: this.room, now, ...moves });
       } else {
         const id = re && re.conn === conn ? re.id : null;
-        this.send(conn, id !== null ? { t: 'room', room: this.room, now, re: id } : { t: 'room', room: this.room, now });
+        this.send(conn, id !== null ? { t: 'room', room: this.room, now, re: id, ...moves } : { t: 'room', room: this.room, now, ...moves });
       }
     }
     this.welcomes.clear();
+    this.broadcastSeq = this.moveJournal ? journalEnd(this.moveJournal) : null;
   }
 
   private sendRoom(conn: Conn, re: string | null): void {
     const now = this.sched.now();
     this.send(conn, re !== null ? { t: 'room', room: this.room, now, re } : { t: 'room', room: this.room, now });
+  }
+
+  /** The moves a client's journal lacks; the whole journal when its own cannot be continued. */
+  private sendJournal(conn: Conn, msg: Extract<ClientMsg, { t: 'journal' }>, re: string | null): void {
+    const j = this.moveJournal;
+    const reId = re !== null ? { re } : {};
+    if (!j || !this.room.game) { this.send(conn, { t: 'journal', ...reId }); return; }
+    const have = msg.have;
+    if (have !== null && msg.seed === journalSeed(j) && have >= journalFrom(j) && have <= journalEnd(j)) {
+      this.send(conn, { t: 'journal', ...reId, from: have, moves: movesAfter(j, have) });
+      return;
+    }
+    this.send(conn, { t: 'journal', ...reId, from: journalFrom(j), moves: [...j.moves], start: j.start });
+  }
+
+  /** The moves applied since the last broadcast, when the journal still holds them. */
+  private movesSinceBroadcast(): { moves?: { from: number; list: Action[] } } {
+    const j = this.moveJournal;
+    const from = this.broadcastSeq;
+    if (!j || from === null || from < journalFrom(j) || from >= journalEnd(j)) return {};
+    return { moves: { from, list: movesAfter(j, from) } };
   }
 
   private send(conn: Conn, msg: HostMsg): void {

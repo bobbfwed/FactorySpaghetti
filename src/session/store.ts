@@ -1,7 +1,9 @@
 // Where automatic saves live on a device. Saves are stored under `fs.save.<code>`.
 
 import type { Room } from './room';
-import { parseSaveFile, saveSummary, serializeSaveFile, toSave } from './save';
+import { MAX_SAVE_BYTES, parseSaveFile, saveSummary, serializeSaveFile, toSave } from './save';
+import type { JournalData } from './journal';
+import { journalSeed, parseJournal } from './journal';
 
 export interface SaveStore {
   get(key: string): string | null;
@@ -71,6 +73,54 @@ export function writeSave(store: SaveStore, room: Room, meta: { savedAt: number;
   } catch {
     // A full or broken store must never break the game.
   }
+}
+
+// --- The move journal, kept beside the automatic save --------------------------------
+// It lives under its own key (`fs.journal.<code>`) so listing the saved games stays quick.
+
+export const JOURNAL_KEY_PREFIX = 'fs.journal.';
+
+export function journalKey(code: string): string {
+  return JOURNAL_KEY_PREFIX + code;
+}
+
+/** The journal key that belongs to a save key. */
+export function journalKeyForSave(saveKeyText: string): string {
+  return JOURNAL_KEY_PREFIX + saveKeyText.slice(SAVE_KEY_PREFIX.length);
+}
+
+/** Store this device's journal for a room. A full store loses the journal, never the game. */
+export function writeJournal(store: SaveStore, code: string, journal: JournalData): void {
+  try {
+    store.set(journalKey(code), JSON.stringify(journal));
+  } catch {
+    // ignore: the journal is a playtest aid
+  }
+}
+
+/** This device's journal for a room, checked; null when there is none or it is unreadable. */
+export function readJournal(store: SaveStore, code: string): JournalData | null {
+  return parseStoredJournal(store.get(journalKey(code)));
+}
+
+function parseStoredJournal(text: string | null): JournalData | null {
+  if (text === null || text.length > MAX_SAVE_BYTES * 2) return null;
+  try {
+    return parseJournal(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+/** Every stored journal of the game with this seed (a save link carries no journal; this device may have one). */
+export function findJournals(store: SaveStore, seed: number): JournalData[] {
+  const out: JournalData[] = [];
+  for (const key of store.keys()) {
+    if (!key.startsWith(JOURNAL_KEY_PREFIX)) continue;
+    const j = parseStoredJournal(store.get(key));
+    if (j && journalSeed(j) === seed) out.push(j);
+  }
+  return out;
 }
 
 export type SaveListing = ReturnType<typeof saveSummary> & { key: string };

@@ -17,6 +17,7 @@ import type { IconName } from './icons';
 import { COLORS, icon } from './icons';
 import { connectionBanner, messageStrip } from './common';
 import type { View } from './menuView';
+import { playtestItems } from './playtestMenu';
 
 const LOG_LINES = 15;
 
@@ -51,6 +52,7 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     actionButton([icon('link'), 'Copy save link'], 'menu-item', () => ctrl.copySaveLink()),
     h('button', { class: 'menu-item', onclick: () => ctrl.downloadSave() }, icon('download'), 'Download save file (.fsgame)'),
     ctrl.canShare ? actionButton([icon('share'), 'Share save…'], 'menu-item', () => ctrl.shareSave()) : null,
+    ...playtestItems(ctrl, () => { ui.menuOpen = false; redraw(); }, 'menu-item'),
     tableFailure() === null
       ? h('button', { class: 'menu-item', onclick: () => setPreferredView('table') }, icon('table'), 'Switch to the table view')
       : null,
@@ -102,7 +104,9 @@ function gameOverPanel(ctrl: AppController, room: Room): HTMLElement {
       h('span', { class: 'sw', style: `background:${COLORS[room.seats[o.seat]!.color]}` }), h('b', { text: room.seats[o.seat]!.name }),
       h('span', { class: 'muted', text: ` · ${o.tesseracts} Tesseract${o.tesseracts === 1 ? '' : 's'} · ${o.points} points` })))),
     h('div', { class: 'row' },
-      h('button', { class: 'btn btn-gold btn-lg', onclick: () => ctrl.backToMenu() }, 'Back to menu')));
+      h('button', { class: 'btn btn-gold btn-lg', onclick: () => ctrl.backToMenu() }, 'Back to menu'),
+      h('button', { class: 'btn btn-dark btn-lg', onclick: () => { void ctrl.watchThisGame(); } }, icon('replay'), 'Watch this game again'),
+      h('button', { class: 'btn btn-quiet btn-lg', onclick: () => ctrl.downloadReplay() }, icon('download'), 'Save replay')));
 }
 
 function promptsBlock(ctrl: AppController, room: Room): HTMLElement | null {

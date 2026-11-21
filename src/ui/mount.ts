@@ -2,7 +2,7 @@
 // change (at most once per frame), keeps countdowns ticking, and shows the notice toast and
 // the "copy this by hand" link box.
 
-import type { AppController, LinkBox, Screen } from '../app/controller';
+import type { AppController, LinkBox, ReportDialog, Screen } from '../app/controller';
 import { h } from './dom';
 import { icon } from './icons';
 import { gameView } from './gameView';
@@ -11,6 +11,8 @@ import { lobbyView } from './lobbyView';
 import type { View } from './menuView';
 import { menuView } from './menuView';
 import { resumeView } from './resumeView';
+import { replayView } from './replayView';
+import { reportDialogView } from './reportDialog';
 import { onViewChange, preferredView } from './viewPref';
 
 type ViewKey = Exclude<Screen, 'game'> | 'game-table' | 'game-text';
@@ -25,6 +27,7 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
   let view: View | null = null;
   let frame = 0;
   let lastBox: LinkBox | null = null;
+  let lastReport: ReportDialog | null = null;
 
   const keyFor = (s: Screen): ViewKey => (s === 'game' ? (preferredView() === 'table' ? 'game-table' : 'game-text') : s);
 
@@ -39,7 +42,8 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
         : next === 'lobby' ? lobbyView(ctrl)
           : next === 'game-table' ? tableGameView(ctrl)
             : next === 'game-text' ? gameView(ctrl)
-              : resumeView(ctrl);
+              : next === 'replay' ? replayView(ctrl)
+                : resumeView(ctrl);
       view.update();
       screenHost.replaceChildren(view.el);
       document.body.dataset.screen = screen;
@@ -51,9 +55,14 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
     const notice = ctrl.state.notice;
     toast.hidden = !notice;
     toast.textContent = notice ?? '';
-    if (ctrl.state.linkBox !== lastBox) {
+    if (ctrl.state.linkBox !== lastBox || ctrl.state.report !== lastReport) {
       lastBox = ctrl.state.linkBox;
-      overlay.replaceChildren(...(lastBox ? [linkBoxView(ctrl, lastBox)] : []));
+      lastReport = ctrl.state.report;
+      // The rules-problem dialog, and over it the copy-by-hand box (which can come from it).
+      overlay.replaceChildren(
+        ...(lastReport ? [reportDialogView(ctrl, lastReport)] : []),
+        ...(lastBox ? [linkBoxView(ctrl, lastBox)] : []),
+      );
     }
   };
 

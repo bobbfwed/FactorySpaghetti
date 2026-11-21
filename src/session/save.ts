@@ -2,8 +2,11 @@
 // link (`#save=v1.<text>`), a file, or an automatic save on each player's device.
 
 import * as config from '../engine/config';
+import type { GameState } from '../engine/state';
 import type { Room } from './room';
 import { SEAT_COLORS } from './room';
+import type { JournalData } from './journal';
+import { parseJournal } from './journal';
 
 export const SAVE_FORMAT = 'factory-spaghetti-save';
 
@@ -14,6 +17,11 @@ export interface SaveEnvelope {
   app: string;
   rules: string;
   room: Room;
+  /**
+   * The moves of this game so far (for the replay tool). Only in save files, never in save links;
+   * older saves have none. A damaged journal is dropped on loading; the save itself still loads.
+   */
+  journal?: JournalData;
 }
 
 export type SaveErrorKind = 'truncated' | 'corrupt' | 'unsupported-version' | 'invalid';
@@ -44,7 +52,9 @@ export const MAX_SAVE_BYTES = 2 * 1024 * 1024;
 // --- Making a save -------------------------------------------------------------
 
 /** Strip what must not travel (presence, timers, move ids) and wrap the room. */
-export function toSave(room: Room, meta: { savedAt: number; app: string }, opts: { forLink?: boolean } = {}): SaveEnvelope {
+export function toSave(
+  room: Room, meta: { savedAt: number; app: string }, opts: { forLink?: boolean; journal?: JournalData | null } = {},
+): SaveEnvelope {
   const clean: Room = {
     ...room,
     seats: room.seats.map(s => ({
@@ -59,7 +69,10 @@ export function toSave(room: Room, meta: { savedAt: number; app: string }, opts:
     roundEndDeadline: null,
     log: opts.forLink ? [] : room.log,
   };
-  return { format: SAVE_FORMAT, v: 1, savedAt: meta.savedAt, app: meta.app, rules: rulesFingerprint(), room: clean };
+  const save: SaveEnvelope = { format: SAVE_FORMAT, v: 1, savedAt: meta.savedAt, app: meta.app, rules: rulesFingerprint(), room: clean };
+  // The journal grows with the game, so it never goes into a link (links must stay short).
+  if (!opts.forLink && opts.journal) save.journal = opts.journal;
+  return save;
 }
 
 // --- Rules fingerprint -----------------------------------------------------------
@@ -367,7 +380,33 @@ function validateUnsafe(x: unknown): SaveEnvelope {
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
     checkGame(room.game, pc);
   }
-  return x as unknown as SaveEnvelope;
+  const save = x as unknown as SaveEnvelope;
+  if (x.journal === undefined) return save;
+  // A journal that is damaged, or does not belong to this game, is dropped: the save still loads.
+  const { journal: rawJournal, ...rest } = save;
+  const journal = room.game ? parseJournal(rawJournal) : null;
+  const game = room.game as GameState | null;
+  return journal && game && journalFits(journal, game, room.seq as number) ? { ...rest, journal } : rest;
+}
+
+/** The journal is of this game and reaches exactly this move (a cheap check; see journalMatches for the full one). */
+function journalFits(j: JournalData, game: GameState, seq: number): boolean {
+  const from = 'seed' in j.start ? 0 : j.start.seq;
+  const seed = 'seed' in j.start ? j.start.seed : j.start.state.seed;
+  return seed === game.seed && from + j.moves.length === seq;
+}
+
+/** True when `x` has the shape of an engine state (as checked for saves). */
+export function isGameState(x: unknown): x is GameState {
+  try {
+    if (!isObj(x)) return false;
+    const pc = x.playerCount;
+    if (pc !== 2 && pc !== 3 && pc !== 4) return false;
+    checkGame(x, pc);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const isPiece = (p: unknown): boolean => isObj(p) && isStr(p.id, MAX_ID) && PIECE_TYPES.has(p.type as string);

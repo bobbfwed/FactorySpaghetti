@@ -11,7 +11,7 @@ export { CLOSED_WHY, PROTOCOL } from './protocol';
 export { chooseSuccessor } from './seating';
 export type { HostOptions } from './hostSession';
 export { HostSession, SessionError } from './hostSession';
-export type { ActResult, ClientOptions, PendingMove } from './clientSession';
+export type { ActResult, ClientOptions, PendingMove, RefusedMove } from './clientSession';
 export { ClientSession, promoteToHost } from './clientSession';
 export type { Scheduler } from './scheduler';
 export { realScheduler, randomId } from './scheduler';
@@ -24,4 +24,10 @@ export {
   serializeSaveFile, toSave, unpackLink, validateSave,
 } from './save';
 export type { SaveListing, SaveStore } from './store';
-export { listSaves, localStorageStore, memoryStore, saveKey, writeSave } from './store';
+export { listSaves, localStorageStore, memoryStore, readJournal, saveKey, writeJournal, writeSave } from './store';
+export type { JournalData, ReplayStart } from './journal';
+export { MAX_JOURNAL_MOVES, journalEnd, journalFrom, journalMatches, parseJournal, replayTo } from './journal';
+export type { RefusedReplayMove, ReplayFile, ReplayPlayer } from './replay';
+export { MAX_REPLAY_BYTES, ReplayCursor, ReplayError, makeReplay, serializeReplay, validateReplay, verifyReplay } from './replay';
+export type { OpenedFile, ReportFile } from './report';
+export { makeReport, openPlaytestText, serializeReport } from './report';
