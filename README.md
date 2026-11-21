@@ -2,7 +2,11 @@
 
 An online, isometric 3D version of the board game **Factory Spaghetti** (2–4 players). The aim is a game that looks and plays like the physical, 3D-printed game: the same pieces on the table and the same steps in a turn, with only legal moves on offer.
 
-**Status: playable, in development (branch `online-dev`).** A full game can be played against bots or online with a room code on the 3D table, with animation and sound, saved as a link or a file, resumed on another device, and replayed move by move afterwards. It installs from the browser and plays solo offline. It has not yet been tested on real phones or between real networks: [docs/TESTING.md](docs/TESTING.md) is the checklist for that. The plan is in [docs/PLAN.md](docs/PLAN.md).
+**Play it now: https://bobbfwed.github.io/FactorySpaghetti/**
+
+The version there to play is **0.1.0**, an early playtest build. The site is rebuilt from the `main` branch on every push, and the start menu shows the exact build (for example `Version 0.1.0+e285cf6`), so you can always tell which one you have.
+
+**Status: playable, in development.** A full game can be played against bots or online with a room code on the 3D table, with animation and sound, saved as a link or a file, resumed on another device, and replayed move by move afterwards. It installs from the browser and plays solo offline. It has not yet been tested on real phones or between real networks: [docs/TESTING.md](docs/TESTING.md) is the checklist for that. The plan is in [docs/PLAN.md](docs/PLAN.md).
 
 ## The game today
 
@@ -106,8 +110,8 @@ npm run lint
 
 ## Branches
 
-- `main` — the online version. GitHub Pages will serve from here. At present it holds the plan, documents and mock-ups.
-- `online-dev` — the build work described above, to be merged into `main` when approved.
+- `main` — the online version. GitHub Pages serves the game from here at https://bobbfwed.github.io/FactorySpaghetti/.
+- `online-dev` — where new work is done before it is merged into `main`.
 - `vite-prototype` — the frozen 2D prototype with LAN play.
 
 To try two players on one computer, open the game in two tabs with `?t=local` added to the address, host in one and join with the code in the other.
