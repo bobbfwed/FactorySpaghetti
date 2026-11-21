@@ -1,78 +1,107 @@
-// App entry point. For now it shows a placeholder page and sets up the install shell
-// (service worker + "Update ready" notice). Later milestones wire the menu, lobby and table here.
+// App entry point: builds the real dependencies (transports, storage, clipboard, sharing,
+// downloads, the page address), creates the controller, mounts the views, and sets up the
+// install shell (service worker, "Update ready" notice, install hint).
 
 import './style.css';
+import '../ui/app.css';
+import type { Transport } from '../net/conn';
+import { createMemoryHub } from '../net/memory';
+import { localTransport } from '../net/local';
+import { peerTransport } from '../net/peer';
+import { saveFromHash } from '../session/save';
+import type { SaveStore } from '../session/store';
+import { localStorageStore, memoryStore } from '../session/store';
+import type { AppDeps, ShareData, TransportKind } from './controller';
+import { AppController, TOKEN_KEY } from './controller';
+import { registerServiceWorker, watchInstall } from './pwa';
+import { mountApp } from '../ui/mount';
 
-function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text?: string): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  node.className = className;
-  if (text !== undefined) node.textContent = text;
-  return node;
+const params = new URLSearchParams(window.location.search);
+const sameBrowser = params.get('t') === 'local';
+
+function transport(kind: TransportKind): Transport {
+  if (kind === 'solo') return createMemoryHub().transport();
+  if (kind === 'local') return localTransport();
+  return peerTransport();
 }
 
-function renderPlaceholder(root: HTMLElement): void {
-  const page = el('main', 'placeholder');
-  page.append(
-    el('h1', 'placeholder-title', 'Factory Spaghetti'),
-    el('p', 'placeholder-status', 'Online version under construction'),
-    el('p', 'version-label', __APP_VERSION__),
-  );
-  root.replaceChildren(page);
-}
-
-// ---- Service worker and update notice ----
-
-/** Set when the player asks to reload into a new version, so the controller change reloads the page. */
-let reloadRequested = false;
-
-function showUpdateNotice(waiting: ServiceWorker): void {
-  if (document.getElementById('update-notice')) return;
-  const notice = el('div', 'update-notice');
-  notice.id = 'update-notice';
-  notice.setAttribute('role', 'status');
-  const button = el('button', 'update-button', 'Reload');
-  button.type = 'button';
-  button.addEventListener('click', () => {
-    reloadRequested = true;
-    button.disabled = true;
-    waiting.postMessage({ type: 'SKIP_WAITING' });
-  });
-  notice.append(el('span', 'update-text', 'Update ready'), button);
-  document.body.append(notice);
-}
-
-async function registerServiceWorker(): Promise<void> {
-  if (!('serviceWorker' in navigator)) return;
-  const sw = navigator.serviceWorker;
-
-  sw.addEventListener('controllerchange', () => {
-    if (reloadRequested) window.location.reload();
-  });
-
-  // Relative URL: the site lives under a sub-path on GitHub Pages.
-  const registration = await sw.register('./sw.js');
-
-  const watch = (worker: ServiceWorker): void => {
-    worker.addEventListener('statechange', () => {
-      // "installed" with an existing controller means a newer version is waiting.
-      if (worker.state === 'installed' && sw.controller) showUpdateNotice(worker);
-    });
+/**
+ * Name and device token. With the same-browser transport (`?t=local`, for testing) every tab
+ * is a different player, so the token is kept per tab.
+ */
+function identityStore(): SaveStore {
+  const shared = localStorageStore();
+  if (!sameBrowser) return shared;
+  const fallback = memoryStore();
+  const tab = (): Storage | null => { try { return window.sessionStorage; } catch { return null; } };
+  return {
+    get: (k): string | null => (k === TOKEN_KEY ? (tab()?.getItem(k) ?? fallback.get(k)) : shared.get(k)),
+    set: (k, v): void => {
+      if (k !== TOKEN_KEY) { shared.set(k, v); return; }
+      try { tab()?.setItem(k, v); } catch { fallback.set(k, v); }
+      fallback.set(k, v);
+    },
+    remove: (k): void => { shared.remove(k); },
+    keys: (): string[] => shared.keys(),
   };
-
-  if (registration.waiting && sw.controller) showUpdateNotice(registration.waiting);
-  if (registration.installing) watch(registration.installing);
-  registration.addEventListener('updatefound', () => {
-    if (registration.installing) watch(registration.installing);
-  });
-
-  // An installed app can stay open for days; look for a new version when it comes back to the foreground.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') registration.update().catch(() => undefined);
-  });
 }
+
+function download(name: string, text: string): void {
+  const blob = new Blob([text], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+async function share(data: ShareData): Promise<void> {
+  const nav = navigator as Navigator & { canShare?: (d: object) => boolean };
+  if (data.file && typeof File === 'function') {
+    const file = new File([data.file.text], data.file.name, { type: 'application/octet-stream' });
+    if (nav.canShare?.({ files: [file] })) {
+      await nav.share({ title: data.title, text: data.text, files: [file] });
+      return;
+    }
+  }
+  await nav.share({ title: data.title, text: data.text, ...(data.url ? { url: data.url } : {}) });
+}
+
+const deps: AppDeps = {
+  transport,
+  saves: localStorageStore(),
+  identity: identityStore(),
+  appVersion: __APP_VERSION__,
+  location: {
+    search: window.location.search,
+    hash: window.location.hash,
+    base: window.location.origin + window.location.pathname,
+    clearHash: (): void => { history.replaceState(null, '', window.location.pathname + window.location.search); },
+  },
+  download,
+  ...(navigator.clipboard ? { clipboard: (text: string): Promise<void> => navigator.clipboard.writeText(text) } : {}),
+  ...(typeof navigator.share === 'function' ? { share } : {}),
+};
+
+const ctrl = new AppController(deps);
+// For scripted browser checks (and curious developers): the live controller.
+(window as unknown as { __app: AppController }).__app = ctrl;
 
 const root = document.getElementById('app');
-if (root) renderPlaceholder(root);
+if (root) mountApp(root, ctrl, __APP_VERSION__);
+
+// A save link pasted into the address bar of an open page only changes the fragment.
+window.addEventListener('hashchange', () => {
+  const text = saveFromHash(window.location.hash);
+  if (text === null) return;
+  deps.location.clearHash();
+  if (ctrl.screen === 'menu') void ctrl.loadSaveText(text, 'link');
+});
+
+watchInstall(fn => ctrl.setInstaller(fn));
 
 if (import.meta.env.PROD) {
   window.addEventListener('load', () => {
