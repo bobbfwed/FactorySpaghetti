@@ -25,13 +25,14 @@ const seatsKey = (ctx: Ctx): string => ctx.room.seats.map(s => `${s.name}/${s.co
 export function cachedLog(ctx: Ctx): HTMLElement {
   const log = ctx.room.log;
   const last = log[log.length - 1];
-  return cached('log', `${log.length}:${last?.seq ?? -1}:${last?.text ?? ''}:${seatsKey(ctx)}`, () => logList(ctx));
+  const notes = Object.entries(ctx.ui.rollNotes).map(([k, v]) => `${k}=${v}`).join('|');
+  return cached('log', `${log.length}:${last?.seq ?? -1}:${last?.text ?? ''}:${seatsKey(ctx)}:${notes}`, () => logList(ctx));
 }
 
 export function cachedRules(ctx: Ctx): HTMLElement {
   const g = ctx.game;
   const out = g.board.find(p => p.output && p.type !== 'mine')?.output?.slots.length ?? -1;
-  return cached('rules', `${g.mineCount}:${g.globalTeleporterCount}:${out}`, () => rulesSheet(ctx));
+  return cached('rules', `${g.mineCount}:${g.globalTeleporterCount}:${out}:${ctx.room.settings.roundEndTimeoutMs}`, () => rulesSheet(ctx));
 }
 
 export function cachedBonuses(ctx: Ctx): HTMLElement {

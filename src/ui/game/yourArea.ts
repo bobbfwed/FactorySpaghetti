@@ -15,6 +15,7 @@ import type { Ctx, SheetTab } from './context';
 import { seatColor, seatHex, seatName } from './context';
 import { MATERIAL_ICON, MATERIAL_LIST, cardFace, count, materialWell, moduleTray, pips, sectionHead } from './pieces';
 import { promptList } from './prompts';
+import { storageStrip } from './feedback';
 import { BONUS_NAME } from './rules';
 import { cachedBonuses, cachedLog, cachedRules } from './memo';
 import { primaryButton, stepLine, undoBeltsButton } from './turnBar';
@@ -181,7 +182,12 @@ function handTitle(ctx: Ctx): string {
 export function phoneSheet(ctx: Ctx): HTMLElement {
   // A phone held sideways shows the sheet as a full-height panel on the right, always open.
   const open = ctx.ui.sheetOpen || ctx.landscape;
-  const toggle = (): void => { ctx.ui.sheetOpen = !ctx.ui.sheetOpen; if (!ctx.ui.sheetOpen) ctx.ui.sheetUserClosed = true; ctx.redraw(); };
+  const toggle = (): void => {
+    ctx.ui.sheetOpen = !ctx.ui.sheetOpen;
+    if (!ctx.ui.sheetOpen) ctx.ui.sheetUserClosed = true;
+    else { ctx.ui.menuOpen = false; ctx.ui.seat = null; } // one large panel at a time
+    ctx.redraw();
+  };
   const cards = ctx.view.hand.length;
   const grab = ctx.landscape ? null : h('button', {
     class: 'tg-grab', title: open ? 'Pull down' : 'Pull up for your tray, cards, log and rules',
@@ -190,6 +196,7 @@ export function phoneSheet(ctx: Ctx): HTMLElement {
   }, h('span', { class: 'bar' }));
   return h('div', { class: `tg-sheet tray${open ? ' open' : ''}`, attrs: { 'aria-label': 'Your area' } },
     grab,
+    storageStrip(ctx),
     ctx.landscape ? stepLine(ctx) : null,
     promptList(ctx),
     open

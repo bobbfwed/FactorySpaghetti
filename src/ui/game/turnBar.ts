@@ -1,6 +1,7 @@
 // The turn bar (the rulebook's four steps with the current one lit), the primary button and the
 // confirm bar (✓ confirm, ✕ cancel, ⟳ rotate) that floats beside the piece being placed.
 
+import type { PlayView } from '../../play';
 import type { Child } from '../dom';
 import { h } from '../dom';
 import { icon } from '../icons';
@@ -15,7 +16,7 @@ function stateChip(ctx: Ctx): string | null {
   const v = ctx.view;
   if (ctx.game.gameOver) return 'Game over';
   if (ctx.game.phase === 'setupClaimPF' || ctx.game.phase === 'setupClaimPP') return 'Setup';
-  if (ctx.game.phase === 'roundEnd') return 'Round end';
+  if (ctx.game.phase === 'roundEnd') return 'End of round';
   if (v.stepIndex === null) return null;
   return null;
 }
@@ -50,7 +51,10 @@ function steps(ctx: Ctx, compact: boolean): HTMLElement {
 
 function roundEndClock(ctx: Ctx): Child {
   const d = ctx.room.roundEndDeadline;
-  return d !== null && !ctx.game.gameOver ? countdownText(ctx.ctrl, d, 'Round-end turn: ', 'tg-countdown') : null;
+  // The host ends an idle round-end turn by itself; any move restarts the clock.
+  if (d === null || ctx.game.gameOver) return null;
+  const mine = activePlayer(ctx.game) === ctx.me;
+  return countdownText(ctx.ctrl, d, mine ? 'No move for ' : 'Ends by itself in ', 'tg-countdown', mine ? ' and it ends by itself' : '');
 }
 
 /** Desktop turn bar. */
@@ -76,21 +80,41 @@ export function stepLine(ctx: Ctx): Child[] {
   ];
 }
 
-/** The big button, or the confirm button while a placement waits, or "Waiting for …". */
+/** What the big button confirms while a choice waits for confirmation. */
+export function confirmLabel(v: PlayView): string {
+  if (v.ghost) return 'Confirm placement';
+  switch (v.selection?.kind) {
+    case 'meeple': return 'Confirm meeple';
+    case 'belt': return 'Confirm belt';
+    case 'teleporter': return 'Confirm teleporter';
+    case 'card': return `Play ${v.selection.label}`;
+    case 'building': return v.step === 'setup' ? 'Confirm claim' : 'Confirm';
+    default: return 'Confirm';
+  }
+}
+
+/**
+ * The big button. One rule for the whole game: while a choice waits for confirmation (a
+ * placement, the meeple, a belt, a card's targets) the big button is that confirmation, named
+ * for what it confirms; the floating ✓ is a second way. Otherwise it is the step's next action;
+ * when that cannot be pressed yet, the button says why. Off turn it says whom the game waits for.
+ */
 export function primaryButton(ctx: Ctx, cls = ''): HTMLElement | null {
   const v = ctx.view;
   const p = v.primary;
+  if (v.confirmBar?.confirm && !v.menu && !v.choices) {
+    const label = confirmLabel(v);
+    return h('button', { class: `btn btn-gold btn-lg tg-primary ${cls}`, attrs: { 'data-primary': 'confirm', 'data-act': `confirm:${label}:${v.selection?.label ?? ''}`, 'data-strict': '1' }, onclick: () => ctx.play.confirm() },
+      icon('check'), label);
+  }
   if (p) {
+    const why = !p.enabled && p.hint ? p.hint : null;
     return h('button', {
-      class: `btn btn-gold btn-lg tg-primary${p.enabled ? '' : ' is-disabled'} ${cls}`,
+      class: `btn btn-gold btn-lg tg-primary${p.enabled ? '' : ' is-disabled'}${why ? ' has-why' : ''} ${cls}`,
       title: p.enabled ? p.label : p.hint ?? p.label,
       attrs: { 'aria-disabled': String(!p.enabled), 'data-primary': '1', 'data-act': `primary:${p.label}`, 'data-strict': '1' },
       onclick: () => ctx.play.primary(),
-    }, p.label);
-  }
-  if (v.confirmBar?.confirm && !v.menu && !v.choices) {
-    return h('button', { class: `btn btn-gold btn-lg tg-primary ${cls}`, attrs: { 'data-primary': 'confirm', 'data-act': `confirm:${v.selection?.label ?? ''}`, 'data-strict': '1' }, onclick: () => ctx.play.confirm() },
-      icon('check'), v.ghost ? 'Confirm placement' : 'Confirm');
+    }, h('span', { class: 'lbl', text: p.label }), why ? h('small', { class: 'why', text: why }) : null);
   }
   if (ctx.game.gameOver) return null;
   const a = activePlayer(ctx.game);

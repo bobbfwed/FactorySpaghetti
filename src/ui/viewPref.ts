@@ -37,6 +37,15 @@ export function setPreferredView(kind: GameViewKind): void {
   chosen = kind;
   if (kind === 'table') failure = null;
   try { window.localStorage.setItem(KEY, kind); } catch { /* private mode: remember for this visit only */ }
+  // Keep the address in step, so a reload stays in the chosen view.
+  try {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('view')) {
+      if (kind === 'text') url.searchParams.set('view', 'text');
+      else url.searchParams.delete('view');
+      window.history.replaceState(window.history.state, '', url);
+    }
+  } catch { /* no address to update (tests, odd embeds) */ }
   for (const fn of [...listeners]) fn();
 }
 

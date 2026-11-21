@@ -33,10 +33,14 @@ export interface UiState {
   sheetUserClosed: boolean;
   /** The player put away the "cannot store the game" strip (shown again if storage recovers and fails again). */
   storeDismissed: boolean;
+  /** What the last roll produced (shown on the roll chip until the next roll). */
+  rollOutcome: { seq: number; roller: number; total: number; dice: number[]; text: string } | null;
+  /** The same lines for the log, by move number. */
+  rollNotes: Record<number, string>;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false, rollOutcome: null, rollNotes: {} };
 }
 
 /** What the interface may ask of the play controller (the moves a player makes). */

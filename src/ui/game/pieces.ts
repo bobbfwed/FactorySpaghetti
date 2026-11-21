@@ -62,7 +62,7 @@ export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose:
   const lit = tray.some(t => t.state === 'lit' && t.cost);
   return h('div', { class: `tg-modwrap ${cls}` },
     h('div', { class: `tg-modtray${lit ? ' has-lit' : ''}`, attrs: { role: 'group', 'aria-label': 'Control Module tray' } }, cells),
-    lit ? h('div', { class: 'tg-modnote', text: 'Corner number: upgrades it costs' }) : null);
+    lit ? h('div', { class: 'tg-modnote', text: 'Small number = upgrades needed to place it' }) : null);
 }
 
 /** A Leverage card face. */
@@ -88,9 +88,9 @@ export function materialWell(m: Material, n: number, cls = 'tg-mat'): HTMLElemen
 }
 
 /** Text countdown kept current by the screen's one-second ticker. */
-export function countdownText(ctrl: AppController, deadline: number, prefix = '', cls = 'tg-countdown'): HTMLElement {
+export function countdownText(ctrl: AppController, deadline: number, prefix = '', cls = 'tg-countdown', suffix = ''): HTMLElement {
   // A timer, not announced every second even inside a status region.
-  return h('span', { class: cls, attrs: { 'data-deadline': String(deadline), 'data-prefix': prefix, role: 'timer', 'aria-live': 'off' } }, prefix + clock(ctrl.msLeft(deadline)));
+  return h('span', { class: cls, attrs: { 'data-deadline': String(deadline), 'data-prefix': prefix, 'data-suffix': suffix, role: 'timer', 'aria-live': 'off' } }, prefix + clock(ctrl.msLeft(deadline)) + suffix);
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';

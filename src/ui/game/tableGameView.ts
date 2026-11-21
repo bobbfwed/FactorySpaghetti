@@ -32,6 +32,8 @@ import { activePlayer, clock, initialUi, seatColor, seatHex, seatName } from './
 import type { Flash } from './feedback';
 import { errorStrip, flashMarkers, rollChip, skipButton, storageStrip } from './feedback';
 import { appliedSince, refusalIsStale, type SentMove } from './refusals';
+import { outcomeOf, outcomeText, update as updateOutcome, type RollOutcome } from './rollOutcome';
+import { planTransition } from '../../table/transition';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
 import { FxLayer } from './fx';
@@ -174,6 +176,8 @@ export function tableGameView(ctrl: AppController): View {
   /** Refusals dropped because the move had been made anyway (refusals.ts). */
   let staleRefusals = 0;
   let lastCannotStore = false;
+  /** The last roll's outcome (events of the roll, then runs and skips of what it activated). */
+  let outcome: RollOutcome | null = null;
   let promptIds = new Set<string>();
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
   /** The player has dragged or zoomed the table (until they press Re-centre). */
@@ -278,6 +282,7 @@ export function tableGameView(ctrl: AppController): View {
       // Until the player moves the camera, keep the whole (growing) board in view.
       if (grew && !userCamera && prev) table.recenter();
     }
+    noteRollOutcome(prev, info);
     if (prev && info.room.seq !== prev.seq) {
       if (info.room.lastEvents.some(e => e.kind === 'roll')) {
         // The activation markers appear as the dice land.
@@ -298,12 +303,41 @@ export function tableGameView(ctrl: AppController): View {
     schedule();
   }
 
+  /** What the last roll produced, for the roll chip and the log (from the room's events). */
+  function noteRollOutcome(prev: Room | null, info: Shown): void {
+    const r = info.room;
+    if (prev && prev.seq === r.seq) return;
+    const events = r.lastEvents;
+    if (events.some(e => e.kind === 'roll')) {
+      // Ore that flowed out of the Mines on this roll, from the same plan the animation uses.
+      let ore = 0;
+      try {
+        const plan = info.plan ?? (prev?.game && r.game ? planTransition(prev.game, r.game, events) : null);
+        ore = plan ? plan.steps.filter(s => s.kind === 'flow' && s.material === 'ore').length : 0;
+      } catch { ore = 0; }
+      outcome = outcomeOf(r.seq, events, ore);
+    } else if (outcome) {
+      outcome = updateOutcome(outcome, events);
+    }
+    if (!outcome) { ui.rollOutcome = null; return; }
+    const text = outcomeText(outcome, (seat) => seatName(r, seat), ctrl.mySeat);
+    ui.rollOutcome = { seq: outcome.seq, roller: outcome.roller, total: outcome.total, dice: outcome.dice, text };
+    ui.rollNotes = { ...ui.rollNotes, [outcome.seq]: text };
+    const keys = Object.keys(ui.rollNotes).map(Number).sort((a, b) => a - b);
+    for (const k of keys.slice(0, Math.max(0, keys.length - 40))) delete ui.rollNotes[k];
+  }
+
   /** Your turn, game over: sound, vibration and the banner, when the picture reaches them. */
   function cues(prev: Room, next: Room): void {
     const a = prev.game, b = next.game;
     const me = ctrl.mySeat;
     if (!a || !b) return;
-    if (!a.gameOver && b.gameOver) { sound.play('over'); return; }
+    if (!a.gameOver && b.gameOver) {
+      // Nothing may stay open over the game-over card.
+      ui.menuOpen = false; ui.seat = null; ui.card = null; ui.sheetOpen = false; ui.side = null;
+      sound.play('over');
+      return;
+    }
     if (me === null || b.gameOver) return;
     if (activePlayer(a) !== me && activePlayer(b) === me) {
       fx.yourTurn(seatHex(next, me), 'Your turn', feelState.speed === 'off');
@@ -414,7 +448,8 @@ export function tableGameView(ctrl: AppController): View {
 
   /** Notices at the top of the table: a failed menu command, and the storage warning. */
   function notes(ctx: Ctx): HTMLElement | null {
-    const a = errorStrip(ctx), b = storageStrip(ctx);
+    // On the phone the storage notice sits at the top of the bottom sheet instead (yourArea.ts).
+    const a = errorStrip(ctx), b = ctx.phone ? null : storageStrip(ctx);
     return a || b ? h('div', { class: 'tg-notes' }, a, b) : null;
   }
 
@@ -632,7 +667,7 @@ export function tableGameView(ctrl: AppController): View {
         if (v && v.textContent !== s) v.textContent = s;
         el.setAttribute('aria-label', `${clock(ms)} left`);
       } else {
-        const text = (el.dataset.prefix ?? '') + clock(ms);
+        const text = (el.dataset.prefix ?? '') + clock(ms) + (el.dataset.suffix ?? '');
         if (el.textContent !== text) el.textContent = text;
       }
     }
@@ -693,6 +728,7 @@ export function tableGameView(ctrl: AppController): View {
     if (Math.abs(dy) < 24) return; // a tap: the button's click toggles
     ui.sheetOpen = dy < 0;
     if (!ui.sheetOpen) ui.sheetUserClosed = true;
+    else { ui.menuOpen = false; ui.seat = null; }
     autoOpened = false;
     suppressClick = true;
     schedule();

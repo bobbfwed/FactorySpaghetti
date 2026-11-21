@@ -21,9 +21,16 @@ export const BONUS_NAME: Record<BonusKey, string> = { investor: 'The Investor', 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 export function logList(ctx: Ctx, limit = 60): HTMLElement {
-  const lines = ctx.room.log.slice(-limit).reverse();
+  const lines = ctx.room.log.slice(-limit);
   if (lines.length === 0) return h('p', { class: 'muted', text: 'Nothing has happened yet.' });
-  return h('ol', { class: 'tg-log' }, lines.map(e => h('li', null,
+  // After the last entry of a roll's move, the line saying what the roll produced.
+  const out: { seat: number | null; text: string; note?: boolean }[] = [];
+  lines.forEach((e, i) => {
+    out.push(e);
+    const note = ctx.ui.rollNotes[e.seq];
+    if (note && lines[i + 1]?.seq !== e.seq) out.push({ seat: null, text: note, note: true });
+  });
+  return h('ol', { class: 'tg-log' }, out.reverse().map(e => h('li', e.note ? { class: 'note' } : null,
     h('span', { class: 'sw', style: `background:${e.seat === null ? '#5d5a55' : seatHex(ctx.room, e.seat)}` }),
     h('span', { text: e.text }))));
 }
@@ -52,7 +59,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
       h('li', null, h('b', { text: 'Roll' }), ` one die per Mine (now ${plural(mines, 'die', 'dice')}). Every building whose Control Module matches the total may run, on anyone's turn.`),
       h('li', null, h('b', { text: 'Actions' }), `: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, play up to ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards.`),
       h('li', null, h('b', { text: 'Place meeple' }), ' on one of your buildings or on a Mine point.')),
-    h('p', { class: 'muted', text: `Round end: each player gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, and may load, run and collect the building their meeple stands on.` }),
+    h('p', { class: 'muted', text: `End of the round (after everyone has had a turn): each player in turn gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, may spend Mine credits, and may load, run and collect the building their meeple stands on. Doing nothing is fine.${ctx.room.settings.roundEndTimeoutMs > 0 ? ` A round-end turn with no move for ${Math.round(ctx.room.settings.roundEndTimeoutMs / 1000)} s ends by itself.` : ''}` }),
 
     h('h3', { text: 'Prices' }),
     row([icon('belt'), 'Belt'], String(BELT_COST)),

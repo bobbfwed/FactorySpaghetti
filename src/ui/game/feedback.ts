@@ -11,11 +11,21 @@ import { die } from './pieces';
 
 export interface Flash { seq: number; items: { pieceId: string; seat: number; outcome: ActivationOutcome }[] }
 
-/** "Rolled 7" with the dice, while the roll still matters (the rest of that turn). */
+/**
+ * The last roll: its dice and total, and in one line what it produced (which buildings it
+ * activated, for whom, and what they did). Stays until the next roll.
+ */
 export function rollChip(ctx: Ctx): HTMLElement | null {
   const g = ctx.game;
+  const o = ctx.ui.rollOutcome;
+  if (g.gameOver || ctx.ui.diceRolling) return null;
+  if (o) {
+    return h('div', { class: 'tg-roll tray has-line', style: `--seat:${seatHex(ctx.room, o.roller)}`, attrs: { role: 'status', 'data-roll-outcome': '1' } },
+      h('div', { class: 'top' }, h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) })),
+      h('div', { class: 'line', text: o.text }));
+  }
   const roll = g.lastRoll;
-  if (!roll || roll.length === 0 || g.gameOver || ctx.ui.diceRolling) return null;
+  if (!roll || roll.length === 0) return null;
   if (g.phase !== 'actions' && g.phase !== 'placeMeeple' && g.pendingFactoryOps.length === 0) return null;
   const total = roll.reduce((a, b) => a + b, 0);
   const a = activePlayer(g);

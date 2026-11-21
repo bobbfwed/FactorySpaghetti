@@ -55,7 +55,7 @@ export const W = {
   waitingRoll: (name: string): string => `${name} is about to roll the dice.`,
   waitingActions: (name: string): string => `${name} is taking actions.`,
   waitingMeeple: (name: string): string => `${name} is placing their meeple.`,
-  waitingRoundEnd: (name: string): string => `${name} is taking their round-end turn.`,
+  waitingRoundEnd: (name: string): string => `End of the round: ${name} may use free upgrades and the building their meeple stands on.`,
 
   // Setup
   setupPF: 'Choose your starting Plate Factory: tap a glowing one, then confirm.',
@@ -70,7 +70,7 @@ export const W = {
   minePlaceConfirm: 'Turn the Mine if you like, then confirm.',
 
   // Step 2
-  rollNow: 'Roll the dice.',
+  rollNow: 'Roll the dice: one die for each Mine in play.',
   rollLabel: (n: number): string => `Roll ${n} ${n === 1 ? 'die' : 'dice'}`,
 
   // Step 3
@@ -81,14 +81,14 @@ export const W = {
   pendingMineMany: (n: number): string => `Decide whether to run your ${n} activated factories.`,
 
   // Step 4
-  meeplePlace: 'Place your meeple on one of your buildings or on a Mine point.',
+  meeplePlace: 'Place your meeple: tap one of your glowing buildings or a Mine point. Every turn ends with this step.',
   meepleConfirm: (where: string): string => `Place your meeple on the ${where}?`,
   meepleDone: 'Your meeple is placed. End your turn.',
   endTurn: 'End turn',
   noMeepleSpot: 'There is nowhere to place your meeple. End your turn.',
 
   // Round end
-  roundEndIdle: 'Your round-end turn: use your meeple\'s building, claim or upgrade, then finish.',
+  roundEndIdle: "End of the round: you may use your free upgrades (one per Mine, on one building), Mine credits, and your meeple's building. Nothing to do? Finish the round-end turn.",
   roundEndDone: 'Finish round-end turn',
 
   // Selections
@@ -100,7 +100,7 @@ export const W = {
   decideFirst: 'First decide whether to run your activated factory.',
   othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated factory.`,
   overstockFirst: 'Place the Overstock Supplies pieces first.',
-  meepleFirst: 'Place your meeple first.',
+  meepleFirst: 'Place your meeple first: tap a glowing building or Mine point.',
   unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they are lost when you finish.`,
 
   // Generic reasons
