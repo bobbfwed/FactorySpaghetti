@@ -138,7 +138,9 @@ describe('files made before the draw step', () => {
       expect(save.rules).toBe(OLD_RULES);
       expect(save.room.game).not.toHaveProperty('drawnStackIndex'); // the old shape
       const text = how === 'file' ? JSON.stringify(save) : `https://example.test/fs/#save=${await packLink(save)}`;
-      await settled(w, ctrl.loadSaveText(text, how));
+      // Unpacking a link uses the platform's compression streams, not the test clock, so it is
+      // awaited directly: pumping the virtual clock gives up when the platform is slower (CI).
+      await ctrl.loadSaveText(text, how);
       expect(ctrl.state.error).toBeNull();
       expect(ctrl.screen).toBe('resume-setup');
       expect(ctrl.state.resume!.sameRules).toBe(false);
