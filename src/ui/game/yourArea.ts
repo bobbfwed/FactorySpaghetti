@@ -89,13 +89,12 @@ function handCards(ctx: Ctx, fan: boolean): HTMLElement {
   if (hand.length === 0) {
     return h('div', { class: 'tg-hand empty' }, h('p', { class: 'muted', text: 'No Leverage cards. Buy them from the bank in step 3.' }));
   }
-  const n = hand.length;
-  return h('div', { class: `tg-hand${fan ? ' fan' : ' grid'}`, style: `--n:${n}`, attrs: { role: 'list', 'aria-label': 'Your hand' } }, hand.map((c, i) => {
-    const mid = (n - 1) / 2;
-    const style = fan ? `--i:${i};--rot:${((i - mid) * Math.min(6, 18 / n)).toFixed(1)}deg` : '';
+  // In the bottom panel the layout (whole cards, title strips or a button) is chosen after the
+  // render from the room there is: see handFit.ts.
+  return h('div', { class: `tg-hand${fan ? ' fan' : ' grid'}`, attrs: { role: 'list', 'aria-label': 'Your hand' } }, hand.map((c) => {
     const cnt = c.count ?? 1;
     // The list item carries the role; the card inside stays a button.
-    return h('div', { class: 'tg-li', style, attrs: { role: 'listitem' } }, h('button', {
+    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
       class: `tg-handcard${c.enabled ? ' playable' : ''}`,
       title: c.enabled ? `${c.label}: tap to read and play` : `${c.label}: ${c.reason ?? ''}`,
       attrs: { 'data-card': c.card, 'data-act': `card:${c.card}`, 'aria-label': `${c.label}. ${c.text}${c.enabled ? '' : ` ${c.reason ?? ''}`}` },
@@ -134,7 +133,12 @@ export function yourPanel(ctx: Ctx): HTMLElement | null {
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec mats' }, h('div', { class: 'tg-mats' }, MATERIAL_LIST.map(m => materialWell(m, p.inventory[m])))),
     h('div', { class: 'vr' }),
-    h('div', { class: 'tg-sec handsec' }, h('span', { class: 'label', text: `Hand · ${p.hand.length}` }), handCards(ctx, true)),
+    h('div', { class: 'tg-sec handsec' }, h('span', { class: 'label', text: `Hand · ${p.hand.length}` }), handCards(ctx, true),
+      // Shown when the cards do not fit here even as title strips (handFit.ts).
+      p.hand.length > 0 ? h('button', {
+        class: `btn btn-dark tg-handopen${ctx.ui.handOpen ? ' on' : ''}`, attrs: { 'aria-expanded': String(ctx.ui.handOpen), 'data-handopen': '1' },
+        onclick: () => { ctx.ui.handOpen = !ctx.ui.handOpen; ctx.redraw(); },
+      }, icon('card'), h('span', { text: `Show all ${p.hand.length}` })) : null),
     h('div', { class: 'tg-act' }, autoplayNote(ctx), undoBeltsButton(ctx),
       // Where the fanned hand does not fit (narrow touch screens) this button opens the whole hand.
       h('button', {
@@ -222,7 +226,8 @@ export function phoneSheet(ctx: Ctx): HTMLElement {
     attrs: { 'aria-expanded': String(open), 'aria-label': open ? 'Close your tray' : 'Open your tray, cards, log and rules', 'data-grab': '1' },
     onclick: toggle,
   }, h('span', { class: 'bar' }));
-  return h('div', { class: `tg-sheet tray${open ? ' open' : ''}`, attrs: { 'aria-label': 'Your area' } },
+  // Pulled up, the sheet covers part of the table; one tap on its handle (or on the table) puts it away.
+  return h('div', { class: `tg-sheet tray${open ? ' open' : ''}`, attrs: { 'aria-label': 'Your area', ...(open && !ctx.landscape ? { 'data-dismiss': 'handle' } : {}) } },
     grab,
     storageStrip(ctx),
     ctx.landscape ? stepLine(ctx) : null,

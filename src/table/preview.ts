@@ -21,6 +21,9 @@ const MEEPLE_OPACITY = 0.78;
 const APPEAR_MS = 420;
 const MOVE_MS = 320;
 const LEAVE_MS = 340;
+/** Route tiers other than the player's own belts (see PreviewLayer's routeMats). */
+const ROUTE_BUY_COLOR = new THREE.Color(0xe8b730);
+const ROUTE_CANT_COLOR = new THREE.Color(0x9a968e);
 /** A route segment the player cannot afford yet fades in and out over this period. */
 const CANT_PERIOD_MS = 1800;
 
@@ -86,7 +89,9 @@ export class PreviewLayer {
     const make = (opacity: number): THREE.MeshStandardMaterial => new THREE.MeshStandardMaterial({
       vertexColors: true, roughness: 0.55, metalness: 0, transparent: opacity < 1, opacity, depthWrite: opacity >= 1,
     });
-    this.routeMats = { own: make(1), buy: make(0.5), cant: make(0.35) };
+    // Three tiers that must read apart at a glance: own belts solid in the seat colour, belts to buy
+    // solid gold (the colour of prices and the buy button), belts for later grey and faint.
+    this.routeMats = { own: make(1), buy: make(0.92), cant: make(0.35) };
   }
 
   // ── Route ────────────────────────────────────────────────────────────────────────────────────
@@ -111,8 +116,9 @@ export class PreviewLayer {
     this.routeMeshes.length = 0;
     this.cantShown = false;
     for (const tier of ['own', 'buy', 'cant'] as const) {
+      const color = tier === 'own' ? this.routeColor : tier === 'buy' ? ROUTE_BUY_COLOR : ROUTE_CANT_COLOR;
       const items: BeltItem[] = segs.filter(s => s.tier === tier).map(s => ({
-        piece: board.find(b => b.id === s.pieceId)!, from: s.from, to: s.to, color: this.routeColor,
+        piece: board.find(b => b.id === s.pieceId)!, from: s.from, to: s.to, color,
       }));
       if (items.length === 0) continue;
       const geo = bendBeltItems(this.beltBase, items);
@@ -301,7 +307,7 @@ export class PreviewLayer {
   update(now: number, az: number, scene: TableScene): void {
     this.buildRoute(scene.game);
     if (this.cantShown) {
-      this.routeMats.cant.opacity = 0.1 + 0.4 * (0.5 - 0.5 * Math.cos((2 * Math.PI * now) / CANT_PERIOD_MS));
+      this.routeMats.cant.opacity = 0.15 + 0.3 * (0.5 - 0.5 * Math.cos((2 * Math.PI * now) / CANT_PERIOD_MS));
     }
     let hidePile = false;
     let hideMine: string | null = null;

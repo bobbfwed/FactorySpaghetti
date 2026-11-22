@@ -100,12 +100,20 @@ export class CameraRig {
 
   private fitView(b: Bounds, az: number, el: number, top: number, margin: number): View {
     const ins = this.insets;
-    // The free area must keep a usable size even if the panels cover most of the canvas.
-    const freeW = Math.max(this.width * 0.3, this.width - ins.left - ins.right);
-    const freeH = Math.max(this.height * 0.3, this.height - ins.top - ins.bottom);
+    // The free area between the insets; if panels leave less than 30 % of the canvas, a 30 % area
+    // around the free area's own centre (kept on the canvas) is used instead.
+    const span = (lo: number, hi: number, size: number): [number, number] => {
+      const min = size * 0.3;
+      if (hi - lo >= min) return [lo, hi];
+      const a = clamp((lo + hi) / 2 - min / 2, 0, size - min);
+      return [a, a + min];
+    };
+    const [fl, fr] = span(ins.left, this.width - ins.right, this.width);
+    const [ft, fb] = span(ins.top, this.height - ins.bottom, this.height);
+    const freeW = fr - fl, freeH = fb - ft;
     // Where the free area's centre sits relative to the canvas centre (CSS px, y down).
-    const offX = (Math.min(ins.left, this.width * 0.35) - Math.min(ins.right, this.width * 0.35)) / 2;
-    const offY = (Math.min(ins.top, this.height * 0.35) - Math.min(ins.bottom, this.height * 0.35)) / 2;
+    const offX = (fl - (this.width - fr)) / 2;
+    const offY = (ft - (this.height - fb)) / 2;
     // Camera axes for this azimuth/elevation.
     const { right, up } = axes(az, el);
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;

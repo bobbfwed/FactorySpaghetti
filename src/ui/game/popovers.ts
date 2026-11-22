@@ -5,6 +5,7 @@ import { CARD_NAME } from '../../play/words';
 import { h } from '../dom';
 import { icon } from '../icons';
 import type { Ctx } from './context';
+import { seatHex } from './context';
 import { cardFace } from './pieces';
 
 /** The building menu: title, subtitle, items with detail; greyed items show their reason. */
@@ -29,6 +30,17 @@ export function buildingMenu(ctx: Ctx): HTMLElement | null {
   it.danger && it.enabled ? h('span', { class: 'warnline', text: 'Permanent: it cannot be taken back.' }) : null)));
 }
 
+/** What the three looks of a planned route mean, with how many belts each has. */
+function routeLegend(ctx: Ctx): HTMLElement | null {
+  const r = ctx.view.route;
+  if (!r) return null;
+  const n = (t: 'own' | 'buy' | 'cant'): number => r.filter(x => x.tier === t).length;
+  const key = (t: 'own' | 'buy' | 'cant', text: string): HTMLElement | null => (n(t) > 0
+    ? h('span', { class: `k ${t}` }, h('span', { class: 'sw' }), `${n(t)} ${text}`) : null);
+  return h('div', { class: 'tg-routekey', style: `--seat:${seatHex(ctx.room, ctx.me ?? 0)}`, attrs: { 'aria-label': 'Route key' } },
+    key('own', 'from your supply'), key('buy', 'to buy now'), key('cant', 'for a later turn'));
+}
+
 /** The list a flow is waiting on; it floats, so the table stays usable around it. */
 export function choicesPanel(ctx: Ctx): HTMLElement | null {
   const c = ctx.view.choices;
@@ -39,6 +51,7 @@ export function choicesPanel(ctx: Ctx): HTMLElement | null {
   return h('div', { class: `tg-choices tray${ctx.view.route ? ' route' : ''}${compact ? ' compact' : ''}`, attrs: { role: 'dialog', 'aria-label': c.title } },
     h('div', { class: 'hd' }, h('b', { text: c.title }),
       h('button', { class: 'x round small', title: 'Cancel', attrs: { 'aria-label': 'Cancel', 'data-close': 'choices' }, onclick: () => ctx.play.cancel() }, icon('cross'))),
+    ctx.view.route ? routeLegend(ctx) : null,
     h('div', { class: 'list' }, c.items.map(it => h('button', {
       class: `item well${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
       title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,

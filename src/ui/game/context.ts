@@ -41,10 +41,14 @@ export interface UiState {
   queueOpen: boolean;
   /** Desktop on a narrow touch screen: the hand panel is open. */
   handOpen: boolean;
+  /** A Leverage card that was played as soon as it was drawn: said on the table for everyone. */
+  announce: { seq: number; seat: number; text: string } | null;
+  /** The roll outcome is shown in full (after a roll, or when its chip is tapped); otherwise the small chip. */
+  rollOpen: boolean;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false, rollOutcome: null, rollNotes: {}, queueOpen: false, handOpen: false };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false, rollOutcome: null, rollNotes: {}, queueOpen: false, handOpen: false, announce: null, rollOpen: false };
 }
 
 /** What the interface may ask of the play controller (the moves a player makes). */

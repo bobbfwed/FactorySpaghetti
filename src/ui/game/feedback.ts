@@ -19,16 +19,29 @@ export function rollChip(ctx: Ctx): HTMLElement | null {
   const g = ctx.game;
   const o = ctx.ui.rollOutcome;
   if (g.gameOver || ctx.ui.diceRolling) return null;
-  // Phone: while piles or spaces are lit, the chip keeps to its top row so it does not cover them.
-  const short = ctx.phone && (!!ctx.view.route || ctx.view.targets.some(t => t.kind === 'stack' || t.kind === 'cell'));
-  if (o && short) {
-    return h('div', { class: 'tg-roll tray', style: `--seat:${seatHex(ctx.room, o.roller)}`, attrs: { role: 'status', 'data-roll-outcome': '1', 'aria-label': o.text } },
-      h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) }));
+  // The outcome is shown in full when the roll happens; after a few seconds or the first tap on the
+  // table it shrinks to the small chip (tableGameView.ts). Tapping the chip shows it again; the log
+  // keeps the whole line.
+  const toggle = (): void => { ctx.ui.rollOpen = !ctx.ui.rollOpen; ctx.redraw(); };
+  // A list, menu or prompt on screen takes the room: the outcome stays a chip meanwhile.
+  const busyPanel = !!ctx.view.choices || !!ctx.view.menu || ctx.view.prompts.length > 0;
+  if (o && (!ctx.ui.rollOpen || busyPanel)) {
+    return h('button', {
+      class: 'tg-roll tray', style: `--seat:${seatHex(ctx.room, o.roller)}`,
+      title: 'Show what the roll did',
+      attrs: { 'data-roll-outcome': '1', 'aria-expanded': 'false', 'aria-label': `Rolled ${o.total}. Show what the roll did` },
+      onclick: toggle,
+    }, h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) }));
   }
   if (o) {
-    return h('div', { class: 'tg-roll tray has-line', style: `--seat:${seatHex(ctx.room, o.roller)}`, attrs: { role: 'status', 'data-roll-outcome': '1' } },
-      h('div', { class: 'top' }, h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) })),
-      h('div', { class: 'line', text: o.text }));
+    return h('button', {
+      class: 'tg-roll tray has-line', style: `--seat:${seatHex(ctx.room, o.roller)}`, title: 'Make small',
+      attrs: { 'data-roll-outcome': '1', 'aria-expanded': 'true', role: 'status', 'data-dismiss': 'tap' },
+      onclick: toggle,
+    },
+    h('div', { class: 'top' }, h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) }),
+      h('span', { class: 'shrink', text: 'Tap to close' })),
+    h('div', { class: 'line', text: o.text }));
   }
   const roll = g.lastRoll;
   if (!roll || roll.length === 0) return null;
@@ -58,7 +71,7 @@ export function flashMarkers(ctx: Ctx, flash: Flash | null): HTMLElement[] {
 export function errorStrip(ctx: Ctx): HTMLElement | null {
   const err = ctx.ctrl.state.error;
   if (!err) return null;
-  return h('div', { class: 'tg-error error', attrs: { role: 'alert' } },
+  return h('div', { class: 'tg-error error', attrs: { role: 'alert', 'data-dismiss': 'close' } },
     h('span', { text: err }),
     h('button', { class: 'x round small', title: 'Dismiss', attrs: { 'aria-label': 'Dismiss' }, onclick: () => ctx.ctrl.dismissError() }, icon('cross')));
 }
@@ -82,7 +95,7 @@ export const CANNOT_STORE_TEXT = 'This device cannot store the game; use Copy sa
  */
 export function storageStrip(ctx: Ctx): HTMLElement | null {
   if (!ctx.ctrl.state.cannotStore || ctx.ui.storeDismissed || ctx.ui.menuOpen) return null;
-  return h('div', { class: 'tg-store', attrs: { role: 'alert', 'data-store': '1' } },
+  return h('div', { class: 'tg-store', attrs: { role: 'alert', 'data-store': '1', 'data-dismiss': 'close' } },
     h('span', { class: 'tx', text: CANNOT_STORE_TEXT }),
     h('button', {
       class: 'btn btn-dark tg-storebtn', attrs: { 'data-store-menu': '1' },

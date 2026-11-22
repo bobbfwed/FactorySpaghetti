@@ -320,8 +320,39 @@ describe('Belts', () => {
     c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
     expect(c.view.route?.every(x => x.tier === 'cant')).toBe(true);
     expect(c.view.route).toHaveLength(cost);
-    expect(c.view.primary).toMatchObject({ enabled: false, hint: W.routeNothingNow });
+    // No button with a zero count: the supply is said to be empty and the plan waits.
+    expect(allItems(c.view).some(i => /^Place 0\b/.test(i.label))).toBe(false);
+    expect(c.view.primary?.label).not.toMatch(/\b0\b/);
+    expect(c.view.instruction).toContain('No belts in your supply');
+    expect(c.view.primary).toMatchObject({ label: W.routeLater, enabled: true });
+    c.primary();
     expect(sent).toEqual([]);
+    expect(c.view.route ?? null).toBeNull();
+    // The plan is kept: Lay a belt offers it again.
+    c.choose('bank:placeBelt');
+    expect(allItems(c.view).some(i => i.id === 'route:continue')).toBe(true);
+  });
+
+  it('with no belts in the supply but belts to buy, the buy button is offered (no zero-count button)', () => {
+    const { s: s0, p, from, to } = routeState(2, 3);
+    const s = patchPlayer(s0, p, { beltsRemaining: 0, inventory: { ore: 6, plate: 0, sphere: 0, tesseract: 0 } });
+    const { c } = harness(s, p);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    expect(c.view.instruction).toContain('No belts in your supply');
+    expect(allItems(c.view).map(i => i.id)).not.toContain('route:own');
+    expect(c.view.primary?.label).toMatch(/^Buy \d+ and place \d+$/);
+  });
+
+  it('in the idle Actions step no belt point glows; a tap on one says to press Lay a belt', () => {
+    const { s, p, from } = routeState(2, 3);
+    const { c } = harness(s, p);
+    expect(c.view.targets.some(t => t.kind === 'point')).toBe(false);
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    expect(c.view.hint).toBe(W.layBeltFirst);
+    c.choose('bank:placeBelt');
+    expect(c.view.targets.some(t => t.kind === 'point')).toBe(true);
   });
 
   it('"Place from inventory" lays the own part; the rest stays as the plan, re-tiered', () => {
@@ -671,6 +702,26 @@ describe('Belt plans across turns', () => {
   });
 });
 
+describe('One open pile', () => {
+  it('the spaces glow at once, the pile does not, and one tap on a space starts the placement', () => {
+    const { state: s, player: p } = findState((g, q) => g.phase === 'placePiece' && active(g) === q && g.pendingMineIds.length === 0
+      && [0, 1, 2].filter(i => g.stacks[i as 0 | 1 | 2].available && g.stacks[i as 0 | 1 | 2].pieces.length > 0).length === 1);
+    const { c, sent } = harness(s, p);
+    const cells = c.view.targets.filter(t => t.kind === 'cell');
+    expect(cells.length).toBeGreaterThan(0);
+    expect(c.view.targets.some(t => t.kind === 'stack')).toBe(false);
+    c.tap(cells[0]!);
+    expect(c.view.ghost).not.toBeNull();
+    expect(c.view.confirmBar?.confirm).toBe(true);
+    // A tap on the pile itself says what is on top and where it goes; nothing is sent.
+    const harness2 = harness(s, p);
+    const open = [0, 1, 2].find(i => s.stacks[i as 0 | 1 | 2].available && s.stacks[i as 0 | 1 | 2].pieces.length > 0)!;
+    harness2.c.tap({ kind: 'stack', index: open });
+    expect(harness2.c.view.hint).toMatch(/is yours to place/);
+    expect([...sent, ...harness2.sent]).toEqual([]);
+  });
+});
+
 describe('Drawing from a pile', () => {
   /** My place-a-piece step with piles 1 and 2 open (gestures only from here on, no fallback). */
   function twoPiles(): { s: GameState; p: PlayerId } {
@@ -790,5 +841,15 @@ describe("Designer's item 6: belts beside another player's building", () => {
         break;
       }
     }
+  });
+});
+
+describe('Leverage cards played as soon as they are drawn', () => {
+  it('are announced in the rulebook\'s words, for the buyer and for the other players', () => {
+    expect(W.playOnDraw('overstockSupplies', 'Bea', 3, true))
+      .toBe('Overstock Supplies is played as soon as it is drawn: place 3 board pieces.');
+    expect(W.playOnDraw('overstockSupplies', 'Bea', 3, false))
+      .toBe('Bea bought a Leverage card. Overstock Supplies is played as soon as it is drawn: Bea places 3 board pieces.');
+    expect(W.playOnDraw('solarFlare', 'Bea', 0, false)).toContain('every player gets 2 Power Tokens');
   });
 });

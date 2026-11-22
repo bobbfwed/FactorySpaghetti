@@ -55,12 +55,25 @@ export const W = {
   waitingRoll: (name: string): string => `${name} is about to roll the dice.`,
   waitingActions: (name: string): string => `${name} is taking actions.`,
   waitingMeeple: (name: string): string => `${name} is placing their meeple.`,
-  waitingDraw: (name: string): string => `${name} is choosing a pile to draw from.`,
+  waitingDraw: (name: string): string => `${name} is choosing a stack to draw from.`,
   waitingDrew: (name: string, what: string): string => `${name} drew a ${what} and is placing it.`,
-  drawPick: 'Choose a pile to draw from. The piece you draw must be placed.',
-  drawFirst: 'First choose a pile to draw from: tap one of the glowing piles.',
-  notDrawnPile: (n: number): string => `You drew from pile ${n}: place that piece.`,
+  drawPick: 'Choose a stack to draw from. The piece you draw must be placed.',
+  drawFirst: 'First choose a stack to draw from: tap one of the glowing stacks.',
+  notDrawnPile: (n: number): string => `You drew from stack ${n}: place that piece.`,
   pileNotNow: 'Pieces are drawn only in step 1, Place a piece.',
+  /** A Leverage card played as soon as it was drawn, said on the table (n: Overstock pieces drawn). */
+  playOnDraw: (card: 'overstockSupplies' | 'mineInspection' | 'solarFlare' | string, name: string, n: number, you: boolean): string => {
+    const effect: Record<string, string> = {
+      overstockSupplies: you ? `place ${n} board pieces` : `${name} places ${n} board pieces`,
+      mineInspection: you ? 'take 1 Plate from the bank for each Mine in play' : `${name} takes 1 Plate from the bank for each Mine in play`,
+      solarFlare: 'every player gets 2 Power Tokens',
+    };
+    const title = CARD_NAME[card as CardType] ?? card;
+    return `${you ? '' : `${name} bought a Leverage card. `}${title} is played as soon as it is drawn: ${effect[card] ?? 'it takes effect at once'}.`;
+  },
+  playOnDrawRule: (names: readonly string[]): string =>
+    `Some Leverage cards are played as soon as they are drawn and never go to a hand: ${names.join(', ')}.`,
+  pileTopPlace: (what: string): string => `The ${what} on top of this stack is yours to place: tap a glowing space next to the board.`,
   waitingRoundEnd: (name: string): string => `End of the round: ${name} may use free upgrades and the building their meeple stands on.`,
 
   // Setup
@@ -129,7 +142,7 @@ export const W = {
   bankUndoDetail: (n: number): string => `${plural(n, 'belt', 'belts')} placed this turn`,
   price: (n: number): string => `Price ${n}, paid from your materials (change in Ore)`,
   priceExact: (n: number): string => `Price ${n}, paid exactly from your materials`,
-  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials · ${left} left in the deck`,
+  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials · ${left} left in the deck · some cards are played as soon as they are drawn`,
   noBelts: 'No belts in your supply. Buy one first.',
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
@@ -174,6 +187,11 @@ export const W = {
   routeBuyPlace: (m: number, total: number): string => `Buy ${m} and place ${total}`,
   routeOwnDetail: 'From the belts in your supply',
   routeNothingNow: 'You have no belts and cannot buy one now: keep the plan for a later turn.',
+  routeNoSupply: (n: number, buy: number): string =>
+    `Route: ${plural(n, 'belt', 'belts')}. No belts in your supply${buy > 0 ? `; you can buy ${buy} now` : ''}.`,
+  routeLater: 'Keep the plan for a later turn',
+  routeLaterDetail: 'It is offered again when you next press Lay a belt',
+  layBeltFirst: 'To lay belts, press Lay a belt first, then tap where they should start.',
   routeContinue: (k: number): string => `Continue your planned route (${plural(k, 'belt', 'belts')} left)`,
   routeContinueDetail: 'The route you planned earlier on this device',
   planGone: 'Your planned route can no longer be laid, so it was dropped.',

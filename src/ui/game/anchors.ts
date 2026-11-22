@@ -54,9 +54,16 @@ function clampY(env: PlaceEnv, y: number, h: number): number {
 export function placeConfirm(env: PlaceEnv, p: Pt, w: number, h: number, lit: readonly Pt[]): { x: number; y: number; side: Side } {
   // The ghost's tile reaches about half a tile from its centre each way (more across).
   const rx = env.tile * 0.6, ry = env.tile * 0.5;
+  // Beside the ghost first; when lit spaces surround it, the same sides a tile further out and the
+  // four corners, so the bar can sit where it covers nothing the player may still tap.
+  const far = env.tile * 0.9;
   const cands: [number, number, Side][] = [
     [p.x - w / 2, p.y + ry + 10, 'below'], [p.x + rx + 10, p.y - h / 2, 'right'],
     [p.x - rx - 10 - w, p.y - h / 2, 'left'], [p.x - w / 2, p.y - ry - 10 - h, 'above'],
+    [p.x - w / 2, p.y + ry + 10 + far, 'below'], [p.x + rx + 10 + far, p.y - h / 2, 'right'],
+    [p.x - rx - 10 - w - far, p.y - h / 2, 'left'], [p.x - w / 2, p.y - ry - 10 - h - far, 'above'],
+    [p.x + rx, p.y + ry + 10, 'below'], [p.x - rx - w, p.y + ry + 10, 'below'],
+    [p.x + rx, p.y - ry - 10 - h, 'above'], [p.x - rx - w, p.y - ry - 10 - h, 'above'],
   ];
   let best = Infinity;
   let out: { x: number; y: number; side: Side } = { x: 0, y: 0, side: 'below' };

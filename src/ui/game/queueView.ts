@@ -15,10 +15,24 @@ export function nextSeat(ctx: Ctx): number | null {
   return turnQueue(ctx.game, (p: PlayerId) => seatName(ctx.room, p), ctx.upcomingOrder ?? null).next;
 }
 
+/**
+ * Short labels for the phone's compact row that tell every seat apart: the first letter, plus the
+ * number at the end of the name ("Smart Bot 2" → "S2"); seats still alike get their seat number.
+ */
+export function shortLabels(names: readonly string[]): string[] {
+  const base = names.map((n) => {
+    const t = n.trim();
+    const num = /(\d+)$/.exec(t)?.[1] ?? '';
+    return `${t.charAt(0).toUpperCase() || '?'}${num}`;
+  });
+  return base.map((b, i) => (base.filter(x => x === b).length > 1 ? `${b.replace(/\d+$/, '')}${i + 1}` : b));
+}
+
 function chip(ctx: Ctx, it: Extract<QueueItem, { kind: 'turn' }>, compact: boolean): HTMLElement {
   const name = seatName(ctx.room, it.seat);
   const you = it.seat === ctx.me;
-  const label = compact ? name.trim().charAt(0).toUpperCase() || '?' : `${name}${you ? ' (you)' : ''}`;
+  const short = shortLabels(ctx.room.seats.map((_, i) => seatName(ctx.room, i)))[it.seat] ?? '?';
+  const label = compact ? short : `${name}${you ? ' (you)' : ''}`;
   const words = [`${name}${you ? ', you' : ''}`, it.status === 'done' ? 'done' : it.status === 'active' ? `now: ${it.step ?? ''}` : it.status === 'next' ? 'next' : '', it.first ? 'first this round' : '']
     .filter(Boolean).join(', ');
   return h('li', {
@@ -34,7 +48,9 @@ function chip(ctx: Ctx, it: Extract<QueueItem, { kind: 'turn' }>, compact: boole
 
 function mark(it: Extract<QueueItem, { kind: 'mark' }>, compact: boolean): HTMLElement | null {
   if (compact && it.role === 'next') return null;
-  const text = compact ? (it.role === 'roundEnd' ? 'End' : it.role === 'round' ? it.text.replace('Round ', 'R') : it.role === 'setup' ? (it.text.startsWith('Set') ? 'PF' : 'PP') : it.text) : it.text;
+  const text = compact
+    ? (it.role === 'roundEnd' ? 'Round end' : it.role === 'setup' ? (it.text.startsWith('Set') ? 'Plate Factories' : 'Power Plants') : it.text)
+    : it.text;
   return h('li', { class: `tg-qm ${it.status} q-${it.role}`, attrs: { 'aria-label': it.text } }, text);
 }
 

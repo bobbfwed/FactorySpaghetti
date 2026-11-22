@@ -194,7 +194,8 @@ export function gesturesFor(c: PlayController, a: Action): void {
       else tapLit(c, { kind: 'mineSlot', pieceId: a.pieceId, slot: a.slotIndex });
       ok(c); return;
     case 'PLACE_BELT':
-      // Plan the route between the two points (one belt here), then place it.
+      // Lay a belt (its own mode), plan the route between the two points (one belt here), then place it.
+      pick(c, 'bank:placeBelt');
       tapLit(c, { kind: 'point', pieceId: a.pieceId, point: a.fromPoint });
       tapLit(c, { kind: 'point', pieceId: a.pieceId, point: a.toPoint });
       press(c);

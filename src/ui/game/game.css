@@ -740,3 +740,77 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-choices.route.compact .item { flex: 1 1 0; min-height: 44px; padding: 6px 8px; justify-content: center; text-align: center; }
 .tg-choices.route.compact .item .dt { display: none; }
 .tg-choices.route.compact .item .lb { font-size: 13.5px; }
+
+/* ---- the hand in the bottom panel (handFit.ts picks the layout after each render) ----
+   Nothing leaves the hand section: the "Hand · N" header stays clear, and no card covers another
+   card's name. */
+.tg-sec.handsec { overflow: hidden; }
+.tg-hand.row, .tg-hand.strips { margin: 0; flex: 1 1 auto; min-height: 0; }
+.tg-hand.row { display: flex; gap: 6px; align-items: flex-start; }
+.tg-hand.row > .tg-li { position: relative; flex: none; width: var(--cw); height: var(--ch); }
+.tg-hand.row > .tg-li > .tg-handcard { position: absolute; left: 0; top: 0; transform: scale(var(--cs)); transform-origin: 0 0; max-width: none; }
+.tg-hand.row > .tg-li > .tg-handcard:hover .tg-card, .tg-hand.row > .tg-li > .tg-handcard:focus-visible .tg-card { box-shadow: 0 0 0 3px var(--gold), 0 10px 24px rgba(0, 0, 0, 0.55); }
+.tg-hand.strips { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-rows: 40px; gap: 4px 6px; align-content: start; }
+.tg-hand.strips > .tg-li { display: flex; min-width: 0; }
+.tg-hand.strips .tg-handcard { display: flex; width: 100%; height: 40px; border-radius: 7px; }
+.tg-hand.strips .tg-card { width: 100%; height: 40px; border-radius: 7px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); }
+.tg-hand.strips .tg-handcard.playable .tg-card { box-shadow: inset 0 0 0 2px var(--ink), 0 0 0 2px rgba(232, 183, 48, 0.85); }
+.tg-hand.strips .tg-card::after, .tg-hand.strips .tg-card .top, .tg-hand.strips .tg-card .txt, .tg-hand.strips .tg-card .foot { display: none; }
+.tg-hand.strips .tg-card .band { flex: 1; align-items: center; font-size: 12px; line-height: 1.15; padding: 4px 8px; }
+.tg-hand.strips .tg-handcard:hover .tg-card, .tg-hand.strips .tg-handcard:focus-visible .tg-card { box-shadow: 0 0 0 3px var(--gold); }
+.tg-handopen { display: none; min-height: 44px; gap: 8px; align-self: stretch; justify-content: center; }
+.tg-handopen .ic { width: 18px; height: 18px; }
+.tg-handopen.on { box-shadow: inset 0 0 0 2px var(--gold); color: var(--gold); }
+.tg-yours[data-hand="button"] .tg-hand { display: none; }
+.tg-yours[data-hand="button"] .tg-handopen { display: inline-flex; }
+.tg-yours[data-hand="act"] .tg-handbtn { display: inline-flex; justify-content: center; }
+.tg-yours[data-hand="act"] .tg-sec.handsec > * { visibility: hidden; }
+/* Material wells never spill out of their section (names give way first); wide windows give the
+   section the room its four wells need with their names. */
+.tg-mats { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.tg-mat { min-width: 0; }
+.tg-mat .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-mat .num { flex: none; }
+@media (min-width: 1381px) { .tg-sec.mats { width: 268px; } }
+/* The narrowest player section (touch, 1100 px and below): the Tesseract stars a little smaller. */
+.tg-sec.who .tg-kv2 { gap: 6px; }
+@media (any-pointer: coarse) and (max-width: 1100px) {
+  .tg-hud.desk .tg-sec.who .tg-pips { gap: 1px; }
+  .tg-hud.desk .tg-sec.who .tg-pip { width: 12px; height: 12px; }
+}
+
+/* ---- a Leverage card played as soon as it was drawn: announced on the table ---- */
+.tg-announce {
+  display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px;
+  background: rgba(20, 20, 22, 0.96); box-shadow: 0 0 0 2px var(--seat), 0 10px 26px rgba(0, 0, 0, 0.5); color: var(--text);
+  font-size: 14.5px; font-weight: 650; line-height: 1.3; pointer-events: auto;
+}
+.tg-announce > .ic { width: 22px; height: 22px; color: var(--gold); flex: none; }
+.tg-announce .tx { flex: 1; min-width: 0; }
+.tg-announce .x { flex: none; }
+
+/* ---- the roll outcome: a button (tap to close the full line, tap the chip to read it again) ---- */
+button.tg-roll { color: var(--text); text-align: left; cursor: pointer; min-height: 44px; }
+.tg-roll .shrink { margin-left: auto; padding-left: 12px; font-size: 11.5px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.tg-hud.phone .tg-roll .line { -webkit-line-clamp: 4; }
+/* Phone queue row: the labels read without opening it ("Round 2", "S2", "Round end"). */
+.tg-qlist.compact .tg-q .dot { width: auto; min-width: 26px; padding: 0 5px; border-radius: 13px; }
+.tg-qlist.compact .tg-q.active .dot { min-width: 32px; }
+.tg-qlist.compact .tg-qm { white-space: nowrap; }
+
+/* A planned route's key: seat colour = from your supply, gold = to buy now, grey = for a later turn. */
+.tg-routekey { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12.5px; font-weight: 700; color: var(--text-2); padding: 0 2px; }
+.tg-routekey .k { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tg-routekey .sw { width: 18px; height: 8px; border-radius: 4px; }
+.tg-routekey .own .sw { background: var(--seat); }
+.tg-routekey .buy .sw { background: #e8b730; }
+.tg-routekey .cant .sw { background: transparent; box-shadow: inset 0 0 0 2px #9a968e; }
+.tg-choices.route.compact .tg-routekey { padding: 2px 4px 6px; font-size: 12px; }
+/* The explanation of a tap on the table, shown beside the tapped spot. */
+.tg-toast.at-tap { bottom: auto; }
+/* The desktop turn queue fades nearly out while a lit target lies under it (taps pass through it anyway). */
+.tg-queue.desk { transition: opacity 0.2s ease; }
+.tg-queue.desk.under { opacity: 0.15; }
+/* The route key keeps clear of the first button; the docked route panel keeps clear of the edge tabs. */
+.tg-routekey { margin-bottom: 6px; }
+.tg-hud.desk .tg-choices.route { right: 60px; }

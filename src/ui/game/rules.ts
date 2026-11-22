@@ -5,9 +5,10 @@ import type { Material, PieceType } from '../../engine/config';
 import {
   BELT_COST, BONUS_THRESHOLDS, FACTORY_POWER_COST, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MAX_CARDS_PLAYED_PER_TURN,
   MAX_CLAIMS_PER_BUILDING, MINE_COSTS, POWER_PLANT_BASE_YIELD, POWER_PLANT_MATERIAL_YIELD, POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET,
-  TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
+  PLAY_ON_DRAW_CARDS, TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
 } from '../../engine/config';
-import { BUILDING_NAME, MATERIAL_NAME } from '../../session/describe';
+import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../../session/describe';
+import { W } from '../../play/words';
 import type { Child } from '../dom';
 import { h } from '../dom';
 import { icon } from '../icons';
@@ -64,6 +65,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     h('h3', { text: 'Prices' }),
     row([icon('belt'), 'Belt'], String(BELT_COST)),
     row([icon('card'), 'Leverage card'], `Mines + 1 (now ${cardCost(mines)})`),
+    h('p', { class: 'muted', text: W.playOnDrawRule([...PLAY_ON_DRAW_CARDS].map(c => CARD_NAME[c])) }),
     row([icon('mine'), 'Mine'], MINE_COSTS.join(' then ')),
     row([icon('teleporter'), 'Teleporter'], `teleporters placed + 1 (now ${teleporterCost(g.globalTeleporterCount)}), paid exactly`),
     row('Claim with Control Module M', `M − Mines + 1 upgrades (now M − ${mines - 1})`),

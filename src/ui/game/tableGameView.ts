@@ -56,11 +56,22 @@ import { seatChips, seatDetails, seatPlates } from './seats';
 import { edgeTabs, sidePanel } from './sidePanel';
 import { confirmBar, turnBar } from './turnBar';
 import { handPopover, phoneSheet, yourPanel } from './yourArea';
+import { fitHand } from './handFit';
+import { carve } from './freeArea';
+import { icon } from '../icons';
+import { W } from '../../play/words';
 
 /** Phone layout below this width, or when the window is portrait and narrow. */
 const PHONE_MAX_W = 760;
 const FLASH_MS = 2600;
 const TOAST_MS = 4500;
+/** A card played as soon as it was drawn stays announced this long (or until closed). */
+const ANNOUNCE_MS = 10_000;
+/** The roll outcome stays open this long after it appears (or until the first tap on the table). */
+const ROLL_OPEN_MS = 6000;
+/** Floating panels the board is framed clear of (desktop, phone). The notices at the top are not: each closes with one tap on its ✕ ([data-dismiss]). */
+const DESK_PANELS = '.tg-roll.has-line, .tg-bank, .tg-choices, .tg-confirm.docked';
+const PHONE_PANELS = '.tg-roll.has-line, .tg-choices, .tg-confirm.docked';
 /** Smallest tile size when framing on a phone, so tiles stay comfortable to tap (pinch out for more). */
 const PHONE_MIN_TILE_PX = 64;
 
@@ -163,6 +174,8 @@ export function tableGameView(ctrl: AppController): View {
   let insetsKey = '';
   let free: Rect = { left: 8, top: 80, right: window.innerWidth - 8, bottom: window.innerHeight - 260 };
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Where the last table tap was (a hint it causes is shown there). */
+  let tapToastAt: { x: number; y: number; t: number } | null = null;
   let lastHint: string | null = null;
   /** The phone sheet was closed by the player while these modules were lit: do not reopen it for them. */
   let sheetDismissedFor: string | null = null;
@@ -196,11 +209,18 @@ export function tableGameView(ctrl: AppController): View {
   let outcome: RollOutcome | null = null;
   let promptIds = new Set<string>();
   let flashTimer: ReturnType<typeof setTimeout> | null = null;
+  let announceTimer: ReturnType<typeof setTimeout> | null = null;
+  let rollTimer: ReturnType<typeof setTimeout> | null = null;
   /** The player has dragged or zoomed the table (until they press Re-centre). */
   let userCamera = false;
   const offs: (() => void)[] = [];
   let downAt: { x: number; y: number } | null = null;
-  canvas.addEventListener('pointerdown', (e) => { downAt = { x: e.clientX, y: e.clientY }; });
+  canvas.addEventListener('pointerdown', (e) => {
+    downAt = { x: e.clientX, y: e.clientY };
+    // The first tap on the table puts away what floats over it for reading: the roll outcome and,
+    // on the phone, the opened turn order.
+    if (ui.rollOpen || ui.queueOpen) { ui.rollOpen = false; ui.queueOpen = false; schedule(); }
+  });
   canvas.addEventListener('pointermove', (e) => {
     if (downAt && e.buttons && Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y) > 8) userCamera = true;
   });
@@ -213,6 +233,8 @@ export function tableGameView(ctrl: AppController): View {
     if (!client) { refuse('Not connected to the game.'); return; }
     if (client.pending) return; // input is locked while a move is in flight; never a refusal
     sendStartedAt = performance.now();
+    // A move made: the opened turn order (phone) gives the table back.
+    if (ui.queueOpen) ui.queueOpen = false;
     if (sendingTimer) clearTimeout(sendingTimer);
     sendingTimer = setTimeout(() => { sendingTimer = null; schedule(); }, SENDING_AFTER_MS + 10);
     const me = ctrl.mySeat;
@@ -264,6 +286,24 @@ export function tableGameView(ctrl: AppController): View {
     toast.textContent = text;
     toast.hidden = false;
     toast.classList.remove('show');
+    // Right after a tap on the table: beside the tapped spot (above it, or below near the top).
+    const at = tapToastAt && performance.now() - tapToastAt.t < 600 ? tapToastAt : null;
+    tapToastAt = null;
+    toast.classList.toggle('at-tap', !!at);
+    if (at) {
+      const rr = root.getBoundingClientRect();
+      // Measure with the whole width available (at left: 50% it could only take half of it).
+      toast.style.left = '0px';
+      toast.style.top = '0px';
+      const w = toast.offsetWidth, hh = toast.offsetHeight;
+      const x = Math.min(Math.max(at.x - rr.left, 12 + w / 2), rr.width - 12 - w / 2);
+      const above = at.y - rr.top - hh - 22;
+      toast.style.left = `${x}px`;
+      toast.style.top = `${above >= 8 ? above : at.y - rr.top + 22}px`;
+    } else {
+      toast.style.left = '';
+      toast.style.top = '';
+    }
     void toast.offsetWidth; // restart the fade
     toast.classList.add('show');
     if (toastTimer) clearTimeout(toastTimer);
@@ -319,8 +359,30 @@ export function tableGameView(ctrl: AppController): View {
         }, wait);
       }
       cues(prev, info.room);
+      announcePlayOnDraw(info.room);
     }
     schedule();
+  }
+
+  /** A Leverage card played as soon as it was drawn: say so on the table, for the buyer and everyone else. */
+
+  function announcePlayOnDraw(r: Room): void {
+    const ev = r.lastEvents.find(e => e.kind === 'cardBought' && e.playedOnDraw);
+    if (!ev || ev.kind !== 'cardBought' || !ev.card || !r.game) return;
+    const you = ev.seat === ctrl.mySeat;
+    const n = ev.card === 'overstockSupplies' ? r.game.overstockPieces.length : 0;
+    const a = { seq: r.seq, seat: ev.seat, text: W.playOnDraw(ev.card, seatName(r, ev.seat), n, you) };
+    ui.announce = a;
+    if (announceTimer) clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => { if (ui.announce === a) { ui.announce = null; schedule(); } }, ANNOUNCE_MS);
+  }
+
+  function announceStrip(ctx: Ctx): HTMLElement | null {
+    const a = ctx.ui.announce;
+    if (!a) return null;
+    return h('div', { class: 'tg-announce', style: `--seat:${seatHex(ctx.room, a.seat)}`, attrs: { role: 'status', 'data-dismiss': 'close' } },
+      icon('card'), h('span', { class: 'tx', text: a.text }),
+      h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close' }, onclick: () => { ui.announce = null; schedule(); } }, icon('cross')));
   }
 
   /** What the last roll produced, for the roll chip and the log (from the room's events). */
@@ -336,6 +398,9 @@ export function tableGameView(ctrl: AppController): View {
         ore = plan ? plan.steps.filter(s => s.kind === 'flow' && s.material === 'ore').length : 0;
       } catch { ore = 0; }
       outcome = outcomeOf(r.seq, events, ore);
+      // A new roll: its outcome opens in full (and shrinks again after a while or the first tap).
+      ui.rollOpen = true;
+      if (rollTimer) { clearTimeout(rollTimer); rollTimer = null; }
     } else if (outcome) {
       outcome = updateOutcome(outcome, events);
     }
@@ -470,8 +535,8 @@ export function tableGameView(ctrl: AppController): View {
   /** Notices at the top of the table: a failed menu command, and the storage warning. */
   function notes(ctx: Ctx): HTMLElement | null {
     // On the phone the storage notice sits at the top of the bottom sheet instead (yourArea.ts).
-    const a = errorStrip(ctx), b = ctx.phone ? null : storageStrip(ctx);
-    return a || b ? h('div', { class: 'tg-notes' }, a, b) : null;
+    const a = errorStrip(ctx), b = ctx.phone ? null : storageStrip(ctx), c = announceStrip(ctx);
+    return a || b || c ? h('div', { class: 'tg-notes' }, a, b, c) : null;
   }
 
   function confirmAnchor(ctx: Ctx): string | null {
@@ -485,9 +550,10 @@ export function tableGameView(ctrl: AppController): View {
   function render(): void {
     queued = 0;
     if (disposed) return;
+    // The layout first: the context below carries it (ctx.phone) to every part.
+    phone = isPhoneLayout();
     const ctx = context();
     if (!ctx) return;
-    phone = isPhoneLayout();
     const parts: Child[] = phone
       ? [
         slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
@@ -515,7 +581,9 @@ export function tableGameView(ctrl: AppController): View {
     morph(hud, fresh);
     root.classList.toggle('phone', phone);
     root.classList.toggle('landscape', ctx.landscape);
+    if (!phone) fitHand(hud.querySelector<HTMLElement>('.tg-yours'));
     observeControls();
+    syncRollTimer();
     measureFree();
     placeAnchors();
     syncTable(ctx);
@@ -535,6 +603,11 @@ export function tableGameView(ctrl: AppController): View {
   }
 
   // A press on a move control that just changed under the finger is dropped (see pressGuard.ts).
+  // A tap anywhere outside the opened turn order (phone) closes it.
+  hud.addEventListener('pointerdown', (e) => {
+    if (ui.queueOpen && !(e.target instanceof Element && e.target.closest('.tg-queue'))) { ui.queueOpen = false; schedule(); }
+  }, true);
+
   hud.addEventListener('click', (e) => {
     const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-act]') : null;
     if (!el) return;
@@ -664,7 +737,10 @@ export function tableGameView(ctrl: AppController): View {
     const bottom = landscape ? H - 8 : topOf(phone ? '.tg-sheet' : '.tg-turnbar', H) - 8;
     const sideLeft = landscape ? topOfLeft('.tg-sheet', W) : phone ? W : topOfLeft('.tg-side', W);
     const hb = hud.getBoundingClientRect();
-    free = { left: 8 + Math.max(0, hb.left), top, right: Math.min(hb.right - 8, sideLeft - 8), bottom: Math.max(top + 80, bottom) };
+    const base = { left: 8 + Math.max(0, hb.left), top, right: Math.min(hb.right - 8, sideLeft - 8), bottom: Math.max(top + 80, bottom) };
+    // Opaque panels floating over the board are cut out of its area (freeArea.ts), so the board
+    // is framed clear of them and no lit target sits underneath one.
+    free = carve(base, panelRects(phone ? PHONE_PANELS : DESK_PANELS));
     // Panels that float just above the bottom panel or sheet read its height from here.
     root.style.setProperty('--bottom-h', `${Math.round(H - bottom - 8)}px`);
     // Frame the camera to the free area. On the phone, use the collapsed sheet so pulling it up
@@ -673,14 +749,39 @@ export function tableGameView(ctrl: AppController): View {
     // The HUD keeps to the safe area (game.css), so its edges are the notch and gesture-bar insets.
     const hr = hud.getBoundingClientRect();
     const safeL = Math.max(0, hr.left), safeR = Math.max(0, W - hr.right);
-    const insets: ViewInsets = { top, right: landscape ? W - sideLeft + 8 : 12 + safeR, bottom: H - free.bottom, left: 12 + safeL };
+    const insets: ViewInsets = {
+      top: Math.max(top, free.top),
+      right: Math.max(landscape ? W - sideLeft + 8 : 12 + safeR, W - free.right),
+      bottom: H - free.bottom,
+      left: Math.max(12 + safeL, free.left),
+    };
     const key = `${phone ? 'p' : 'd'}:${Math.round(insets.top / 4)}:${Math.round(insets.bottom / 4)}:${Math.round(insets.right / 4)}:${Math.round(insets.left / 4)}`;
     if (key !== insetsKey) {
       const first = insetsKey === '';
       insetsKey = key;
       table.setViewport(insets, { minTilePx: phone ? PHONE_MIN_TILE_PX : 0 });
-      if (first) table.recenter();
+      // A panel came or went: frame the board again (unless the player has moved the camera).
+      if (first || !userCamera) table.recenter();
     }
+  }
+
+  /** Screen boxes of the visible floating panels matching `sel`. */
+  function panelRects(sel: string): Rect[] {
+    const out: Rect[] = [];
+    for (const el of hud.querySelectorAll<HTMLElement>(sel)) {
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1 || getComputedStyle(el).visibility === 'hidden') continue;
+      out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+    return out;
+  }
+
+  /** Keep the roll outcome open for a few seconds after it appears, then shrink it to the chip. */
+
+  function syncRollTimer(): void {
+    const open = ui.rollOpen && !!ui.rollOutcome && !ui.diceRolling;
+    if (open && !rollTimer) rollTimer = setTimeout(() => { rollTimer = null; ui.rollOpen = false; schedule(); }, ROLL_OPEN_MS);
+    if (!ui.rollOpen && rollTimer) { clearTimeout(rollTimer); rollTimer = null; }
   }
 
   function topOfLeft(sel: string, fallback: number): number {
@@ -715,7 +816,25 @@ export function tableGameView(ctrl: AppController): View {
     return t;
   }
 
+  /**
+   * The desktop turn queue lets taps through to the table; when a lit target lies under it, it
+   * also fades nearly out, so nothing to tap is hidden by it.
+   */
+  function fadeQueue(): void {
+    const q = hud.querySelector<HTMLElement>('.tg-queue.desk');
+    const list = q?.querySelector<HTMLElement>('.tg-qlist');
+    if (!q || !list || !table) return;
+    const r = list.getBoundingClientRect();
+    let under = false;
+    for (const x of litTargets()) {
+      const p = table.screenPosition(x.t);
+      if (p && p.x >= r.left - 6 && p.x <= r.right + 6 && p.y >= r.top - 6 && p.y <= r.bottom + 6) { under = true; break; }
+    }
+    q.classList.toggle('under', under);
+  }
+
   function placeAnchors(): void {
+    fadeQueue();
     const els = [...hud.querySelectorAll<HTMLElement>('[data-anchor]')];
     if (els.length === 0) return;
     // Read: every size and screen point first …
@@ -785,6 +904,9 @@ export function tableGameView(ctrl: AppController): View {
       return;
     }
     lastTap = hit;
+    // The explanation of a tap on something that is not lit appears next to what was tapped.
+    const p = table?.screenPosition(hit) ?? null;
+    tapToastAt = p ? { x: p.x, y: p.y, t: performance.now() } : null;
     play.tap(hit);
     if (play.view.hint) { sound.play('refuse'); haptic('refuse'); }
   }

@@ -14,6 +14,7 @@ import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Pl
 import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
 import { tryPayExact } from '../engine/rules/flow';
+import { revealedStack as revealedStackOf } from '../engine/rules/pieces';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
@@ -559,7 +560,9 @@ export class PlayController {
     const pieces = ofType(legal, 'PLACE_PIECE');
     const stacks = [...new Set(pieces.map(a => a.stackIndex))].sort();
     v.instruction = W.placePickStack;
-    for (const s of stacks) {
+    // One pile: its top piece is already face-up and the spaces are lit at once (default mode), so
+    // the pile is not a step of its own and does not glow.
+    for (const s of stacks.length > 1 ? stacks : []) {
       b.lit({ kind: 'stack', index: s }, () => this.setMode({
         k: 'place', src: { kind: 'stack', stack: s }, coord: null,
         rotation: this.mode.k === 'place' ? this.mode.rotation : 0, auto: false,
@@ -770,12 +773,8 @@ export class PlayController {
       if (a.type === 'PLACE_TELEPORTER' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
     for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
-    // Placed belts are not touchable here: removing one is its own mode (Remove a belt).
-    if (this.game && this.me !== null && legal.some(a => a.type === 'END_ACTIONS' || a.type === 'BUY_BELT' || a.type === 'PLACE_BELT')) {
-      for (const p of routeEnds(this.game, this.me)) {
-        b.lit({ kind: 'point', pieceId: p.pieceId, point: p.position }, () => this.setMode({ k: 'belt', start: p }));
-      }
-    }
+    // Belt points and placed belts are not lit here: laying and removing belts are their own modes
+    // (Lay a belt, Remove a belt), so the board stays calm until the player picks one.
     const buy = legal.find(a => a.type === 'BUY_CARD');
     if (buy) b.lit({ kind: 'deck' }, () => this.send(buy));
   }
@@ -1015,7 +1014,7 @@ export class PlayController {
     const buy = t.filter(x => x.tier === 'buy').length;
     const short = t.length - own - buy;
     const have = g.players[me]?.beltsRemaining ?? 0;
-    const totals = W.routeTotals(t.length, have, buy, short);
+    const totals = have === 0 ? W.routeNoSupply(t.length, buy) : W.routeTotals(t.length, have, buy, short);
     v.instruction = totals;
     v.selection = { kind: 'belt', label: selectionLabel.belt };
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
@@ -1035,7 +1034,12 @@ export class PlayController {
         v.primary = { label: first.label, enabled: true };
         b.onPrimary = first.id === 'route:own' ? placeOwn : placeBuy;
       } else {
-        v.primary = { label: W.routePlaceOwn(0), enabled: false, hint: W.routeNothingNow };
+        // Nothing can be laid now (no button with a zero count): the plan waits for a later turn.
+        const later = (): void => { this.mode = IDLE; };
+        items.push(b.item({ id: 'route:later', label: W.routeLater, detail: W.routeLaterDetail, enabled: true }, later));
+        v.instruction = `${totals} ${W.routeNothingNow}`;
+        v.primary = { label: W.routeLater, enabled: true };
+        b.onPrimary = later;
       }
     }
     items.push(b.item({ id: 'route:cancel', label: W.routeCancel, enabled: true }, () => {
@@ -1451,6 +1455,8 @@ export class PlayController {
       }
       return W.noRoute;
     }
+    // Outside Lay a belt, a point where belts could start: say how to lay them.
+    if (m.k !== 'belt' && m.k !== 'route' && routeEnds(g, me).some(p => p.pieceId === pieceId && p.position === point)) return W.layBeltFirst;
     const plan = planningStateOf(g, me);
     let first: string | null = null;
     for (const other of piecePoints(g, pieceId)) {
@@ -1468,6 +1474,8 @@ export class PlayController {
     if (!g || me === null || g.gameOver) return null;
     if (g.pendingFactoryOps.some(e => e.ownerId === me)) return W.promptHint;
     if (activeId(g) !== me) return W.notYourTurn;
+    // Several piles open: anything but a pile waits for the draw.
+    if (t.kind !== 'stack' && g.phase === 'placePiece' && legalFor(g, me).some(a => a.type === 'DRAW_PIECE')) return W.drawFirst;
     switch (t.kind) {
       case 'cell':
         if (g.phase === 'placePiece' && legalFor(g, me).some(a => a.type === 'DRAW_PIECE')) return W.drawFirst;
@@ -1480,6 +1488,9 @@ export class PlayController {
         const drawn = g.drawnStackIndex ?? null;
         if (g.phase === 'placePiece' && drawn !== null && drawn !== t.index) return W.notDrawnPile(drawn + 1);
         if (g.phase !== 'placePiece') return W.pileNotNow;
+        // The face-up piece of the pile in play: say what it is and where it goes.
+        const top = s.pieces[0];
+        if (top && revealedStackOf(g) === t.index && legalFor(g, me).some(a => a.type === 'PLACE_PIECE')) return W.pileTopPlace(pieceName(top.type));
         return W.nothingHere;
       }
       case 'piece': case 'buffer': case 'mineSlot': {
