@@ -331,7 +331,10 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
         const piece = next.board.find(p => p.id === id);
         const pose = piece ? previews.piecePoseAt(piece.type, piece.coord.q, piece.coord.r, piece.rotation ?? 0, now, table) : null;
         if (pose) from.set(id, { x: pose.x, y: pose.y, z: pose.z, yaw: pose.yaw });
+        // The placed piece replaces its preview (no preview flying back to the pile).
+        if (pose && piece) previews.consume({ kind: 'piece', type: piece.type, q: piece.coord.q, r: piece.coord.r, rotation: piece.rotation ?? 0 });
       }
+      for (const s of steps) if (s.kind === 'meeple') previews.consume({ kind: 'meeple', playerId: s.player });
       showGame(next);
       table.clearAppear(placed);
       animator.start(prev, next, steps, scale, now, table.side, from);

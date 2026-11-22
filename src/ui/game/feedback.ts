@@ -19,6 +19,12 @@ export function rollChip(ctx: Ctx): HTMLElement | null {
   const g = ctx.game;
   const o = ctx.ui.rollOutcome;
   if (g.gameOver || ctx.ui.diceRolling) return null;
+  // Phone: while piles or spaces are lit, the chip keeps to its top row so it does not cover them.
+  const short = ctx.phone && (!!ctx.view.route || ctx.view.targets.some(t => t.kind === 'stack' || t.kind === 'cell'));
+  if (o && short) {
+    return h('div', { class: 'tg-roll tray', style: `--seat:${seatHex(ctx.room, o.roller)}`, attrs: { role: 'status', 'data-roll-outcome': '1', 'aria-label': o.text } },
+      h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) }));
+  }
   if (o) {
     return h('div', { class: 'tg-roll tray has-line', style: `--seat:${seatHex(ctx.room, o.roller)}`, attrs: { role: 'status', 'data-roll-outcome': '1' } },
       h('div', { class: 'top' }, h('span', { class: 'sw' }), o.dice.map(n => die(n)), h('span', { text: 'Rolled' }), h('b', { class: 'big num', text: String(o.total) })),

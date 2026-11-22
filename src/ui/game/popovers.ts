@@ -33,7 +33,10 @@ export function buildingMenu(ctx: Ctx): HTMLElement | null {
 export function choicesPanel(ctx: Ctx): HTMLElement | null {
   const c = ctx.view.choices;
   if (!c) return null;
-  return h('div', { class: 'tg-choices tray', attrs: { role: 'dialog', 'aria-label': c.title } },
+  // A planned belt route docks at the side, so it does not cover the route on the board.
+  // On the phone a planned route keeps the panel to one row of buttons, so the route stays visible.
+  const compact = !!ctx.view.route && ctx.phone;
+  return h('div', { class: `tg-choices tray${ctx.view.route ? ' route' : ''}${compact ? ' compact' : ''}`, attrs: { role: 'dialog', 'aria-label': c.title } },
     h('div', { class: 'hd' }, h('b', { text: c.title }),
       h('button', { class: 'x round small', title: 'Cancel', attrs: { 'aria-label': 'Cancel', 'data-close': 'choices' }, onclick: () => ctx.play.cancel() }, icon('cross'))),
     h('div', { class: 'list' }, c.items.map(it => h('button', {

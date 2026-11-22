@@ -8,7 +8,19 @@ import type { GameState, PlayerId } from '../../engine/state';
 import { applyAction, createGame, legalActions } from '../../engine';
 import { PlayController } from '../controller';
 import type { Target } from '../../table/types';
-import { Rand, active, actors, allItems, expectLegal, randomMove, roll } from './helpers';
+import { GestureError, Rand, active, actors, allItems, expectLegal, gesturesFor, harness, offered, randomMove, roll } from './helpers';
+
+/** Can a player reach at least one of the moves offered to them with gestures alone? */
+function reachable(s: GameState, p: PlayerId): boolean {
+  const acts = offered(s, p);
+  if (acts.length === 0) return true;
+  for (const a of acts.slice(0, 40)) {
+    const { c, sent } = harness(s, p);
+    try { gesturesFor(c, a); } catch (e) { if (e instanceof GestureError) continue; throw e; }
+    if (sent.length > 0) return true;
+  }
+  return false;
+}
 
 function randomTarget(r: Rand, s: GameState): Target {
   const piece = s.board.length ? r.pick(s.board) : null;
@@ -46,6 +58,7 @@ function randomGesture(r: Rand, c: PlayController, s: GameState): void {
 describe('soundness: random gestures only ever send legal actions', () => {
   it('plays whole games through the controllers', () => {
     let states = 0, sends = 0, fallbacks = 0, gestures = 0, rolls = 0, routes = 0;
+    const stuck: string[] = [];
     const sentTypes = new Map<string, number>();
     for (const [pc, seeds] of [[2, [11, 12, 13, 14]], [3, [21, 22, 23]], [4, [31, 32, 33]]] as const) {
       for (const seed of seeds) {
@@ -94,7 +107,10 @@ describe('soundness: random gestures only ever send legal actions', () => {
           const c = ctrls[p]!;
           for (let g = 0; g < 120 && outbox.length === 0; g++) { randomGesture(r, c, s); gestures++; }
           if (outbox.length) { drain(); continue; }
-          // The gestures did not finish a move: let a random legal move happen so the game goes on.
+          // Random gestures did not finish a move. That is fine only when some gesture could have:
+          // a state where moves are legal for this player but none can be made is a dead end.
+          if (!reachable(s, p)) stuck.push(`${pc}p seed ${seed} step ${step} P${p} ${s.phase}: ${offered(s, p).map(a => a.type).join(',')}`);
+          // Let a random legal move happen so the game goes on.
           fallbacks++;
           const a = randomMove(r, s, p);
           if (!a) continue;
@@ -111,5 +127,6 @@ describe('soundness: random gestures only ever send legal actions', () => {
     // eslint-disable-next-line no-console -- the run's coverage figures are part of the report
     console.log(`soundness: ${states} states, ${gestures} gestures, ${sends} sends (${rolls} rolls, ${routes} route steps), ${fallbacks} fallback moves\n  sent: ${[...sentTypes].sort().map(([k, n]) => `${k} ${n}`).join(', ')}`);
     expect(sends).toBeGreaterThan(500);
+    expect(stuck, 'states where legal moves exist but no gesture can make one').toEqual([]);
   }, 600_000);
 });

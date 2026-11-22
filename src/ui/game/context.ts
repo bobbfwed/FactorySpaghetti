@@ -37,10 +37,14 @@ export interface UiState {
   rollOutcome: { seq: number; roller: number; total: number; dice: number[]; text: string } | null;
   /** The same lines for the log, by move number. */
   rollNotes: Record<number, string>;
+  /** Phone: the full turn order is open. */
+  queueOpen: boolean;
+  /** Desktop on a narrow touch screen: the hand panel is open. */
+  handOpen: boolean;
 }
 
 export function initialUi(): UiState {
-  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false, rollOutcome: null, rollNotes: {} };
+  return { menuOpen: false, side: null, sheetOpen: false, sheetTab: 'tray', card: null, seat: null, overHidden: false, topDown: false, diceRolling: false, sheetUserClosed: false, storeDismissed: false, rollOutcome: null, rollNotes: {}, queueOpen: false, handOpen: false };
 }
 
 /** What the interface may ask of the play controller (the moves a player makes). */
@@ -68,6 +72,8 @@ export interface Ctx {
   busy: boolean;
   /** Jump straight to the newest state. */
   skip(): void;
+  /** The next round's turn order from the engine, when known (for "Round N+1: X starts"). */
+  upcomingOrder?: readonly PlayerId[] | null;
   ui: UiState;
   phone: boolean;
   /** Phone layout on a window wider than tall: the sheet becomes a panel on the right. */

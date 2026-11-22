@@ -16,7 +16,7 @@
 import './game.css';
 import type { AppController, AppState } from '../../app/controller';
 import type { Action } from '../../engine/actions';
-import type { GameState, PlayerId } from '../../engine/state';
+import type { GameState, PieceType, PlayerId } from '../../engine/state';
 import { PlayController } from '../../play';
 import type { PlayView } from '../../play';
 import type { Room } from '../../session/room';
@@ -44,6 +44,10 @@ import { placeAll, type AnchorItem, type Pt } from './anchors';
 import { refusalText } from '../../app/gameText';
 import { DUR } from '../../table/transition';
 import { cameraButtons, gameMenu, menuButton } from './gameMenu';
+import { queueView } from './queueView';
+import { revealedStack, upcomingTurnOrder } from '../../engine';
+import type { Preview as TablePreview } from '../../table/types';
+import type { Preview as WirePreview } from '../../session/preview';
 import { gameOverCard } from './gameOver';
 import { ringDash } from './pieces';
 import { buildingMenu, cardModal, choicesPanel } from './popovers';
@@ -51,7 +55,7 @@ import { promptCards } from './prompts';
 import { seatChips, seatDetails, seatPlates } from './seats';
 import { edgeTabs, sidePanel } from './sidePanel';
 import { confirmBar, turnBar } from './turnBar';
-import { phoneSheet, yourPanel } from './yourArea';
+import { handPopover, phoneSheet, yourPanel } from './yourArea';
 
 /** Phone layout below this width, or when the window is portrait and narrow. */
 const PHONE_MAX_W = 760;
@@ -62,6 +66,11 @@ const PHONE_MIN_TILE_PX = 64;
 
 /** Below this height the desktop panels leave too little table, so the phone layout is used. */
 const PHONE_MAX_H = 560;
+
+/** The order the end of the round and the next round use (engine), or null if it cannot be worked out. */
+function safeUpcoming(g: GameState): readonly PlayerId[] | null {
+  try { return upcomingTurnOrder(g); } catch { return null; }
+}
 
 /** A pressed move control shows "Sending…" when the host has not answered after this long. */
 const SENDING_AFTER_MS = 400;
@@ -97,6 +106,8 @@ export interface GameDebug {
   readonly blocked: number;
   /** Refusals not shown because the room already showed the move made. */
   readonly staleRefusals: number;
+  /** Other players' previews on this table now, by seat (null: none). */
+  readonly previews: Record<number, unknown>;
   readonly stage: Stage;
   readonly feel: FeelCtl;
   readonly ui: ReturnType<typeof initialUi>;
@@ -176,6 +187,11 @@ export function tableGameView(ctrl: AppController): View {
   /** Refusals dropped because the move had been made anyway (refusals.ts). */
   let staleRefusals = 0;
   let lastCannotStore = false;
+  // Previews (unconfirmed choices): mine, as shown and sent; others', with the move number they belong to.
+  let routeKey = '';
+  let ownPreviewKey = '';
+  const otherPreviews = new Map<number, { p: WirePreview; seq: number }>();
+  const shownPreviewKeys = new Map<number, string>();
   /** The last roll's outcome (events of the roll, then runs and skips of what it activated). */
   let outcome: RollOutcome | null = null;
   let promptIds = new Set<string>();
@@ -274,7 +290,11 @@ export function tableGameView(ctrl: AppController): View {
   function onShown(info: Shown): void {
     const prev = shownRoom;
     shownRoom = info.room;
-    if (!prev || prev.seq !== info.room.seq) stateChangedAt = performance.now();
+    if (!prev || prev.seq !== info.room.seq) {
+      stateChangedAt = performance.now();
+      if (ownPreviewKey && ctrl.mySeat !== null) table?.setPreview(ctrl.mySeat, null);
+      ownPreviewKey = '';
+    }
     const g = info.room.game!;
     if (table) {
       const grew = g.board.length !== boardSize;
@@ -372,7 +392,7 @@ export function tableGameView(ctrl: AppController): View {
     return {
       ...v,
       primary: v.primary ? { label: v.primary.label, enabled: false } : null,
-      targets: [], ghost: null, confirmBar: null, selection: null, menu: null, choices: null, prompts: [], hint: null,
+      targets: [], ghost: null, confirmBar: null, selection: null, menu: null, choices: null, prompts: [], hint: null, route: null, meeplePick: null,
       tray: v.tray.map(t => (t.state === 'lit' ? { module: t.module, state: 'inTray' as const } : t)),
       bank: v.bank.map(({ reason: _r, ...b }) => ({ ...b, enabled: false })),
       hand: v.hand.map(({ reason: _r, ...c }) => ({ ...c, enabled: false })),
@@ -437,6 +457,7 @@ export function tableGameView(ctrl: AppController): View {
     return {
       ctrl, room: r, game: shown.game, me, view, play: lock ? lockedInput : busy ? busyInput : liveInput, ui, phone, landscape: phone && isLandscapePhone(),
       feel, busy, skip: () => stage.skip(),
+      upcomingOrder: safeUpcoming(shown.game),
       redraw: schedule,
       camera: {
         rotate: () => table?.rotateBy(1),
@@ -470,24 +491,24 @@ export function tableGameView(ctrl: AppController): View {
     const parts: Child[] = phone
       ? [
         slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
-        slot('top', h('div', { class: 'tg-toprow' }, menuButton(ctx), seatChips(ctx))),
+        slot('top', h('div', { class: 'tg-toprow' }, menuButton(ctx), seatChips(ctx))), slot('queue', queueView(ctx)),
         slot('menu', gameMenu(ctx)), slot('seatpop', seatDetails(ctx)),
         slot('cam', cameraButtons(ctx)), slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)),
-        slot('flash', flashMarkers(ctx, flash)), slot('prompts', ctx.ui.sheetOpen && !ctx.landscape ? null : promptCards(ctx)),
+        slot('flash', flashMarkers(ctx, flash)), slot('deciding', previewLabels(ctx)), slot('prompts', ctx.ui.sheetOpen && !ctx.landscape ? null : promptCards(ctx)),
         slot('bmenu', buildingMenu(ctx)), slot('confirm', confirmBar(ctx, confirmAnchor(ctx))),
         slot('choices', choicesPanel(ctx)), slot('sheet', phoneSheet(ctx)),
         slot('over', gameOverCard(ctx)), slot('modal', cardModal(ctx)),
       ]
       : [
         slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
-        slot('menubtn', menuButton(ctx)), slot('menu', gameMenu(ctx)),
+        slot('menubtn', menuButton(ctx)), slot('queue', queueView(ctx)), slot('menu', gameMenu(ctx)),
         slot('seats', seatPlates(ctx)), slot('seatpop', seatDetails(ctx)),
         slot('cam', cameraButtons(ctx)), slot('bank', bankPanel(ctx)),
         slot('tabs', edgeTabs(ctx)), slot('side', sidePanel(ctx)),
-        slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)), slot('flash', flashMarkers(ctx, flash)),
+        slot('roll', rollChip(ctx)), slot('skip', skipButton(ctx)), slot('flash', flashMarkers(ctx, flash)), slot('deciding', previewLabels(ctx)),
         slot('prompts', promptCards(ctx)), slot('bmenu', buildingMenu(ctx)),
         slot('confirm', confirmBar(ctx, confirmAnchor(ctx))), slot('choices', choicesPanel(ctx)),
-        slot('turnbar', turnBar(ctx)), slot('yours', yourPanel(ctx)),
+        slot('turnbar', turnBar(ctx)), slot('yours', yourPanel(ctx)), slot('handpop', handPopover(ctx)),
         slot('over', gameOverCard(ctx)), slot('modal', cardModal(ctx)),
       ];
     const fresh = h('div', { class: `tg-hud ${phone ? 'phone' : 'desk'}${ctx.ui.sheetOpen ? ' sheet-open' : ''}${ctx.view.myTurn ? ' my-turn' : ''}${ctx.busy ? ' busy' : ''}` }, ...parts);
@@ -538,8 +559,83 @@ export function tableGameView(ctrl: AppController): View {
     const color = seatColor(ctx.room, ctx.me) as PlayerColor;
     const tk = JSON.stringify(v.targets) + color;
     if (tk !== targetsKey) { targetsKey = tk; table.setTargets(v.targets, color); }
-    const gk = JSON.stringify(v.ghost);
-    if (gk !== ghostKey) { ghostKey = gk; table.setGhost(v.ghost); }
+    // My own choice is shown as the same preview the others see (one piece, not two): the local
+    // ghost remains only for a space that would not be valid.
+    const ghost = v.ghost && !v.ghost.valid ? v.ghost : null;
+    const gk = JSON.stringify(ghost);
+    if (gk !== ghostKey) { ghostKey = gk; table.setGhost(ghost); }
+    const rk = JSON.stringify(v.route) + color;
+    if (rk !== routeKey) { routeKey = rk; table.setRoute(v.route, color); }
+    syncOwnPreview(ctx);
+    syncOtherPreviews(ctx);
+  }
+
+  /** My unconfirmed piece or meeple: on my table and sent to the others; kept through the confirm. */
+  function syncOwnPreview(ctx: Ctx): void {
+    const me = ctx.me, v = ctx.view;
+    if (!table || me === null || ctx.busy) return;
+    let tp: TablePreview | null = null;
+    let wire: WirePreview | null = null;
+    if (v.ghost && v.ghost.valid) {
+      tp = { k: 'piece', pieceType: v.ghost.pieceType, q: v.ghost.q, r: v.ghost.r, rotation: v.ghost.rotation };
+      wire = { k: 'piece', q: v.ghost.q, r: v.ghost.r, rot: ((v.ghost.rotation % 6) + 6) % 6 };
+    } else if (v.meeplePick) {
+      tp = { k: 'meeple', pieceId: v.meeplePick.pieceId, slot: v.meeplePick.slot };
+      wire = tp;
+    }
+    const key = JSON.stringify(tp);
+    if (key === ownPreviewKey || (ownPreviewKey === '' && !tp)) return;
+    // The choice was just confirmed (move in flight): leave it until the move shows on the table.
+    if (!tp && ctrl.state.online?.client.pending) return;
+    ownPreviewKey = tp ? key : '';
+    table.setPreview(me, tp);
+    ctrl.sendPreview(wire);
+  }
+
+  /** Other players' unconfirmed choices, only for the move number the picture shows. */
+  function syncOtherPreviews(ctx: Ctx): void {
+    if (!table) return;
+    const shownSeq = ctx.room.seq;
+    const seats = new Set<number>([...otherPreviews.keys(), ...shownPreviewKeys.keys()]);
+    for (const seat of seats) {
+      if (seat === ctx.me) continue;
+      const e = otherPreviews.get(seat);
+      const tp = e && !ctx.busy && e.seq === shownSeq ? toTable(ctx.game, e.p) : null;
+      const key = JSON.stringify(tp);
+      if ((shownPreviewKeys.get(seat) ?? 'null') === key) continue;
+      shownPreviewKeys.set(seat, key);
+      table.setPreview(seat, tp);
+    }
+  }
+
+  /** A preview from the wire, completed from the state: which piece it is (the drawn piece or the dropped Mine). */
+  function toTable(g: GameState, p: WirePreview): TablePreview | null {
+    if (p.k === 'meeple') return p;
+    let type: PieceType;
+    if (g.pendingMineIds.length > 0) type = 'mine';
+    else {
+      const si = revealedStack(g);
+      const top = si === null ? undefined : g.stacks[si].pieces[0];
+      if (!top) return null;
+      type = top.type;
+    }
+    return { k: 'piece', pieceType: type, q: p.q, r: p.r, rotation: p.rot };
+  }
+
+  /** Labels by other players' previewed pieces: "Bea is deciding". */
+  function previewLabels(ctx: Ctx): HTMLElement[] {
+    if (ctx.busy) return [];
+    const out: HTMLElement[] = [];
+    for (const [seat, e] of otherPreviews) {
+      if (seat === ctx.me || e.seq !== ctx.room.seq) continue;
+      const anchor: Target = e.p.k === 'piece' ? { kind: 'cell', q: e.p.q, r: e.p.r }
+        : e.p.slot === null ? { kind: 'piece', pieceId: e.p.pieceId } : { kind: 'mineSlot', pieceId: e.p.pieceId, slot: e.p.slot };
+      out.push(h('div', {
+        class: 'tg-deciding', style: `--seat:${seatHex(ctx.room, seat)}`,
+        attrs: { 'data-anchor': JSON.stringify(anchor), 'data-place': 'center', role: 'status' },
+      }, h('span', { class: 'lbl' }, h('span', { class: 'sw' }), `${seatName(ctx.room, seat)} is deciding`)));
+    }
+    return out;
   }
 
   // ── Layout: the free area between the panels, and HTML anchored to pieces ────
@@ -564,7 +660,7 @@ export function tableGameView(ctrl: AppController): View {
   function measureFree(): void {
     const W = window.innerWidth, H = window.innerHeight;
     const landscape = phone && isLandscapePhone();
-    const top = Math.max(phone ? 60 : 70, bottomOf(phone ? '.tg-toprow' : '.tg-seats')) + 8;
+    const top = Math.max(phone ? 60 : 70, bottomOf(phone ? '.tg-toprow, .tg-queue.phone .tg-qbtn' : '.tg-seats')) + 8;
     const bottom = landscape ? H - 8 : topOf(phone ? '.tg-sheet' : '.tg-turnbar', H) - 8;
     const sideLeft = landscape ? topOfLeft('.tg-sheet', W) : phone ? W : topOfLeft('.tg-side', W);
     const hb = hud.getBoundingClientRect();
@@ -763,6 +859,11 @@ export function tableGameView(ctrl: AppController): View {
       loading.remove();
       colorsKey = ''; targetsKey = ''; ghostKey = ''; insetsKey = '';
       offs.push(t.onPick((hit) => onPick(hit)));
+      offs.push(ctrl.onPreview((seat, pv) => {
+        if (pv) otherPreviews.set(seat, { p: pv, seq: ctrl.room?.seq ?? -1 });
+        else otherPreviews.delete(seat);
+        schedule();
+      }));
       offs.push(t.onFrame(placeAnchors));
       measureFree();
       if (room) {
@@ -792,6 +893,7 @@ export function tableGameView(ctrl: AppController): View {
     get shownSeq() { return shownRoom?.seq ?? -1; },
     get blocked() { return blocked; },
     get staleRefusals() { return staleRefusals; },
+    get previews() { return Object.fromEntries([...shownPreviewKeys].map(([k, v]) => [k, JSON.parse(v) as unknown])); },
     stage,
     feel,
     ui,

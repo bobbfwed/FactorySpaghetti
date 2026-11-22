@@ -644,3 +644,99 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-sheet .tg-store .tx { flex-basis: calc(100% - 60px); }
 .tg-hud.phone .tg-roll.has-line { max-width: calc(100% - 80px); }
 .tg-hud.phone .tg-roll .line { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; font-size: 12.5px; }
+
+/* ==== N13 ==== */
+/* ---- your area: the hand always has room for one whole card; cards overlap each other, never
+   another section; where even that does not fit (narrow touch screens) a button opens the hand ---- */
+.tg-yours > .tg-sec:not(.handsec) { flex-shrink: 0; }
+.tg-sec.handsec { flex: 1 1 0; min-width: 128px; position: relative; overflow-x: clip; overflow-y: visible; }
+.tg-hand.fan { min-width: 112px; }
+.tg-handbtn { display: none; min-height: 44px; gap: 8px; margin-top: 6px; }
+.tg-handbtn .ic { width: 18px; height: 18px; }
+.tg-handbtn.on { box-shadow: inset 0 0 0 2px var(--gold); color: var(--gold); }
+.tg-handpop { position: absolute; right: 16px; bottom: calc(var(--bottom-h) + 16px); width: min(560px, calc(100% - 32px)); max-height: 60vh; overflow-y: auto; padding: 12px; z-index: 22; display: flex; flex-direction: column; gap: 10px; }
+.tg-handpop .hd { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+@media (any-pointer: coarse) and (max-width: 1280px) {
+  .tg-hud.desk .tg-sec.handsec { display: none; }
+  .tg-hud.desk .tg-handbtn { display: inline-flex; justify-content: center; }
+}
+/* The fan keeps its outer cards (they lean out) inside the hand section. */
+.tg-hand.fan { margin: 0 14px; }
+@media (min-width: 1101px) and (max-width: 1380px) {
+  .tg-sec.handsec { min-width: 128px; }
+}
+@media (max-width: 1100px) {
+  .tg-sec.handsec { min-width: 124px; }
+  .tg-hand.empty p { display: block; font-size: 12px; }
+}
+
+/* ---- Lay a belt / Remove a belt side by side ---- */
+.tg-beltrow { display: flex; gap: 6px; align-items: stretch; }
+.tg-beltrow > .tg-comp, .tg-beltrow > .tg-beltbtn { flex: 1 1 auto; min-width: 0; }
+.tg-rmbelt { flex: none; min-width: 64px; padding: 0 8px; border-radius: 10px; font-size: 12.5px; font-weight: 700; color: var(--text-2); display: grid; place-items: center; }
+.tg-rmbelt.off { opacity: 0.45; }
+.tg-rmbelt.on { box-shadow: inset 0 0 0 2px var(--gold); color: var(--gold); }
+
+/* ---- turn queue ---- */
+.tg-queue.desk { position: absolute; top: 76px; left: 16px; z-index: 3; pointer-events: none; }
+.tg-qlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tg-q, .tg-qm {
+  display: flex; align-items: center; gap: 7px; min-height: 30px; padding: 3px 10px 3px 6px; border-radius: 16px;
+  background: rgba(20, 20, 22, 0.86); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07); font-size: 13px; font-weight: 650;
+  color: var(--text-2); width: max-content; max-width: 230px;
+  transition: transform 0.35s ease, opacity 0.35s ease, background-color 0.35s ease, box-shadow 0.35s ease, padding 0.35s ease;
+}
+.tg-q .dot { width: 18px; height: 18px; border-radius: 50%; background: var(--seat); flex: none; display: grid; place-items: center; color: #fff; }
+.tg-q .dot .ic { width: 12px; height: 12px; }
+.tg-q .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.tg-q .st { font-size: 12px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+.tg-q .tag, .tg-nexttag { font-size: 11px; font-weight: 800; padding: 1px 6px; border-radius: 8px; background: #2c2c31; color: var(--text); text-transform: uppercase; letter-spacing: 0.04em; }
+.tg-q .first { font-size: 10.5px; font-weight: 900; padding: 1px 5px; border-radius: 7px; background: var(--gold); color: var(--ink); }
+.tg-q.done { opacity: 0.55; }
+.tg-q.active { color: var(--text); font-size: 14.5px; padding: 6px 12px 6px 8px; transform: translateX(8px); box-shadow: 0 0 0 2px var(--seat), 0 6px 18px rgba(0, 0, 0, 0.5); animation: tg-q-in 0.45s ease; }
+.tg-q.active .dot { width: 22px; height: 22px; }
+.tg-q.next { color: var(--text); }
+.tg-q.you .nm { font-weight: 800; }
+.tg-qm { font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; padding: 3px 10px; background: rgba(12, 12, 14, 0.7); }
+.tg-qm.active { color: var(--gold); }
+.tg-qm.q-next { text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--text); }
+@keyframes tg-q-in { from { transform: translateX(-6px) scale(0.92); opacity: 0.4; } to { transform: translateX(8px) scale(1); opacity: 1; } }
+@media (max-width: 1240px) { .tg-queue.desk { top: 72px; } .tg-q, .tg-qm { max-width: 180px; } }
+/* phone: initials under the top row; a tap opens the list */
+.tg-queue.phone { position: absolute; top: 62px; left: 8px; right: 64px; z-index: 6; }
+.tg-qbtn { display: block; min-height: 44px; padding: 0; background: none; text-align: left; max-width: 100%; }
+.tg-qlist.compact { flex-direction: row; flex-wrap: nowrap; gap: 4px; align-items: center; overflow: hidden; }
+.tg-qlist.compact .tg-q { padding: 2px; min-height: 0; border-radius: 50%; background: transparent; box-shadow: none; gap: 0; }
+.tg-qlist.compact .tg-q .nm { display: none; }
+.tg-qlist.compact .tg-q .first { display: none; }
+.tg-qlist.compact .tg-q .dot { width: 26px; height: 26px; font-size: 12px; font-weight: 900; }
+.tg-qlist.compact .tg-q.active { transform: none; box-shadow: 0 0 0 2px var(--seat); }
+.tg-qlist.compact .tg-q.active .dot { width: 32px; height: 32px; }
+.tg-qlist.compact .tg-qm { min-height: 0; padding: 2px 6px; font-size: 10px; }
+.tg-qpop { position: absolute; top: 48px; left: 0; padding: 8px; z-index: 30; }
+.tg-hud.phone .tg-roll { top: 108px; }
+.tg-q, .tg-qm { white-space: nowrap; }
+.tg-beltbtn .nm { white-space: nowrap; }
+.tg-rmbelt { min-width: 58px; font-size: 12px; }
+@media (min-width: 1381px) { .tg-sec.comps { width: 196px; } }
+@media (max-width: 1380px) { .tg-hud.desk .tg-beltbtn .nm { display: none; } .tg-hud.desk .tg-beltrow .tg-beltbtn { grid-template-columns: 24px auto; } }
+.tg-q.active { max-width: 320px; }
+/* A planned belt route: the panel docks at the bottom right, clear of the board's middle. */
+.tg-hud.desk .tg-choices.route { left: auto; right: 16px; transform: none; width: min(360px, calc(100% - 32px)); }
+.tg-choices.route .item { min-height: 44px; }
+/* Another player's unconfirmed choice: "Bea is deciding" above it. */
+.tg-deciding { position: absolute; left: 0; top: 0; width: 1px; height: 1px; z-index: 3; pointer-events: none !important; }
+.tg-deciding .lbl {
+  position: absolute; left: 0; bottom: 34px; transform: translateX(-50%); white-space: nowrap; display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 800; padding: 3px 9px; border-radius: 10px; background: rgba(20, 20, 22, 0.9); color: var(--text);
+  box-shadow: 0 0 0 2px var(--seat);
+}
+.tg-deciding .sw { width: 10px; height: 10px; border-radius: 50%; background: var(--seat); }
+
+/* Phone, a planned route: one compact row (the totals are in the instruction line below). */
+.tg-choices.route.compact { padding: 6px; gap: 0; }
+.tg-choices.route.compact .hd { display: none; }
+.tg-choices.route.compact .list { display: flex; flex-direction: row; gap: 6px; overflow: visible; }
+.tg-choices.route.compact .item { flex: 1 1 0; min-height: 44px; padding: 6px 8px; justify-content: center; text-align: center; }
+.tg-choices.route.compact .item .dt { display: none; }
+.tg-choices.route.compact .item .lb { font-size: 13.5px; }

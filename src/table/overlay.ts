@@ -178,7 +178,7 @@ export class Overlay {
         for (const c of pieceCells(piece)) { const w = axialToWorld(c); this.hexGlow.push(m4(w.x, TILE_TOP + 0.2, w.z)); }
         return;
       case 'point': {
-        if (t.point < 0 || t.point >= pointCount(piece.type)) return;
+        if (t.point < 0 || t.point >= pointCount(piece)) return;
         const p = pointWorld(piece, t.point);
         spot(p.x, TILE_TOP + 0.5, p.z, 5);
         return;
@@ -204,8 +204,8 @@ export class Overlay {
     if (this.debug && game) {
       const c = new THREE.Color();
       for (const piece of game.board) {
-        for (let pos = 0; pos < pointCount(piece.type); pos++) {
-          const role = pointRole(piece.type, pos);
+        for (let pos = 0; pos < pointCount(piece); pos++) {
+          const role = pointRole(piece, pos);
           const p = pointWorld(piece, pos);
           const r = role === 'disabled' ? 1.1 : 2.3;
           this.markers.push(m4(p.x, TILE_TOP + 0.6, p.z, r), c.setHex(ROLE_COLOR[role]));

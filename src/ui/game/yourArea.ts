@@ -7,6 +7,7 @@ import type { PlayerId } from '../../engine/state';
 import { MAX_CARDS_PLAYED_PER_TURN, POWER_TOKEN_CAP } from '../../engine/config';
 import { tesseractCount } from '../../engine/rules/scoring';
 import { BUILDING_NAME, MATERIAL_NAME } from '../../session/describe';
+import { W } from '../../play/words';
 import type { Child } from '../dom';
 import { h } from '../dom';
 import { icon } from '../icons';
@@ -59,13 +60,25 @@ function beltButton(ctx: Ctx, cls: string): HTMLElement {
   }, icon('belt', color), h('span', { class: 'nm', text: it?.enabled ? 'Lay a belt' : 'Belts' }), h('span', { class: 'num', text: String(p.beltsRemaining) }));
 }
 
+/** Remove a belt: its own mode, beside Lay a belt (my removable belts light up). */
+function removeBeltButton(ctx: Ctx): HTMLElement {
+  const it = ctx.view.bank.find(b => b.id === 'bank:removeBelt');
+  const on = ctx.view.selection?.label === W.removeSelection;
+  return h('button', {
+    class: `well tg-rmbelt${it?.enabled ? '' : ' off'}${on ? ' on' : ''}`,
+    title: it ? (it.enabled ? it.detail ?? it.label : it.reason ?? it.label) : 'Remove a belt',
+    attrs: { 'aria-label': `Remove a belt${it?.enabled ? '' : `. ${it?.reason ?? ''}`}`, 'aria-disabled': String(!it?.enabled), 'data-item': 'bank:removeBelt', 'data-act': 'bank:removeBelt' },
+    onclick: () => ctx.play.choose('bank:removeBelt'),
+  }, h('span', { class: 'tx', text: 'Remove' }));
+}
+
 function components(ctx: Ctx, cls: string): Child[] {
   const p = ctx.game.players[ctx.me!]!;
   const color = seatColor(ctx.room, ctx.me);
   return [
     h('div', { class: `${cls} well`, attrs: { 'aria-label': `Power Tokens: ${p.powerTokens} of ${POWER_TOKEN_CAP}` } },
       icon('power'), h('span', { class: 'nm', text: 'Power Tokens' }), h('span', { class: 'num' }, String(p.powerTokens), h('small', { text: `/${POWER_TOKEN_CAP}` }))),
-    beltButton(ctx, cls),
+    h('div', { class: 'tg-beltrow' }, beltButton(ctx, cls), removeBeltButton(ctx)),
     h('div', { class: `${cls} well`, attrs: { 'aria-label': `Teleporters left: ${p.teleportersRemaining}` } },
       icon('teleporter', color), h('span', { class: 'nm', text: 'Teleporters' }), h('span', { class: 'num', text: String(p.teleportersRemaining) })),
   ];
@@ -91,6 +104,15 @@ function handCards(ctx: Ctx, fan: boolean): HTMLElement {
   }));
 }
 
+/** Desktop, narrow touch screens: the whole hand in a panel above your area. */
+export function handPopover(ctx: Ctx): HTMLElement | null {
+  if (!ctx.ui.handOpen || ctx.me === null || ctx.phone) return null;
+  return h('div', { class: 'tg-handpop tray', attrs: { role: 'dialog', 'aria-label': 'Your hand' } },
+    h('div', { class: 'hd' }, h('b', { text: handTitle(ctx) }),
+      h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close' }, onclick: () => { ctx.ui.handOpen = false; ctx.redraw(); } }, icon('cross'))),
+    handCards(ctx, false));
+}
+
 /** Desktop: the panel along the bottom. */
 export function yourPanel(ctx: Ctx): HTMLElement | null {
   if (ctx.me === null) return null;
@@ -113,7 +135,13 @@ export function yourPanel(ctx: Ctx): HTMLElement | null {
     h('div', { class: 'tg-sec mats' }, h('div', { class: 'tg-mats' }, MATERIAL_LIST.map(m => materialWell(m, p.inventory[m])))),
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec handsec' }, h('span', { class: 'label', text: `Hand · ${p.hand.length}` }), handCards(ctx, true)),
-    h('div', { class: 'tg-act' }, autoplayNote(ctx), undoBeltsButton(ctx), primaryButton(ctx)));
+    h('div', { class: 'tg-act' }, autoplayNote(ctx), undoBeltsButton(ctx),
+      // Where the fanned hand does not fit (narrow touch screens) this button opens the whole hand.
+      h('button', {
+        class: `btn btn-dark tg-handbtn${ctx.ui.handOpen ? ' on' : ''}`, attrs: { 'aria-expanded': String(ctx.ui.handOpen), 'data-handbtn': '1' },
+        onclick: () => { ctx.ui.handOpen = !ctx.ui.handOpen; ctx.redraw(); },
+      }, icon('card'), `Hand · ${p.hand.length}`),
+      primaryButton(ctx)));
 }
 
 function autoplayNote(ctx: Ctx): Child {

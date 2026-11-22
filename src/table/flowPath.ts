@@ -26,7 +26,7 @@ export function sourceWorld(game: Game, s: FlowSource): XZ | null {
 }
 
 function sourcePositions(piece: BoardPiece, kind: 'mine' | 'output'): number[] {
-  return positionsWithRole(piece.type, kind === 'mine' ? 'ore_output' : 'output_buffer');
+  return positionsWithRole(piece, kind === 'mine' ? 'ore_output' : 'output_buffer');
 }
 
 /**
@@ -36,7 +36,7 @@ function sourcePositions(piece: BoardPiece, kind: 'mine' | 'output'): number[] {
 export function traceFlow(game: Game, toPieceId: string, slot: number, sources: readonly FlowSource[]): FlowTrace | null {
   const dest = game.board.find(p => p.id === toPieceId);
   if (!dest) return null;
-  const inputs = positionsWithRole(dest.type, 'input_buffer');
+  const inputs = positionsWithRole(dest, 'input_buffer');
   if (inputs.length === 0) return null;
   const destPos = inputs[Math.min(slot, inputs.length - 1)]!;
   const destEdge = pointWorld(dest, destPos, 0);

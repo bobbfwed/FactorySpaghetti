@@ -57,8 +57,8 @@ export function boardCandidates(
   const piece = pieceAt(game.board, cell.q, cell.r);
   if (!piece) return [{ target: { kind: 'cell', q: cell.q, r: cell.r }, score: 1 }];
   const out: Candidate[] = [];
-  for (let pos = 0; pos < pointCount(piece.type); pos++) {
-    const role = pointRole(piece.type, pos);
+  for (let pos = 0; pos < pointCount(piece); pos++) {
+    const role = pointRole(piece, pos);
     if (role === 'disabled') continue;
     const p = pointWorld(piece, pos);
     const d = Math.hypot(p.x - x, p.z - z);
@@ -162,7 +162,7 @@ export function targetAnchor(game: GameState | null, side: SideLayout, h: SideHe
       return { x: pl.x, y: TILE_TOP, z: pl.z };
     }
     case 'point': {
-      if (t.point < 0 || t.point >= pointCount(piece.type)) return null;
+      if (t.point < 0 || t.point >= pointCount(piece)) return null;
       const p = pointWorld(piece, t.point);
       return { x: p.x, y: TILE_TOP, z: p.z };
     }

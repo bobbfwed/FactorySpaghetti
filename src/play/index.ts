@@ -3,7 +3,8 @@
 // engine's legalActions for the current state (plus the dice roll, which the host fills in).
 //
 // Item ids accepted by choose():
-//   bank:placeBelt | bank:buyBelt | bank:undoBelts | bank:buyCard | bank:buyMine | bank:teleporter | bank:exchange
+//   bank:placeBelt | bank:removeBelt | bank:buyBelt | bank:undoBelts | bank:buyCard | bank:buyMine | bank:teleporter | bank:exchange
+//   route:own | route:buy | route:cancel | route:continue   a planned belt route (view.route)
 //   card:<cardType>                     a card in view.hand
 //   module:<n>                          a lit Control Module in view.tray
 //   menu:...                            an item of view.menu
@@ -13,3 +14,6 @@
 export { PlayController, targetKey } from './controller';
 export type { PlayControllerOptions } from './controller';
 export type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
+export { turnQueue } from './queue';
+export type { QueueItem, TurnQueue, ChipStatus } from './queue';
+export type { RouteSeg, Seg, Tier } from './route';

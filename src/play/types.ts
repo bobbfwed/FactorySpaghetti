@@ -53,7 +53,8 @@ export interface PlayView {
   targets: Target[];
   /** Preview tile or mine awaiting confirm. */
   ghost: Ghost | null;
-  confirmBar: { confirm: boolean; rotate: boolean; cancel: boolean } | null;
+  /** `label`: what confirming does, when the generic wording would not say it ("Remove this belt"). */
+  confirmBar: { confirm: boolean; rotate: boolean; cancel: boolean; label?: string } | null;
   selection: Selection | null;
   /** Building (or belt) menu. */
   menu: { anchor: Target; title: string; subtitle?: string; items: Item[] } | null;
@@ -66,6 +67,13 @@ export interface PlayView {
   prompts: Prompt[];
   /** A list the current flow needs (Scouting Drone's pile, exchange options, ...). */
   choices: { title: string; items: Item[] } | null;
+  /**
+   * A planned belt route (Lay a belt), in order from its first point: each belt with its tier,
+   * own = from the supply, buy = can be bought now, cant = not yet. null when no route is planned.
+   */
+  route: { pieceId: string; from: number; to: number; tier: 'own' | 'buy' | 'cant' }[] | null;
+  /** The spot chosen for my meeple, awaiting confirmation (a building: slot null; a Mine point: 0 or 1). */
+  meeplePick: { pieceId: string; slot: 0 | 1 | null } | null;
   /** Short "why not" after touching something unlit, or the last refusal. */
   hint: string | null;
 }

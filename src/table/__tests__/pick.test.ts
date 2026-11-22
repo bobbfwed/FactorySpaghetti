@@ -28,8 +28,8 @@ describe('picking', () => {
   it('every non-disabled connection point resolves to itself', () => {
     let n = 0;
     for (const piece of game.board) {
-      for (let pos = 0; pos < pointCount(piece.type); pos++) {
-        if (pointRole(piece.type, pos) === 'disabled') continue;
+      for (let pos = 0; pos < pointCount(piece); pos++) {
+        if (pointRole(piece, pos) === 'disabled') continue;
         const t: Target = { kind: 'point', pieceId: piece.id, point: pos };
         expect(tap(t)).toEqual(t);
         n++;

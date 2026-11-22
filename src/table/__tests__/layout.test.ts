@@ -210,3 +210,32 @@ describe('buffers and belts', () => {
     }
   });
 });
+
+describe('point roles follow each piece\'s own layout', () => {
+  it('for all three Mines at all six rotations, every point\'s role is the engine\'s', async () => {
+    const { getRole } = await import('../../engine/rules/flow');
+    let diffs = 0, n = 0;
+    for (const id of ['mine-1', 'mine-2', 'mine-3']) {
+      for (let rotation = 0; rotation < 6; rotation++) {
+        const piece = { id, type: 'mine' as const, coord: { q: 0, r: 0 }, rotation, claims: [], input: null, output: null };
+        for (let pos = 0; pos < pointCount(piece); pos++) {
+          n++;
+          const engine = getRole(piece, pos);
+          const table = pointRole(piece, pos);
+          if ((engine === 'disabled' ? 'disabled' : engine) !== table) diffs++;
+        }
+      }
+    }
+    expect(n).toBe(3 * 6 * 24);
+    expect(diffs).toBe(0);
+  });
+
+  it('Mines 2 and 3 have no ore exits on their lean half', () => {
+    for (const id of ['mine-2', 'mine-3']) {
+      const piece = { id, type: 'mine' as const };
+      for (const pos of [15, 17, 23]) expect(pointRole(piece, pos)).not.toBe('ore_output');
+      expect(positionsWithRole(piece, 'ore_output').every(p => p < 12)).toBe(true);
+    }
+    expect(positionsWithRole({ id: 'mine-1', type: 'mine' }, 'ore_output')).toEqual(expect.arrayContaining([15, 17, 23]));
+  });
+});

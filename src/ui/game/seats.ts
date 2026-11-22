@@ -13,6 +13,7 @@ import { icon } from '../icons';
 import type { Ctx } from './context';
 import { activePlayer, seatHex } from './context';
 import { MATERIAL_LIST, MATERIAL_ICON, count, countdownText, pips } from './pieces';
+import { nextSeat } from './queueView';
 
 /** The seats shown as opponents: everyone but me. */
 export function opponents(ctx: Ctx): Seat[] {
@@ -40,6 +41,7 @@ function status(ctx: Ctx, s: Seat): { text: Child[]; warn: boolean; online: bool
       out.push(out.length ? ' · deciding' : 'deciding');
       if (s.index !== a && room.opDeadline !== null) out.push(' ', countdownText(ctx.ctrl, room.opDeadline, '', 'tg-cd-inline'));
     } else if (s.index === a) out.push(out.length ? ' · their turn' : 'their turn');
+    else if (s.index === nextSeat(ctx)) out.push(out.length ? ' · ' : '', h('span', { class: 'tg-nexttag', text: 'next' }));
   }
   return { text: out, warn, online };
 }

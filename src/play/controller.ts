@@ -6,21 +6,22 @@
 import type {
   Action,
   ClaimBuildingAction,
-  PlaceBeltAction,
   PlaceMeepleAction,
   PlayCardAction,
   UpgradeBuildingAction,
 } from '../engine/actions';
 import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
-import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, teleporterCost } from '../engine/config';
+import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
 import { tryPayExact } from '../engine/rules/flow';
-import { findBeltPath, type RoutePoint } from '../engine/routing';
+import type { RoutePoint } from '../engine/routing';
+import { refusalText } from '../app/gameText';
+import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
 import type { Ghost, Target } from '../table/types';
 import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
 import {
   EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, inventoryValue, isBuilding,
-  legalFor, nextMinePrice, pieceById, routeReach, runBlock, runPreview,
+  legalFor, nextMinePrice, pieceById, runBlock, runPreview,
 } from './info';
 import {
   CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, materialList, pieceName, playerName, selectionLabel,
@@ -44,13 +45,15 @@ type Mode =
   | { k: 'setupClaim'; pieceId: string }
   | { k: 'place'; src: PlaceSrc; coord: HexCoord | null; rotation: number; auto: boolean }
   | { k: 'menu'; pieceId: string }
-  | { k: 'beltMenu'; beltId: string }
   | { k: 'opMenu'; pieceId: string }
   | { k: 'claim'; src: ClaimSrc; pieceId: string }
   | { k: 'upgradeOld'; src: UpSrc; pieceId: string }
   | { k: 'upgrade'; src: UpSrc; pieceId: string; old: number }
   | { k: 'belt'; start: RoutePoint | null }
-  | { k: 'routeBuy'; actions: Action[]; need: number; cost: number; have: number }
+  /** A planned belt route is shown (the plan itself is kept in `plan`). */
+  | { k: 'route' }
+  /** Remove a belt: my removable belts are lit; one may be selected for removal. */
+  | { k: 'removeBelt'; beltId: string | null }
   | { k: 'teleporter'; pick: { pieceId: string; buffer: Buf } | null; whichOn: string | null }
   | { k: 'exchange' }
   | { k: 'card'; card: CardType; a: string | null; b: string | null; module: number | null; buffer: Buf | null; whichOn: string | null }
@@ -146,7 +149,7 @@ function emptyView(): PlayView {
   return {
     step: 'waiting', stepIndex: null, myTurn: false, activePlayer: null, instruction: '',
     primary: null, targets: [], ghost: null, confirmBar: null, selection: null, menu: null,
-    tray: [], bank: [], hand: [], prompts: [], choices: null, hint: null,
+    tray: [], bank: [], hand: [], prompts: [], choices: null, route: null, meeplePick: null, hint: null,
   };
 }
 
@@ -171,6 +174,11 @@ export class PlayController {
   private readonly sendFn: (action: Action) => void;
   private readonly nameOf: (id: PlayerId) => string;
   private current: Builder = new Builder(emptyView());
+  /**
+   * The belt route planned last, kept on this device for the rest of the page's life (not saved,
+   * not sent): its unlaid part is offered again when "Lay a belt" is opened on a later turn.
+   */
+  private plan: Seg[] | null = null;
 
   constructor(opts: PlayControllerOptions) {
     this.sendFn = opts.send;
@@ -293,7 +301,8 @@ export class PlayController {
 
   /** Selections that disappear quietly when the state moves on (nothing the player chose is lost). */
   private isSoft(m: Mode): boolean {
-    return (m.k === 'place' && m.auto) || (m.k === 'belt' && m.start === null) || m.k === 'pi' || m.k === 'idle';
+    return (m.k === 'place' && m.auto) || (m.k === 'belt' && m.start === null) || m.k === 'pi' || m.k === 'idle'
+      || m.k === 'route' || (m.k === 'removeBelt' && m.beltId === null);
   }
 
   // ── Route queue (multi-belt route helper) ───────────────────────────────────
@@ -313,6 +322,13 @@ export class PlayController {
     if (this.queue.length === 0) return;
     const next = this.queue[0]!;
     const legal = legalFor(g, me);
+    if (next.type === 'END_TURN') {
+      // The turn ends by itself once the meeple is down, when ending it is the only move left.
+      this.queue = [];
+      const only = legal.length === 1 && legal[0]!.type === 'END_TURN' ? legal[0]! : null;
+      if (only) { this.queueSent = only; this.sendFn(only); }
+      return;
+    }
     const match = next.type === 'PLACE_BELT'
       ? ofType(legal, 'PLACE_BELT').find(a => a.pieceId === next.pieceId
         && ((a.fromPoint === next.fromPoint && a.toPoint === next.toPoint)
@@ -334,6 +350,7 @@ export class PlayController {
     if (a.type === 'BUY_BELT') {
       return (next.players[me]?.beltsRemaining ?? 0) > (prev.players[me]?.beltsRemaining ?? 0);
     }
+    if (a.type === 'PLACE_MEEPLE') return next.players[me]?.meepleOnPieceId != null;
     if (a.type === 'PLACE_BELT') {
       return next.belts.some(b => b.pieceId === a.pieceId && b.ownerId === me
         && ((b.fromPoint === a.fromPoint && b.toPoint === a.toPoint) || (b.fromPoint === a.toPoint && b.toPoint === a.fromPoint)));
@@ -477,7 +494,15 @@ export class PlayController {
     const name = active === null ? '' : this.nameOf(active);
     switch (g.phase) {
       case 'setupClaimPF': case 'setupClaimPP': v.instruction = W.waitingSetup(name); break;
-      case 'placePiece': v.instruction = W.waitingPlace(name); break;
+      case 'placePiece': {
+        // Choosing a pile, or the drawn piece (face-up for everyone) waiting to be placed.
+        const drawn = g.drawnStackIndex ?? null;
+        const top = drawn !== null ? g.stacks[drawn].pieces[0] : undefined;
+        if (top) v.instruction = W.waitingDrew(name, pieceName(top.type));
+        else if (active !== null && legalFor(g, active).some(a => a.type === 'DRAW_PIECE')) v.instruction = W.waitingDraw(name);
+        else v.instruction = W.waitingPlace(name);
+        break;
+      }
       case 'roll': v.instruction = W.waitingRoll(name); break;
       case 'actions': v.instruction = W.waitingActions(name); break;
       case 'placeMeeple': v.instruction = W.waitingMeeple(name); break;
@@ -523,6 +548,13 @@ export class PlayController {
       v.instruction = W.mineDropped;
       if (m.k !== 'place' || m.src.kind !== 'mine') return false;
       return this.placement(b, m, mines, 'mine', selectionLabel.mine, 'mine', W.minePlaceConfirm);
+    }
+    // Several piles open: first choose one to draw from (the drawn piece must then be placed).
+    const draws = ofType(legal, 'DRAW_PIECE');
+    if (draws.length > 0) {
+      v.instruction = W.drawPick;
+      for (const a of draws) b.lit({ kind: 'stack', index: a.stackIndex }, () => this.send(a));
+      return m.k === 'idle';
     }
     const pieces = ofType(legal, 'PLACE_PIECE');
     const stacks = [...new Set(pieces.map(a => a.stackIndex))].sort();
@@ -664,38 +696,12 @@ export class PlayController {
         return false;
       }
       case 'menu': return this.buildMenu(b, g, me, player, legal, m.pieceId);
-      case 'beltMenu': {
-        const rm = ofType(legal, 'REMOVE_BELT').find(a => a.beltId === m.beltId);
-        if (!rm) return false;
-        v.menu = {
-          anchor: { kind: 'belt', beltId: m.beltId }, title: W.yourBelt,
-          items: [b.item({ id: 'menu:removeBelt', label: W.removeBelt, detail: W.removeBeltDetail, enabled: true }, () => this.send(rm))],
-        };
-        v.selection = { kind: 'belt', label: selectionLabel.belt };
-        v.confirmBar = { confirm: false, rotate: false, cancel: true };
-        return true;
-      }
       case 'claim': return this.buildClaim(b, g, legal, m);
       case 'upgradeOld': return this.buildUpgradeOld(b, g, legal, m);
       case 'upgrade': return this.buildUpgrade(b, g, legal, m);
       case 'belt': return this.buildBelt(b, g, me, legal, m);
-      case 'routeBuy': {
-        b.clearTargets();
-        v.instruction = W.routeNeedsBuy(m.cost, m.have);
-        v.choices = {
-          title: W.routeNeedsBuy(m.cost, m.have),
-          items: [
-            b.item({ id: 'route:buy', label: W.routeBuy(m.need), detail: W.routeBuyDetail(m.need * BELT_COST), enabled: true }, () => {
-              this.mode = { k: 'belt', start: null };
-              this.startQueue(m.actions);
-            }),
-            b.item({ id: 'route:cancel', label: W.routeCancel, enabled: true }, () => this.setMode({ k: 'belt', start: null })),
-          ],
-        };
-        v.selection = { kind: 'belt', label: selectionLabel.belt };
-        v.confirmBar = { confirm: false, rotate: false, cancel: true };
-        return true;
-      }
+      case 'route': return this.buildRoute(b, g, me);
+      case 'removeBelt': return this.buildRemove(b, legal, m);
       case 'teleporter': return this.buildTeleporter(b, g, legal, m);
       case 'exchange': {
         const items = this.exchangeItems(b, player, legal);
@@ -764,12 +770,10 @@ export class PlayController {
       if (a.type === 'PLACE_TELEPORTER' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
     for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
-    for (const a of ofType(legal, 'REMOVE_BELT')) {
-      b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'beltMenu', beltId: a.beltId }));
-    }
-    for (const a of ofType(legal, 'PLACE_BELT')) {
-      for (const p of [a.fromPoint, a.toPoint]) {
-        b.lit({ kind: 'point', pieceId: a.pieceId, point: p }, () => this.setMode({ k: 'belt', start: { pieceId: a.pieceId, position: p } }));
+    // Placed belts are not touchable here: removing one is its own mode (Remove a belt).
+    if (this.game && this.me !== null && legal.some(a => a.type === 'END_ACTIONS' || a.type === 'BUY_BELT' || a.type === 'PLACE_BELT')) {
+      for (const p of routeEnds(this.game, this.me)) {
+        b.lit({ kind: 'point', pieceId: p.pieceId, point: p.position }, () => this.setMode({ k: 'belt', start: p }));
       }
     }
     const buy = legal.find(a => a.type === 'BUY_CARD');
@@ -942,71 +946,136 @@ export class PlayController {
 
   // ── Belts ───────────────────────────────────────────────────────────────────
 
-  private buildBelt(b: Builder, g: GameState, me: PlayerId, legal: readonly Action[], m: Extract<Mode, { k: 'belt' }>): boolean {
-    const places = ofType(legal, 'PLACE_BELT');
-    if (places.length === 0) return false;
+  /**
+   * Lay a belt: tap where the belts start, then where they end (any point a belt of mine could
+   * end at, on any piece). The shortest route between them is planned whatever it costs.
+   */
+  private buildBelt(b: Builder, g: GameState, me: PlayerId, _legal: readonly Action[], m: Extract<Mode, { k: 'belt' }>): boolean {
+    const ends = routeEnds(g, me);
+    if (ends.length === 0) return false;
     const v = b.view;
     b.clearTargets();
     v.selection = { kind: 'belt', label: selectionLabel.belt };
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
     if (!m.start) {
       v.instruction = W.beltPickStart;
-      for (const a of places) {
-        for (const p of [a.fromPoint, a.toPoint]) {
-          b.lit({ kind: 'point', pieceId: a.pieceId, point: p }, () => this.setMode({ k: 'belt', start: { pieceId: a.pieceId, position: p } }));
-        }
+      for (const p of ends) b.lit({ kind: 'point', pieceId: p.pieceId, point: p.position }, () => this.setMode({ k: 'belt', start: p }));
+      // A route planned earlier on this device that can still be laid.
+      const left = this.plan ? remaining(g, me, this.plan) : [];
+      if (left.length > 0 && stillPossible(g, me, left)) {
+        v.choices = {
+          title: W.beltPickStart,
+          items: [b.item({ id: 'route:continue', label: W.routeContinue(left.length), detail: W.routeContinueDetail, enabled: true }, () => this.setMode({ k: 'route' }))],
+        };
       }
       return true;
     }
     const start = m.start;
-    const direct = places.filter(a => a.pieceId === start.pieceId && (a.fromPoint === start.position || a.toPoint === start.position));
-    const reach = routeReach(g, start, me);
-    if (direct.length === 0 && ![...reach].some(k => !k.startsWith(`${start.pieceId}:`))) return false;
+    if (!ends.some(p => p.pieceId === start.pieceId && p.position === start.position)) return false;
     v.instruction = W.beltPickEnd;
     v.selection = { kind: 'belt', label: W.beltStart };
     b.lit({ kind: 'point', pieceId: start.pieceId, point: start.position }, () => this.setMode({ k: 'belt', start: null }));
-    for (const key of reach) {
-      const cut = key.lastIndexOf(':');
-      const pieceId = key.slice(0, cut);
-      const pos = Number(key.slice(cut + 1));
-      if (pieceId === start.pieceId) continue;
-      b.lit({ kind: 'point', pieceId, point: pos }, () => this.layRoute(start, { pieceId, position: pos }));
-    }
-    for (const a of direct) {
-      const other = a.fromPoint === start.position ? a.toPoint : a.fromPoint;
-      b.lit({ kind: 'point', pieceId: a.pieceId, point: other }, () => this.send(a, { k: 'belt', start: null }));
+    // Only ends a route can reach from this start are lit.
+    for (const p of reachableEnds(g, me, start)) {
+      b.lit({ kind: 'point', pieceId: p.pieceId, point: p.position }, () => this.planBetween(start, p));
     }
     return true;
   }
 
-  /** Route helper: lay the router's chain between two points on different tiles. */
-  private layRoute(start: RoutePoint, end: RoutePoint): void {
+  /** The second point of a route was tapped: plan the shortest route, whatever it costs. */
+  private planBetween(start: RoutePoint, end: RoutePoint): void {
     const g = this.game, me = this.me;
     if (!g || me === null) return;
-    const route = findBeltPath(g, start, end, me);
-    if (!route || route.cost === 0) { this.hintText = W.noRoute; return; }
-    const have = g.players[me]?.beltsRemaining ?? 0;
-    const need = Math.max(0, route.cost - have);
-    const acts: Action[] = [
-      ...Array.from({ length: need }, (): Action => ({ type: 'BUY_BELT' })),
-      ...route.belts.map((x): PlaceBeltAction => ({ type: 'PLACE_BELT', pieceId: x.pieceId, fromPoint: x.fromPoint, toPoint: x.toPoint })),
-    ];
-    // Check the whole chain against the engine before sending anything.
-    let s = g;
-    for (const a of acts) {
-      const r = applyAction(s, a);
-      if (!r.ok) {
-        this.hintText = a.type === 'BUY_BELT' ? W.routeCantBuy(need) : W.routeBlocked;
-        return;
-      }
-      s = r.state;
+    const segs = planRoute(g, me, start, end);
+    if (!segs) { this.hintText = W.noRoute; return; }
+    this.plan = segs;
+    this.mode = { k: 'route' };
+  }
+
+  /** The planned route: its totals, and placing from the supply, buying first, or cancelling. */
+  private buildRoute(b: Builder, g: GameState, me: PlayerId): boolean {
+    const v = b.view;
+    const left = this.plan ? remaining(g, me, this.plan) : [];
+    if (left.length === 0) {
+      // All laid: back to choosing where the next belts go.
+      if (this.plan) this.hintText = W.routeDone;
+      this.plan = null;
+      this.mode = { k: 'belt', start: null };
+      return this.buildBelt(b, g, me, [], this.mode);
     }
-    if (need > 0) {
-      this.mode = { k: 'routeBuy', actions: acts, need, cost: route.cost, have };
+    if (!stillPossible(g, me, left)) {
+      this.plan = null;
+      this.hintText = W.planGone;
+      return false;
+    }
+    b.clearTargets();
+    const t = tiers(g, me, left);
+    v.route = t.map(x => ({ pieceId: x.pieceId, from: x.from, to: x.to, tier: x.tier }));
+    const own = t.filter(x => x.tier === 'own').length;
+    const buy = t.filter(x => x.tier === 'buy').length;
+    const short = t.length - own - buy;
+    const have = g.players[me]?.beltsRemaining ?? 0;
+    const totals = W.routeTotals(t.length, have, buy, short);
+    v.instruction = totals;
+    v.selection = { kind: 'belt', label: selectionLabel.belt };
+    v.confirmBar = { confirm: false, rotate: false, cancel: true };
+    // Tapping another start point plans a new route.
+    for (const p of routeEnds(g, me)) b.lit({ kind: 'point', pieceId: p.pieceId, point: p.position }, () => this.setMode({ k: 'belt', start: p }));
+    const items: Item[] = [];
+    const placeOwn = (): void => this.layPlan(false);
+    const placeBuy = (): void => this.layPlan(true);
+    if (own === t.length) {
+      v.primary = { label: W.routePlaceAll(own), enabled: true };
+      b.onPrimary = placeOwn;
+    } else {
+      if (own > 0) items.push(b.item({ id: 'route:own', label: W.routePlaceOwn(own), detail: W.routeOwnDetail, enabled: true }, placeOwn));
+      if (buy > 0) items.push(b.item({ id: 'route:buy', label: W.routeBuyPlace(buy, own + buy), detail: W.routeBuyDetail(buy * BELT_COST), enabled: true }, placeBuy));
+      const first = items[0];
+      if (first) {
+        v.primary = { label: first.label, enabled: true };
+        b.onPrimary = first.id === 'route:own' ? placeOwn : placeBuy;
+      } else {
+        v.primary = { label: W.routePlaceOwn(0), enabled: false, hint: W.routeNothingNow };
+      }
+    }
+    items.push(b.item({ id: 'route:cancel', label: W.routeCancel, enabled: true }, () => {
+      this.plan = null;
+      this.mode = { k: 'belt', start: null };
+    }));
+    v.choices = { title: totals, items };
+    return true;
+  }
+
+  /** Lay the planned route from its start (buying first when asked); a refused belt stops it there. */
+  private layPlan(withBuy: boolean): void {
+    const g = this.game, me = this.me;
+    if (!g || me === null || !this.plan) return;
+    const left = remaining(g, me, this.plan);
+    const r = placement(g, me, left, withBuy);
+    if (r.placed === 0) {
+      this.hintText = r.refusal ? refusalText(r.refusal) : W.routeBlocked;
       return;
     }
-    this.mode = { k: 'belt', start: null };
-    this.startQueue(acts);
+    this.mode = { k: 'route' };
+    this.startQueue(r.actions);
+    if (r.refusal) this.hintText = refusalText(r.refusal);
+  }
+
+  /** Remove a belt: my belts that can be taken back are lit; one tap selects, the big button removes. */
+  private buildRemove(b: Builder, legal: readonly Action[], m: Extract<Mode, { k: 'removeBelt' }>): boolean {
+    const rms = ofType(legal, 'REMOVE_BELT');
+    if (rms.length === 0) return false;
+    const v = b.view;
+    b.clearTargets();
+    const sel = m.beltId ? rms.find(a => a.beltId === m.beltId) ?? null : null;
+    for (const a of rms) {
+      b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId }));
+    }
+    v.instruction = sel ? W.removeConfirm : W.removePick;
+    v.selection = { kind: 'belt', label: W.removeSelection };
+    v.confirmBar = { confirm: !!sel, rotate: false, cancel: true, ...(sel ? { label: W.removeBelt } : {}) };
+    if (sel) b.onConfirm = (): void => this.send(sel, { k: 'removeBelt', beltId: null });
+    return true;
   }
 
   // ── Teleporter (bank) ───────────────────────────────────────────────────────
@@ -1194,13 +1263,16 @@ export class PlayController {
     v.step = 'meeple';
     const end = legal.find(a => a.type === 'END_TURN');
     const places = ofType(legal, 'PLACE_MEEPLE');
-    v.primary = { label: W.endTurn, enabled: !!end, ...(end ? {} : { hint: W.meepleFirst }) };
-    if (end) b.onPrimary = (): void => this.send(end);
     const player = this.me !== null ? g.players[this.me] : undefined;
     if (places.length === 0) {
-      v.instruction = player?.meepleOnPieceId ? W.meepleDone : W.noMeepleSpot;
+      // Nothing to choose: one explicit button ends the turn.
+      const placed = !!player?.meepleOnPieceId;
+      v.instruction = placed ? W.meepleDone : W.noMeepleSpot;
+      v.primary = { label: placed ? W.endTurn : W.noMeepleSpotEnd, enabled: !!end };
+      if (end) b.onPrimary = (): void => this.send(end);
       return this.mode.k === 'idle';
     }
+    v.primary = { label: W.meepleChoose, enabled: false, hint: W.meepleChooseWhy };
     v.instruction = W.meeplePlace;
     const minePieces = new Set<string>();
     for (const a of places) {
@@ -1239,8 +1311,10 @@ export class PlayController {
     if (!a || !piece) return false;
     const where = piece.type === 'mine' ? (m.slot === 1 ? W.upgradePoint : W.resourcePoint) : pieceName(piece.type);
     v.instruction = W.meepleConfirm(where);
+    v.meeplePick = { pieceId: m.pieceId, slot: m.slot };
     v.confirmBar = { confirm: true, rotate: false, cancel: true };
-    b.onConfirm = (): void => this.send(a);
+    // Placing the meeple is the last thing a turn needs: the turn then ends by itself.
+    b.onConfirm = (): void => { this.mode = IDLE; this.startQueue([a, { type: 'END_TURN' }]); };
     return true;
   }
 
@@ -1299,8 +1373,11 @@ export class PlayController {
       items.push(b.item(enabled ? { ...it, enabled } : { ...it, enabled, reason: gate ?? reason() }, enabled ? fn : undefined));
     };
 
-    add({ id: 'bank:placeBelt', label: W.bankPlaceBelt, detail: W.bankPlaceBeltDetail(player.beltsRemaining) }, has('PLACE_BELT'),
-      () => (player.beltsRemaining <= 0 ? W.noBelts : W.noBeltPoint), () => this.setMode({ k: 'belt', start: null }));
+    const canPlan = gate === null && this.me !== null && routeEnds(g, this.me).length > 0;
+    add({ id: 'bank:placeBelt', label: W.bankPlaceBelt, detail: W.bankPlaceBeltDetail(player.beltsRemaining) }, canPlan,
+      () => W.noBeltPoint, () => this.setMode({ k: 'belt', start: null }));
+    add({ id: 'bank:removeBelt', label: W.bankRemoveBelt, detail: W.bankRemoveBeltDetail }, has('REMOVE_BELT'),
+      () => W.noBeltToRemove, () => this.setMode({ k: 'removeBelt', beltId: null }));
     add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST), price: BELT_COST }, has('BUY_BELT'),
       () => W.cantAfford(BELT_COST, worth), () => this.send({ type: 'BUY_BELT' }));
     add({ id: 'bank:undoBelts', label: W.bankUndoBelts, detail: W.bankUndoDetail(g.beltsPlacedThisTurn.length) }, has('UNDO_BELTS'),
@@ -1354,21 +1431,60 @@ export class PlayController {
 
   // ── Why not? ────────────────────────────────────────────────────────────────
 
+  private inBeltMode(): boolean {
+    const k = this.mode.k;
+    return k === 'belt' || k === 'route';
+  }
+
+  /**
+   * Why a belt cannot end at this point: ask the engine. With a start chosen, the belt (or route)
+   * from it; otherwise a belt from this point to any other point of its piece, on the planning
+   * state (so a missing belt in the supply is not the reason given).
+   */
+  private whyNotPoint(g: GameState, me: PlayerId, pieceId: string, point: number): string {
+    if (g.phase !== 'actions') return W.nothingHere;
+    const m = this.mode;
+    if (m.k === 'belt' && m.start) {
+      if (m.start.pieceId === pieceId) {
+        const r = applyAction(planningStateOf(g, me), { type: 'PLACE_BELT', pieceId, fromPoint: m.start.position, toPoint: point });
+        if (!r.ok) return refusalText(r.error);
+      }
+      return W.noRoute;
+    }
+    const plan = planningStateOf(g, me);
+    let first: string | null = null;
+    for (const other of piecePoints(g, pieceId)) {
+      if (other === point) continue;
+      const r = applyAction(plan, { type: 'PLACE_BELT', pieceId, fromPoint: point, toPoint: other });
+      if (r.ok) return W.nothingHere;
+      // The reasons about this point come before ones about the other end.
+      if (first === null && r.error.code !== 'POINTS_TOO_CLOSE' && r.error.code !== 'SAME_POINT') first = refusalText(r.error);
+    }
+    return first ?? W.noBeltEndsHere;
+  }
+
   private whyNot(t: Target): string | null {
     const g = this.game, me = this.me;
     if (!g || me === null || g.gameOver) return null;
     if (g.pendingFactoryOps.some(e => e.ownerId === me)) return W.promptHint;
     if (activeId(g) !== me) return W.notYourTurn;
     switch (t.kind) {
-      case 'cell': return this.mode.k === 'place' || g.phase === 'placePiece' ? W.notAdjacent : W.nothingHere;
+      case 'cell':
+        if (g.phase === 'placePiece' && legalFor(g, me).some(a => a.type === 'DRAW_PIECE')) return W.drawFirst;
+        return this.mode.k === 'place' || g.phase === 'placePiece' ? W.notAdjacent : W.nothingHere;
       case 'stack': {
         const s = g.stacks[t.index as 0 | 1 | 2];
         if (!s) return W.nothingHere;
         if (!s.available) return W.stackLocked;
         if (s.pieces.length === 0) return W.stackEmpty;
+        const drawn = g.drawnStackIndex ?? null;
+        if (g.phase === 'placePiece' && drawn !== null && drawn !== t.index) return W.notDrawnPile(drawn + 1);
+        if (g.phase !== 'placePiece') return W.pileNotNow;
         return W.nothingHere;
       }
       case 'piece': case 'buffer': case 'mineSlot': {
+        // In a belt mode a tap there was meant for a connection point: explain the point.
+        if (this.inBeltMode()) return t.kind === 'buffer' ? W.bufferNoBelt : W.noBeltEndsHere;
         const piece = pieceById(g, t.pieceId);
         if (piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === me)) return W.notYourBuilding;
         return W.nothingHere;
@@ -1377,13 +1493,20 @@ export class PlayController {
         const belt = g.belts.find(x => x.id === t.beltId);
         return belt && belt.ownerId !== me ? W.notYourBelt : W.nothingHere;
       }
-      case 'point': return g.phase === 'actions' ? W.pointNotFree : W.nothingHere;
+      case 'point': return this.whyNotPoint(g, me, t.pieceId, t.point);
       case 'deck': return W.nothingHere;
     }
   }
 }
 
 // ── Module-level helpers ──────────────────────────────────────────────────────
+
+/** The belt points of a piece's template (config data), to ask the engine about a tapped point. */
+function piecePoints(g: GameState, pieceId: string): number[] {
+  const piece = g.board.find(p => p.id === pieceId);
+  if (!piece) return [];
+  return pieceTemplate(piece).points.filter(d => d.enabled && d.role === 'belt').map(d => d.position);
+}
 
 function stepIndexOf(g: GameState): 1 | 2 | 3 | 4 | null {
   switch (g.phase) {

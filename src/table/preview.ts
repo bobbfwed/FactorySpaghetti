@@ -101,7 +101,7 @@ export class PreviewLayer {
     const board = game?.board ?? [];
     const segs = (this.route ?? []).filter(s => {
       const p = board.find(b => b.id === s.pieceId);
-      return !!p && s.from >= 0 && s.to >= 0 && s.from < pointCount(p.type) && s.to < pointCount(p.type) && s.from !== s.to;
+      return !!p && s.from >= 0 && s.to >= 0 && s.from < pointCount(p) && s.to < pointCount(p) && s.from !== s.to;
     });
     const key = segs.map(s => `${s.pieceId}/${s.from}/${s.to}/${s.tier}`).join('|') + '#' + this.routeColor.getHexString()
       + '#' + segs.map(s => { const p = board.find(b => b.id === s.pieceId)!; return `${p.coord.q},${p.coord.r},${p.rotation ?? 0}`; }).join('|');
@@ -348,6 +348,20 @@ export class PreviewLayer {
   }
 
   /** Where a previewed piece is drawn now, for each player whose preview shows exactly this piece placement. */
+  /**
+   * A move made what a preview showed: remove that preview at once (no leaving animation), so the
+   * real piece or meeple takes its place. `kind` piece: the preview at this space and rotation;
+   * meeple: the given player's meeple preview.
+   */
+  consume(match: { kind: 'piece'; type: string; q: number; r: number; rotation: number } | { kind: 'meeple'; playerId: number }): void {
+    for (const e of [...this.entries.values()]) {
+      const t = e.target;
+      if (match.kind === 'meeple') { if (e.playerId === match.playerId && e.kind === 'meeple') this.drop(e); continue; }
+      if (t?.k === 'piece' && t.pieceType === match.type && t.q === match.q && t.r === match.r
+        && (((t.rotation % 6) + 6) % 6) === (((match.rotation % 6) + 6) % 6)) this.drop(e);
+    }
+  }
+
   piecePoseAt(type: string, q: number, r: number, rotation: number, now: number, scene: TableScene): Pose | null {
     for (const e of this.entries.values()) {
       const t = e.target;

@@ -32,7 +32,7 @@ export const ALL_ACTION_TYPES: readonly Action['type'][] = [
   'SETUP_CLAIM', 'PLACE_PIECE', 'ROLL_DICE', 'END_ACTIONS', 'PLACE_MEEPLE', 'END_TURN', 'PLACE_BELT',
   'REMOVE_BELT', 'UNDO_BELTS', 'PLACE_TELEPORTER', 'CLAIM_BUILDING', 'UPGRADE_BUILDING', 'BUY_MINE',
   'PLACE_MINE', 'BUY_CARD', 'PLAY_CARD', 'PLACE_OVERSTOCK_PIECE', 'BUY_BELT', 'LOAD_BUILDING_INPUT',
-  'OPERATE_BUILDING', 'COLLECT_OUTPUT', 'SKIP_FACTORY_ROLL', 'EXCHANGE_MATERIALS',
+  'OPERATE_BUILDING', 'COLLECT_OUTPUT', 'SKIP_FACTORY_ROLL', 'EXCHANGE_MATERIALS', 'DRAW_PIECE',
 ];
 
 export const active = (s: GameState): PlayerId => s.turnOrder[s.activePlayerIndex]!;
@@ -181,6 +181,7 @@ function placeAt(c: PlayController, coord: { q: number; r: number }, rotation: n
 export function gesturesFor(c: PlayController, a: Action): void {
   switch (a.type) {
     case 'SETUP_CLAIM': tapLit(c, { kind: 'piece', pieceId: a.pieceId }); ok(c); return;
+    case 'DRAW_PIECE': tapLit(c, { kind: 'stack', index: a.stackIndex }); return;
     case 'PLACE_PIECE':
       if (isLit(c.view, { kind: 'stack', index: a.stackIndex })) tapLit(c, { kind: 'stack', index: a.stackIndex });
       placeAt(c, a.coord, a.rotation); return;
@@ -193,10 +194,12 @@ export function gesturesFor(c: PlayController, a: Action): void {
       else tapLit(c, { kind: 'mineSlot', pieceId: a.pieceId, slot: a.slotIndex });
       ok(c); return;
     case 'PLACE_BELT':
+      // Plan the route between the two points (one belt here), then place it.
       tapLit(c, { kind: 'point', pieceId: a.pieceId, point: a.fromPoint });
       tapLit(c, { kind: 'point', pieceId: a.pieceId, point: a.toPoint });
+      press(c);
       return;
-    case 'REMOVE_BELT': tapLit(c, { kind: 'belt', beltId: a.beltId }); pick(c, 'menu:removeBelt'); return;
+    case 'REMOVE_BELT': pick(c, 'bank:removeBelt'); tapLit(c, { kind: 'belt', beltId: a.beltId }); ok(c); return;
     case 'UNDO_BELTS': pick(c, 'bank:undoBelts'); return;
     case 'BUY_BELT': pick(c, 'bank:buyBelt'); return;
     case 'BUY_CARD': pick(c, 'bank:buyCard'); return;

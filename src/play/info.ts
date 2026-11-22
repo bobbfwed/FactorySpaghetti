@@ -7,7 +7,6 @@ import {
   FACTORY_POWER_COST,
   INVENTORY_CAP,
   MATERIAL_VALUES,
-  PIECE_TEMPLATES,
   POWER_PLANT_BASE_YIELD,
   POWER_PLANT_MATERIAL_YIELD,
   POWER_TOKEN_CAP,
@@ -15,8 +14,6 @@ import {
 import { legalActions } from '../engine/reducer';
 import { findInputCompletion, factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
-import { adjAt } from '../engine/rules/flow';
-import { usableBeltPoints, type RoutePoint } from '../engine/routing';
 
 export const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
@@ -130,79 +127,3 @@ export const EXCHANGE_GETS: Readonly<Record<'plate' | 'sphere' | 'tesseract', Pa
   sphere: { plate: 2, ore: 1 },
   tesseract: { sphere: 3, ore: 2 },
 };
-
-// ── Belt routes ───────────────────────────────────────────────────────────────
-
-export const pointKey = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
-
-const reachCache = new WeakMap<GameState, Map<string, Set<string>>>();
-
-/**
- * Every belt point that the engine's router (findBeltPath) can reach from `start` for `me`.
- * This is findBeltPath's own breadth-first search run to exhaustion instead of stopping at
- * one target, so `findBeltPath(start, T) !== null` exactly when T is in the returned set.
- */
-export function routeReach(game: GameState, start: RoutePoint, me: PlayerId): Set<string> {
-  let byStart = reachCache.get(game);
-  if (!byStart) { byStart = new Map(); reachCache.set(game, byStart); }
-  const ck = `${me}|${pointKey(start.pieceId, start.position)}`;
-  const hit = byStart.get(ck);
-  if (hit) return hit;
-
-  const usableKey = `${me}|usable`;
-  const usable: Set<string> = byStart.get(usableKey)
-    ?? new Set(usableBeltPoints(game, me).map(p => pointKey(p.pieceId, p.position)));
-  byStart.set(usableKey, usable);
-  const reach = new Set<string>();
-  const pieces = new Map(game.board.map(p => [p.id, p]));
-  if (!usable.has(pointKey(start.pieceId, start.position))) { byStart.set(ck, reach); return reach; }
-
-  interface Link { belt?: { pieceId: string; from: number; to: number }; parent: string | null }
-  const parent = new Map<string, Link>();
-  const startKey = pointKey(start.pieceId, start.position);
-  parent.set(startKey, { parent: null });
-  const visited = new Set<string>([startKey]);
-  const queue: { pieceId: string; pos: number }[] = [{ pieceId: start.pieceId, pos: start.position }];
-
-  const usedOn = (fromKey: string, pieceId: string): Set<number> => {
-    const used = new Set<number>();
-    let k: string | null = fromKey;
-    while (k !== null) {
-      const l = parent.get(k);
-      if (!l) break;
-      if (l.belt && l.belt.pieceId === pieceId) { used.add(l.belt.from); used.add(l.belt.to); }
-      k = l.parent;
-    }
-    return used;
-  };
-
-  while (queue.length > 0) {
-    const node = queue.shift()!;
-    const piece = pieces.get(node.pieceId);
-    if (!piece) continue;
-    const tmpl = PIECE_TEMPLATES[piece.type];
-    const total = tmpl.hexCount * 12;
-    const nodeKey = pointKey(node.pieceId, node.pos);
-    const usedHere = usedOn(nodeKey, piece.id);
-    if (usedHere.has(node.pos)) continue;
-    for (const def of tmpl.points) {
-      if (!def.enabled || def.role !== 'belt') continue;
-      const c = def.position;
-      if (c === node.pos) continue;
-      const d = Math.abs(node.pos - c);
-      if (Math.min(d, total - d) <= 2) continue;
-      if (!usable.has(pointKey(piece.id, c))) continue;
-      if (usedHere.has(c)) continue;
-      reach.add(pointKey(piece.id, c));
-      const n = adjAt(piece.coord, piece.rotation ?? 0, c, game.board);
-      if (!n || n.piece.type === 'mine') continue;
-      const nk = pointKey(n.piece.id, n.pos);
-      if (!usable.has(nk) || visited.has(nk)) continue;
-      visited.add(nk);
-      parent.set(nk, { belt: { pieceId: piece.id, from: node.pos, to: c }, parent: nodeKey });
-      queue.push({ pieceId: n.piece.id, pos: n.pos });
-    }
-  }
-  byStart.set(ck, reach);
-  return reach;
-}

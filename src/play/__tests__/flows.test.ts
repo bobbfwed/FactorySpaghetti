@@ -7,9 +7,12 @@ import type { Action } from '../../engine/actions';
 import type { CardType } from '../../engine/config';
 import type { GameState, Player, PlayerId } from '../../engine/state';
 import { applyAction, legalActions } from '../../engine';
-import { findBeltPath } from '../../engine/routing';
-import { routeReach } from '../info';
+import { placeAction, placement, planRoute, planningState, routeEnds, stillPossible, type Seg } from '../route';
 import { W } from '../words';
+import { PlayController } from '../controller';
+import { pieceTemplate } from '../../engine/config';
+import { adjAt } from '../../engine/rules/flow';
+import { refusalText } from '../../app/gameText';
 import { active, allItems, atActions, findState, gesturesFor, harness, isLit } from './helpers';
 
 function patchPlayer(s: GameState, p: PlayerId, patch: Partial<Player>): GameState {
@@ -246,20 +249,17 @@ describe('Mines', () => {
 });
 
 describe('Belts', () => {
-  function routeState(): { s: GameState; p: PlayerId; from: { pieceId: string; position: number }; to: { pieceId: string; position: number } } {
+  /** A state in my actions step with a route of `min`..`max` belts between two points on different pieces. */
+  function routeState(min = 2, max = 3): { s: GameState; p: PlayerId; from: { pieceId: string; position: number }; to: { pieceId: string; position: number }; cost: number } {
     let found: ReturnType<typeof routeState> | null = null;
     findState((s, p) => {
       if (s.phase !== 'actions' || active(s) !== p || s.pendingFactoryOps.length || s.overstockPieces.length) return false;
-      if ((s.players[p]?.beltsRemaining ?? 0) < 3) return false;
-      for (const a of legalActions(s, p)) {
-        if (a.type !== 'PLACE_BELT') continue;
-        const from = { pieceId: a.pieceId, position: a.fromPoint };
-        for (const k of routeReach(s, from, p)) {
-          const cut = k.lastIndexOf(':');
-          const to = { pieceId: k.slice(0, cut), position: Number(k.slice(cut + 1)) };
+      const ends = routeEnds(s, p);
+      for (const from of ends.slice(0, 12)) {
+        for (const to of ends) {
           if (to.pieceId === from.pieceId) continue;
-          const r = findBeltPath(s, from, to, p);
-          if (r && r.cost >= 2 && r.cost <= 3) { found = { s, p, from, to }; return true; }
+          const r = planRoute(s, p, from, to);
+          if (r && r.length >= min && r.length <= max) { found = { s, p, from, to, cost: r.length }; return true; }
         }
       }
       return false;
@@ -267,72 +267,201 @@ describe('Belts', () => {
     return found!;
   }
 
-  it('one belt: start point, then a lit end point on the same tile (sent at once)', () => {
+  /** Apply what the controller sent, one move at a time, as the host would. */
+  function play(s: GameState, p: PlayerId, c: ReturnType<typeof harness>['c'], sent: Action[]): GameState {
+    let done = 0;
+    for (let guard = 0; guard < 30 && done < sent.length; guard++) {
+      s = apply(s, sent[done]!);
+      done++;
+      c.update(s, p);
+    }
+    return s;
+  }
+
+  it('one belt: start point, end point on the same tile, then "Place 1 belt"', () => {
     const { state, player } = atActions(5, 3);
     const a = legalActions(state, player).find(x => x.type === 'PLACE_BELT') as Extract<Action, { type: 'PLACE_BELT' }>;
     const { c, sent } = harness(state, player);
     c.choose('bank:placeBelt');
     expect(c.view.instruction).toBe(W.beltPickStart);
-    c.tap({ kind: 'point', pieceId: a.pieceId, point: a.toPoint });
-    expect(c.view.instruction).toBe(W.beltPickEnd);
     c.tap({ kind: 'point', pieceId: a.pieceId, point: a.fromPoint });
-    expect(sent).toEqual([a]); // the legal action itself, whichever end was tapped first
-    expect(c.view.selection?.kind).toBe('belt'); // ready for the next belt
-  });
-
-  it('route helper: tapping a point on another tile lays the router\'s chain, one validated belt at a time', () => {
-    const { s: s0, p, from, to } = routeState();
-    const route = findBeltPath(s0, from, to, p)!;
-    let s = s0;
-    const { c, sent } = harness(s, p);
-    c.choose('bank:placeBelt');
-    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
-    expect(isLit(c.view, { kind: 'point', pieceId: to.pieceId, point: to.position })).toBe(true);
-    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
-    expect(sent).toHaveLength(1); // only the first belt; the rest wait for the host
-    for (let i = 0; i < route.cost; i++) {
-      expect(sent).toHaveLength(i + 1);
-      const a = sent[i]!;
-      expect(legalActions(s, p).some(x => JSON.stringify(x) === JSON.stringify(a))).toBe(true);
-      s = apply(s, a);
-      c.update(s, p);
-    }
-    expect(sent).toHaveLength(route.cost);
-    for (const b of route.belts) {
-      expect(s.belts.some(x => x.pieceId === b.pieceId && new Set([x.fromPoint, x.toPoint]).has(b.fromPoint) && new Set([x.fromPoint, x.toPoint]).has(b.toPoint))).toBe(true);
-    }
-  });
-
-  it('route helper offers to buy the missing belts first', () => {
-    const { s: s0, p, from, to } = routeState();
-    const route = findBeltPath(s0, from, to, p)!;
-    let s = patchPlayer(s0, p, { beltsRemaining: 1, inventory: { ore: 5, plate: 0, sphere: 0, tesseract: 0 } });
-    const { c, sent } = harness(s, p);
-    c.choose('bank:placeBelt');
-    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
-    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    expect(c.view.instruction).toBe(W.beltPickEnd);
+    c.tap({ kind: 'point', pieceId: a.pieceId, point: a.toPoint });
     expect(sent).toEqual([]);
-    expect(c.view.choices?.items[0]?.label).toBe(W.routeBuy(route.cost - 1));
-    c.choose('route:buy');
-    for (let guard = 0; guard < 10 && sent.length > 0 && s.belts.length < s0.belts.length + route.cost; guard++) {
-      s = apply(s, sent[sent.length - 1]!);
-      c.update(s, p);
-    }
-    expect(sent.filter(a => a.type === 'BUY_BELT')).toHaveLength(route.cost - 1);
-    expect(sent.filter(a => a.type === 'PLACE_BELT')).toHaveLength(route.cost);
+    expect(c.view.route).toEqual([{ pieceId: a.pieceId, from: a.fromPoint, to: a.toPoint, tier: 'own' }]);
+    expect(c.view.primary).toMatchObject({ label: W.routePlaceAll(1), enabled: true });
+    c.primary();
+    expect(sent).toEqual([a]);
   });
 
-  it('remove one of my belts from its menu, and undo this turn\'s belts from the bank', () => {
+  it('a route is planned whatever it costs, split into own, buy and cant, with the totals', () => {
+    const { s: s0, p, from, to, cost } = routeState(3, 6);
+    // One belt in the supply, materials for exactly one more.
+    const s = patchPlayer(s0, p, { beltsRemaining: 1, inventory: { ore: 1, plate: 0, sphere: 0, tesseract: 0 } });
+    const { c, sent } = harness(s, p);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    const tiers = c.view.route!.map(x => x.tier);
+    expect(tiers).toEqual(['own', 'buy', ...Array(cost - 2).fill('cant')]);
+    expect(c.view.instruction).toBe(W.routeTotals(cost, 1, 1, cost - 2));
+    expect(c.view.choices?.items.map(i => i.id)).toEqual(['route:own', 'route:buy', 'route:cancel']);
+    expect(c.view.primary?.label).toBe(W.routePlaceOwn(1));
+    expect(sent).toEqual([]);
+  });
+
+  it('with no belts at all a route can still be planned', () => {
+    const { s: s0, p, from, to, cost } = routeState(2, 4);
+    const s = patchPlayer(s0, p, { beltsRemaining: 0, inventory: { ore: 0, plate: 0, sphere: 0, tesseract: 0 } });
+    const { c, sent } = harness(s, p);
+    expect(item(c.view, 'bank:placeBelt')?.enabled).toBe(true);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    expect(c.view.route?.every(x => x.tier === 'cant')).toBe(true);
+    expect(c.view.route).toHaveLength(cost);
+    expect(c.view.primary).toMatchObject({ enabled: false, hint: W.routeNothingNow });
+    expect(sent).toEqual([]);
+  });
+
+  it('"Place from inventory" lays the own part; the rest stays as the plan, re-tiered', () => {
+    const { s: s0, p, from, to, cost } = routeState(3, 6);
+    let s = patchPlayer(s0, p, { beltsRemaining: 1, inventory: { ore: 0, plate: 0, sphere: 0, tesseract: 0 } });
+    const { c, sent } = harness(s, p);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    c.choose('route:own');
+    s = play(s, p, c, sent);
+    expect(sent.map(a => a.type)).toEqual(['PLACE_BELT']);
+    expect(c.view.route).toHaveLength(cost - 1);
+    expect(c.view.route?.every(x => x.tier === 'cant')).toBe(true);
+  });
+
+  it('"Buy M and place" buys first, then lays the own and bought belts in route order', () => {
+    const { s: s0, p, from, to, cost } = routeState(2, 3);
+    let s = patchPlayer(s0, p, { beltsRemaining: 1, inventory: { ore: 6, plate: 0, sphere: 0, tesseract: 0 } });
+    const route = planRoute(s, p, from, to)!;
+    const { c, sent } = harness(s, p);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    expect(c.view.choices?.items.find(i => i.id === 'route:buy')?.label).toBe(W.routeBuyPlace(cost - 1, cost));
+    c.choose('route:buy');
+    s = play(s, p, c, sent);
+    expect(sent.filter(a => a.type === 'BUY_BELT')).toHaveLength(cost - 1);
+    expect(sent.filter(a => a.type === 'PLACE_BELT').map(a => (a as Extract<Action, { type: 'PLACE_BELT' }>).pieceId)).toEqual(route.map(x => x.pieceId));
+    for (const b of route) expect(s.belts.some(x => x.pieceId === b.pieceId && new Set([x.fromPoint, x.toPoint]).has(b.from))).toBe(true);
+    // All laid: back to choosing where the next belts go.
+    expect(c.view.instruction).toBe(W.beltPickStart);
+    expect(c.view.route).toBeNull();
+  });
+
+  it('a belt the engine refuses part-way stops the placement there, with the reason', () => {
+    const { s: s0, p, from, to } = routeState(2, 4);
+    const s = patchPlayer(s0, p, { beltsRemaining: 9 });
+    const route = planRoute(s, p, from, to)!;
+    // Use the second belt's point first, so the plan's second belt is refused.
+    const second = route[1]!;
+    const blocker = legalActions(s, p).find((a): a is Extract<Action, { type: 'PLACE_BELT' }> => a.type === 'PLACE_BELT'
+      && a.pieceId === second.pieceId && (a.fromPoint === second.from || a.toPoint === second.from)
+      && !(new Set([a.fromPoint, a.toPoint]).has(second.to)));
+    if (!blocker) return; // no such belt in this state
+    const r = placement(apply(s, blocker), p, route, false);
+    expect(r.placed).toBe(1);
+    expect(r.refusal).not.toBeNull();
+    expect(r.actions).toEqual([{ type: 'PLACE_BELT', pieceId: route[0]!.pieceId, fromPoint: route[0]!.from, toPoint: route[0]!.to }]);
+  });
+
+  it('the plan is remembered on this device and offered again on a later visit to "Lay a belt"', () => {
+    const { s: s0, p, from, to, cost } = routeState(3, 6);
+    let s = patchPlayer(s0, p, { beltsRemaining: 1, inventory: { ore: 0, plate: 0, sphere: 0, tesseract: 0 } });
+    const { c, sent } = harness(s, p);
+    c.choose('bank:placeBelt');
+    c.tap({ kind: 'point', pieceId: from.pieceId, point: from.position });
+    c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
+    c.choose('route:own');
+    s = play(s, p, c, sent);
+    c.cancel(); // leave belt mode without cancelling the plan
+    c.choose('bank:placeBelt');
+    const cont = c.view.choices?.items.find(i => i.id === 'route:continue');
+    expect(cont?.label).toBe(W.routeContinue(cost - 1));
+    c.choose('route:continue');
+    expect(c.view.route).toHaveLength(cost - 1);
+    // "Cancel plan" forgets it.
+    c.choose('route:cancel');
+    expect(c.view.choices?.items.some(i => i.id === 'route:continue') ?? false).toBe(false);
+  });
+
+  it('placed belts are not lit in the actions step or in Lay a belt; Remove a belt is its own mode', () => {
     const { state, player } = atActions(5, 3);
     const a = legalActions(state, player).find(x => x.type === 'PLACE_BELT')!;
     const s = apply(state, a);
     const belt = s.belts[s.belts.length - 1]!;
     const { c, sent } = harness(s, player);
+    expect(c.view.targets.some(t => t.kind === 'belt')).toBe(false);
+    c.choose('bank:placeBelt');
+    expect(c.view.targets.some(t => t.kind === 'belt')).toBe(false);
+    c.cancel();
+    c.choose('bank:removeBelt');
+    expect(c.view.instruction).toBe(W.removePick);
+    expect(isLit(c.view, { kind: 'belt', beltId: belt.id })).toBe(true);
+    expect(c.view.targets.every(t => t.kind === 'belt')).toBe(true);
     c.tap({ kind: 'belt', beltId: belt.id });
-    expect(c.view.menu?.items.map(i => i.id)).toEqual(['menu:removeBelt']);
-    c.choose('menu:removeBelt');
+    expect(c.view.confirmBar).toMatchObject({ confirm: true, label: W.removeBelt });
+    c.confirm();
+    expect(sent).toEqual([{ type: 'REMOVE_BELT', beltId: belt.id }]);
+    c.update(apply(s, sent[0]!), player);
     c.choose('bank:undoBelts');
-    expect(sent).toEqual([{ type: 'REMOVE_BELT', beltId: belt.id }, { type: 'UNDO_BELTS' }]);
+  });
+
+  it('a tap on a point that is not lit is explained by the engine, never as "not your building"', () => {
+    const { state, player } = atActions(5, 3);
+    const { c } = harness(state, player);
+    c.choose('bank:placeBelt');
+    const lit = new Set(c.view.targets.map(t => (t.kind === 'point' ? `${t.pieceId}:${t.point}` : '')));
+    let checked = 0;
+    for (const piece of state.board) {
+      for (let pt = 0; pt < (piece.type === 'mine' ? 24 : 12) && checked < 40; pt++) {
+        if (lit.has(`${piece.id}:${pt}`)) continue;
+        c.tap({ kind: 'point', pieceId: piece.id, point: pt });
+        expect(c.view.hint).not.toBe(W.notYourBuilding);
+        expect(c.view.hint).toBeTruthy();
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    c.tap({ kind: 'buffer', pieceId: state.board.find(x => x.input)!.id, buffer: 'input' });
+    expect(c.view.hint).toBe(W.bufferNoBelt);
+  });
+});
+
+describe('The meeple ends the turn', () => {
+  it('confirming the meeple places it and then ends the turn by itself', () => {
+    const { state, player } = findState((s, p) => s.phase === 'placeMeeple' && active(s) === p && s.players[p]!.meepleOnPieceId === null
+      && legalActions(s, p).some(a => a.type === 'PLACE_MEEPLE'));
+    const { c, sent } = harness(state, player);
+    expect(c.view.primary).toMatchObject({ label: W.meepleChoose, enabled: false, hint: W.meepleChooseWhy });
+    const a = legalActions(state, player).find((x): x is Extract<Action, { type: 'PLACE_MEEPLE' }> => x.type === 'PLACE_MEEPLE')!;
+    gesturesFor(c, a);
+    expect(sent).toEqual([a]);
+    const s1 = apply(state, a);
+    c.update(s1, player);
+    expect(sent).toEqual([a, { type: 'END_TURN' }]);
+  });
+
+  it('with nowhere to place the meeple, one explicit button ends the turn', () => {
+    const { state, player } = findState((s, p) => s.phase === 'placeMeeple' && active(s) === p && s.players[p]!.meepleOnPieceId === null);
+    // No building of mine and no free Mine point: the engine offers only END_TURN.
+    const s2 = {
+      ...state,
+      board: state.board.filter(x => x.type !== 'mine').map(x => ({ ...x, claims: x.claims.filter(cl => cl.ownerId !== player) })),
+    };
+    expect(legalActions(s2, player)).toEqual([{ type: 'END_TURN' }]);
+    const { c, sent } = harness(s2, player);
+    expect(c.view.primary).toMatchObject({ label: W.noMeepleSpotEnd, enabled: true });
+    c.primary();
+    expect(sent).toEqual([{ type: 'END_TURN' }]);
   });
 });
 
@@ -398,7 +527,8 @@ describe('Disabled reasons', () => {
       beltsRemaining: 0, teleportersRemaining: 0, inventory: { ore: 1, plate: 0, sphere: 0, tesseract: 0 },
     });
     const v = harness({ ...s, beltsPlacedThisTurn: [] }, player).c.view;
-    expect(item(v, 'bank:placeBelt')).toMatchObject({ enabled: false, reason: W.noBelts });
+    // A route can be planned with no belts in the supply.
+    expect(item(v, 'bank:placeBelt')?.enabled).toBe(true);
     expect(item(v, 'bank:buyCard')).toMatchObject({ enabled: false, reason: W.deckEmpty });
     expect(item(v, 'bank:teleporter')).toMatchObject({ enabled: false, reason: W.noTeleporters });
     expect(item(v, 'bank:exchange')).toMatchObject({ enabled: false, reason: W.nothingToExchange });
@@ -412,10 +542,11 @@ describe('Disabled reasons', () => {
     expect(item(harness(s, player).c.view, 'bank:teleporter')).toMatchObject({ enabled: false, reason: W.cantPayExact(2) });
   });
 
-  it('step 4: End turn waits for the meeple', () => {
-    const { state, player } = findState((s, p) => s.phase === 'placeMeeple' && active(s) === p && s.players[p]!.meepleOnPieceId === null);
+  it('step 4: the big button says to place the meeple first', () => {
+    const { state, player } = findState((s, p) => s.phase === 'placeMeeple' && active(s) === p && s.players[p]!.meepleOnPieceId === null
+      && legalActions(s, p).some(a => a.type === 'PLACE_MEEPLE'));
     const { c } = harness(state, player);
-    expect(c.view.primary).toMatchObject({ label: W.endTurn, enabled: false, hint: W.meepleFirst });
+    expect(c.view.primary).toMatchObject({ label: W.meepleChoose, enabled: false, hint: W.meepleChooseWhy });
   });
 
   it('round end: the meeple building explains why it cannot run', () => {
@@ -510,5 +641,154 @@ describe('cancel and update', () => {
     off();
     c.choose('bank:exchange');
     expect(n).toBe(2);
+  });
+});
+
+describe('Belt plans across turns', () => {
+  it('a plan with two belts touching Mines is not dropped (the one-per-turn limit applies when laying)', () => {
+    // Find a plan whose belts include two that touch a Mine.
+    let found: { s: GameState; p: PlayerId; segs: Seg[] } | null = null;
+    findState((s, p) => {
+      if (s.phase !== 'actions' || active(s) !== p || s.pendingFactoryOps.length) return false;
+      const ends = routeEnds(s, p);
+      for (const from of ends.slice(0, 20)) {
+        for (const to of ends.slice(0, 40)) {
+          if (to.pieceId === from.pieceId) continue;
+          const segs = planRoute(s, p, from, to);
+          if (!segs) continue;
+          const touching = segs.filter(x => {
+            const ok = applyAction(planningState(s, p), placeAction(x));
+            return ok.ok && ok.state.mineBeltPlacedThisTurn;
+          });
+          if (touching.length >= 2) { found = { s, p, segs }; return true; }
+        }
+      }
+      return false;
+    });
+    if (!found) return; // no such route in the sampled games
+    const f = found as { s: GameState; p: PlayerId; segs: Seg[] };
+    expect(stillPossible(f.s, f.p, f.segs)).toBe(true);
+  });
+});
+
+describe('Drawing from a pile', () => {
+  /** My place-a-piece step with piles 1 and 2 open (gestures only from here on, no fallback). */
+  function twoPiles(): { s: GameState; p: PlayerId } {
+    const { state, player } = findState((s, p) => s.phase === 'placePiece' && active(s) === p && s.pendingMineIds.length === 0
+      && (s.drawnStackIndex ?? null) === null && s.stacks[1].pieces.length > 0);
+    return { s: { ...state, stacks: [state.stacks[0], { ...state.stacks[1], available: true }, state.stacks[2]] }, p: player };
+  }
+
+  it('lights the open piles; a tap draws at once; the drawn piece is then placed with gestures only', () => {
+    const { s, p } = twoPiles();
+    expect(legalActions(s, p).every(a => a.type === 'DRAW_PIECE')).toBe(true);
+    const { c, sent } = harness(s, p);
+    expect(c.view.instruction).toBe(W.drawPick);
+    expect(c.view.targets).toEqual([{ kind: 'stack', index: 0 }, { kind: 'stack', index: 1 }]);
+    c.tap({ kind: 'stack', index: 1 });
+    expect(sent).toEqual([{ type: 'DRAW_PIECE', stackIndex: 1 }]);
+    const s1 = apply(s, sent[0]!);
+    c.update(s1, p);
+    // Only the drawn pile's piece may be placed now: pick a lit cell, confirm.
+    const cell = c.view.targets.find(t => t.kind === 'cell');
+    expect(cell).toBeDefined();
+    c.tap(cell!);
+    expect(c.view.confirmBar?.confirm).toBe(true);
+    c.confirm();
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toMatchObject({ type: 'PLACE_PIECE', stackIndex: 1 });
+    expect(() => apply(s1, sent[1]!)).not.toThrow();
+  });
+
+  it('explains taps on piles and cells: choose first, locked, empty, not the pile you drew from', () => {
+    const { s, p } = twoPiles();
+    const { c } = harness(s, p);
+    c.tap({ kind: 'stack', index: 2 });
+    expect(c.view.hint).toBe(W.stackLocked);
+    c.tap({ kind: 'cell', q: 40, r: 40 });
+    expect(c.view.hint).toBe(W.drawFirst);
+    const empty = { ...s, stacks: [s.stacks[0], s.stacks[1], { ...s.stacks[2], available: true, pieces: [] }] } as GameState;
+    const { c: c2 } = harness(empty, p);
+    c2.tap({ kind: 'stack', index: 2 });
+    expect(c2.view.hint).toBe(W.stackEmpty);
+    const drawn = apply(s, { type: 'DRAW_PIECE', stackIndex: 1 });
+    const { c: c3 } = harness(drawn, p);
+    c3.tap({ kind: 'stack', index: 0 });
+    expect(c3.view.hint).toBe(W.notDrawnPile(2));
+  });
+
+  it('others see who is choosing a pile, then what they drew', () => {
+    const { s, p } = twoPiles();
+    const other = s.turnOrder.find(x => x !== p)!;
+    const names = (id: PlayerId): string => `P${id}`;
+    const watch = (g: GameState): string => {
+      const sent: Action[] = [];
+      const c = new PlayController({ send: (a): void => { sent.push(a); }, names });
+      c.update(g, other);
+      return c.view.instruction;
+    };
+    expect(watch(s)).toBe(W.waitingDraw(`P${p}`));
+    const drawn = apply(s, { type: 'DRAW_PIECE', stackIndex: 0 });
+    expect(watch(drawn)).toMatch(new RegExp(`^P${p} drew a `));
+  });
+});
+
+describe("Designer's item 6: belts beside another player's building", () => {
+  /** A point that faces (across the seam) one of `building`'s input or output points, on the neighbouring piece. */
+  function facing(s: GameState, building: GameState['board'][number], role: 'input_buffer' | 'output_buffer'): { pieceId: string; position: number } | null {
+    for (const d of pieceTemplate(building).points) {
+      if (!d.enabled || d.role !== role) continue;
+      const n = adjAt(building.coord, building.rotation ?? 0, d.position, s.board);
+      if (!n || n.piece.type === 'mine') continue;
+      const nd = pieceTemplate(n.piece).points.find(x => x.position === n.pos);
+      if (nd?.enabled && nd.role === 'belt' && !s.belts.some(b => b.pieceId === n.piece.id && (b.fromPoint === n.pos || b.toPoint === n.pos))) {
+        return { pieceId: n.piece.id, position: n.pos };
+      }
+    }
+    return null;
+  }
+  const has = (pts: readonly { pieceId: string; position: number }[], q: { pieceId: string; position: number }): boolean =>
+    pts.some(x => x.pieceId === q.pieceId && x.position === q.position);
+
+  it("reserved points, the owner's points, and belts on another player's piece", () => {
+    let found: { s: GameState; me: PlayerId; theirs: GameState['board'][number]; q: { pieceId: string; position: number } } | null = null;
+    findState((s, p) => {
+      if (s.phase !== 'actions' || active(s) !== p || s.pendingFactoryOps.length || s.overstockPieces.length) return false;
+      for (const b of s.board) {
+        if (b.type === 'mine' || b.type === 'blank' || b.claims.length === 0 || b.claims.some(c => c.ownerId === p)) continue;
+        const q = facing(s, b, 'output_buffer');
+        if (q) { found = { s, me: p, theirs: b, q }; return true; }
+      }
+      return false;
+    });
+    const f = found as unknown as { s: GameState; me: PlayerId; theirs: GameState['board'][number]; q: { pieceId: string; position: number } };
+    expect(f).toBeTruthy();
+    const { s, me, theirs, q } = f;
+    const mine = routeEnds(s, me);
+    // (c) The point facing the other player's output is not lit for me, and a tap on it says why.
+    expect(has(mine, q)).toBe(false);
+    const { c } = harness(s, me);
+    c.choose('bank:placeBelt');
+    expect(isLit(c.view, { kind: 'point', pieceId: q.pieceId, point: q.position })).toBe(false);
+    c.tap({ kind: 'point', pieceId: q.pieceId, point: q.position });
+    expect(c.view.hint).toBe(refusalText({ code: 'POINT_RESERVED' }));
+    expect(c.view.hint).not.toBe(W.notYourBuilding);
+    // (d) From the owner's side the same point is lit (it is their turn in this copy of the state).
+    const owner = theirs.claims[0]!.ownerId;
+    const asOwner = { ...s, activePlayerIndex: s.turnOrder.indexOf(owner) };
+    expect(has(routeEnds(asOwner, owner), q)).toBe(true);
+    // (a) A belt may go between two belt points on the other player's building piece, if it has any.
+    const onTheirs = legalActions(planningState(s, me), me).some(a => a.type === 'PLACE_BELT' && a.pieceId === theirs.id);
+    const theirBeltPoints = pieceTemplate(theirs).points.filter(d => d.enabled && d.role === 'belt').length;
+    if (theirBeltPoints >= 2) expect(onTheirs).toBe(true);
+    // (b) A point facing my own building's input is lit for me (when one is free).
+    for (const b of s.board) {
+      if (!b.claims.some(cl => cl.ownerId === me) || b.claims.some(cl => cl.ownerId !== me)) continue;
+      const qi = facing(s, b, 'input_buffer');
+      if (qi && !s.board.some(x => x.id !== b.id && x.claims.some(cl => cl.ownerId !== me) && facing(s, x, 'input_buffer')?.pieceId === qi.pieceId)) {
+        expect(has(mine, qi)).toBe(true);
+        break;
+      }
+    }
   });
 });

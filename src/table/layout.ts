@@ -16,7 +16,14 @@
 
 import type { BoardPiece, GameState, HexCoord, PieceType } from '../engine/state';
 import type { PointRole } from '../engine/config';
-import { PIECE_TEMPLATES } from '../engine/config';
+import { PIECE_TEMPLATES, pieceTemplate, type PieceTemplate } from '../engine/config';
+
+/**
+ * The layout of a piece: a piece type uses its type's layout (a mine type: Mine 1's); a piece
+ * (type and id) uses its own, so Mines 2 and 3 have no ore exits on their lean half.
+ */
+export type PieceRef = PieceType | { readonly type: PieceType; readonly id: string };
+const templateOf = (p: PieceRef): PieceTemplate => (typeof p === 'string' ? PIECE_TEMPLATES[p] : pieceTemplate(p));
 import { mineSecondaryCoord } from '../engine/rules/pieces';
 
 export interface XZ { readonly x: number; readonly z: number }
@@ -123,9 +130,9 @@ export function edgePoint(centre: XZ, ve: number, t: number, inset: number): XZ 
   return { x: a.x + (b.x - a.x) * t - n.x * inset, z: a.z + (b.z - a.z) * t - n.z * inset };
 }
 
-/** Number of connection positions on a piece type (12, or 24 for the mine). */
-export function pointCount(type: PieceType): number {
-  return PIECE_TEMPLATES[type].hexCount * 12;
+/** Number of connection positions on a piece (12, or 24 for a mine). */
+export function pointCount(piece: PieceRef): number {
+  return templateOf(piece).hexCount * 12;
 }
 
 /** World position of connection point `pos` (the centre of its hole), `inset` mm in from the edge. */
@@ -145,8 +152,8 @@ export function pointEdge(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>
   return [hexCorner(c, f.ve), hexCorner(c, f.ve + 1)];
 }
 
-export function pointRole(type: PieceType, pos: number): PointRole {
-  const def = PIECE_TEMPLATES[type].points.find(p => p.position === pos);
+export function pointRole(piece: PieceRef, pos: number): PointRole {
+  const def = templateOf(piece).points.find(p => p.position === pos);
   return def && def.enabled ? def.role : 'disabled';
 }
 
@@ -246,8 +253,8 @@ export function pieceCells(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'
 // ── Things that sit on pieces ───────────────────────────────────────────────────────────────────
 
 /** Engine positions of a role, sorted ascending (this is the engine's slot order, see flow.ts). */
-export function positionsWithRole(type: PieceType, role: PointRole): number[] {
-  return PIECE_TEMPLATES[type].points
+export function positionsWithRole(piece: PieceRef, role: PointRole): number[] {
+  return templateOf(piece).points
     .filter(p => p.enabled && p.role === role)
     .map(p => p.position)
     .sort((a, b) => a - b);
@@ -267,7 +274,7 @@ export function bufferSlotWorld(
     const pl = piecePlacement(piece);
     return modelToWorld(pl, MINE_HEX_MODEL_X[0] + slot * 12, 0);
   }
-  const positions = positionsWithRole(piece.type, buffer === 'input' ? 'input_buffer' : 'output_buffer');
+  const positions = positionsWithRole(piece, buffer === 'input' ? 'input_buffer' : 'output_buffer');
   if (positions.length === 0) return axialToWorld(piece.coord);
   const i = Math.min(slot, positions.length - 1);
   const extra = slot - i;

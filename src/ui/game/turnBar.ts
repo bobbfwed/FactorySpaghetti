@@ -82,6 +82,7 @@ export function stepLine(ctx: Ctx): Child[] {
 
 /** What the big button confirms while a choice waits for confirmation. */
 export function confirmLabel(v: PlayView): string {
+  if (v.confirmBar?.label) return v.confirmBar.label;
   if (v.ghost) return 'Confirm placement';
   switch (v.selection?.kind) {
     case 'meeple': return 'Confirm meeple';
