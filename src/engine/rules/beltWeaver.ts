@@ -5,7 +5,8 @@
 // across shared edges (seams, same geometry as flow.ts). A claimed factory owned by the
 // player BRIDGES its input and output buffers, so a chain may pass THROUGH it — the belts on
 // each side count, the factory itself does not. The chain must terminate at ≥2 distinct
-// buildings, or a mine and a building.
+// buildings, or a mine and a building. A belt end facing an input or output of a building that
+// has claims, none of them the player's, is a dead end and does not reach that building.
 //
 // Implementation: contract all zero-cost connectors (seams + factory pass-throughs) with a
 // union-find, leaving a small graph whose edges are belts. The metric is the longest simple
@@ -13,7 +14,7 @@
 
 import type { GameState, PlayerId } from '../state';
 import { pieceTemplate } from '../config';
-import { adjAt, getRole } from './flow';
+import { adjAt, getRole, isReservedPoint } from './flow';
 
 const MAX_DFS_STEPS = 200_000; // safety cap for pathological belt graphs
 
@@ -53,6 +54,9 @@ export function longestBeltChain(state: GameState, playerId: PlayerId): number {
       if (role === 'belt') {
         union(key(b.pieceId, pos), nKey);                 // belt ↔ belt across the seam
       } else if (role === 'input_buffer' || role === 'output_buffer') {
+        // A belt end facing a buffer reserved against this player (a building with claims, none
+        // of them theirs) is a dead end: the chain does not reach that building (RULES_CHANGES #38).
+        if (isReservedPoint(adj.piece, adj.pos, playerId)) continue;
         union(key(b.pieceId, pos), nKey);
         terminal.set(nKey, { pieceId: adj.piece.id, kind: 'building' });
       } else if (role === 'ore_output') {

@@ -135,7 +135,7 @@ export interface GameState {
   // Mines 2 and 3 before they are placed (either auto-drop or purchased).
   readonly unplacedMines: ReadonlyArray<UnplacedPiece>;
   readonly mineCount: number;             // mines currently on the board (starts at 1)
-  readonly globalTeleporterCount: number; // ever-placed teleporters across all players (for pricing)
+  readonly globalTeleporterCount: number; // teleporters currently on the board, all players (for pricing)
   readonly cardDeck: ReadonlyArray<CardType>;
   readonly cardDiscard: ReadonlyArray<CardType>;
   readonly turnOrder: ReadonlyArray<PlayerId>;
@@ -144,7 +144,7 @@ export interface GameState {
   readonly phase: TurnPhase;
   readonly lastRoll: ReadonlyArray<number> | null; // dice values from most recent ROLL_DICE
   readonly belts: ReadonlyArray<Belt>;
-  // True once a belt touching a mine is placed this turn; resets at turn start.
+  // True once a belt with an end facing a Mine ore exit is placed this turn; resets at turn start.
   readonly mineBeltPlacedThisTurn: boolean;
   // IDs of belts placed during the current actions phase (enables bulk undo).
   readonly beltsPlacedThisTurn: ReadonlyArray<string>;
@@ -161,7 +161,8 @@ export interface GameState {
   // before the active player may END_ACTIONS. Power plants are exempt (they auto-operate).
   readonly pendingFactoryOps: ReadonlyArray<PendingFactoryOp>;
   // ── Per-turn card tracking ────────────────────────────────────────────────────
-  // Incremented each time a non-play-on-draw card is played; max 2 per turn.
+  // Leverage cards played this turn (max MAX_CARDS_PLAYED_PER_TURN); a play-on-draw card counts
+  // when there is a play left (PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT).
   readonly cardsPlayedThisTurn: number;
   // Pieces drawn by Overstock Supplies (play-on-draw) awaiting placement via PLACE_OVERSTOCK_PIECE.
   readonly overstockPieces: ReadonlyArray<UnplacedPiece>;

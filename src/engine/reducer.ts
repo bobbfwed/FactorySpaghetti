@@ -13,8 +13,11 @@ import {
   applyCollectOutput,
   applySkipFactoryRoll,
   applyExchangeMaterials,
+  endTurnError,
 } from './rules/production';
-import { applyPlaceBelt, applyRemoveBelt, applyUndoBelts, applyPlaceTeleporter, applyBuyBelt } from './rules/flow';
+import {
+  applyPlaceBelt, applyRemoveBelt, applyUndoBelts, applyPlaceTeleporter, applyBuyBelt, returnOrphanedTeleporters,
+} from './rules/flow';
 import {
   applyClaimBuilding,
   applyUpgradeBuilding,
@@ -64,14 +67,31 @@ function dispatch(state: GameState, action: Action): ApplyResult {
   }
 }
 
+// While the active player has an operate-or-skip decision of their own pending (a factory of
+// theirs that the roll activated), they must make it before anything else: every other move
+// is refused. Answering any owner's own pending entry stays allowed (RULES_CHANGES.md #40).
+function decisionPending(state: GameState, action: Action): ApplyResult | null {
+  if (action.type === 'OPERATE_BUILDING' || action.type === 'SKIP_FACTORY_ROLL') return null;
+  const activeId = state.turnOrder[state.activePlayerIndex];
+  if (activeId === undefined || !state.pendingFactoryOps.some(e => e.ownerId === activeId)) return null;
+  return {
+    ok: false,
+    error: { code: 'DECISION_PENDING', message: 'Run or skip your activated factory before doing anything else' },
+  };
+}
+
 export function applyAction(state: GameState, action: Action): ApplyResult {
   if (state.gameOver) {
     return { ok: false, error: { code: 'GAME_OVER', message: 'The game is already over' } };
   }
+  const pending = decisionPending(state, action);
+  if (pending) return pending;
 
   // END_TURN is special: Tesseract victory is checked for the player ENDING their turn,
   // before the turn pointer advances to the next player.
   if (action.type === 'END_TURN') {
+    const refused = endTurnError(state);
+    if (refused) return refused;
     const withBonuses = recomputeBonuses(state);
     const activeId = withBonuses.turnOrder[withBonuses.activePlayerIndex];
 
@@ -94,7 +114,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     // Check exhaustion after every END_TURN: if the board filled up mid-round
     // (last piece placed by a non-last player), the game must end immediately
     // so subsequent players aren't left with no pieces to place.
-    return { ok: true, state: postRoundChecks(result.state) };
+    return { ok: true, state: postRoundChecks(returnOrphanedTeleporters(result.state)) };
   }
 
   const result = dispatch(state, action);
@@ -105,8 +125,10 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     return result;
   }
 
-  // After any other action, recompute bonuses and check if active player just hit 4 Tesseracts.
-  return { ok: true, state: postActionChecks(result.state) };
+  // A teleporter whose placer no longer holds a claim on its building goes back to them (after
+  // any action, so every claim-removing effect is covered). Then recompute bonuses and check if
+  // the active player just hit 4 Tesseracts.
+  return { ok: true, state: postActionChecks(returnOrphanedTeleporters(result.state)) };
 }
 
 // Returns every legal action for the given player in the current state.

@@ -297,8 +297,9 @@ describe('Simultaneous-win impossibility', () => {
     // Give pid0 4 Tesseracts; advance to END_ACTIONS/PLACE_MEEPLE without checking
     s = patchPlayer(s, pid0, { inventory: inv(0, 0, 0, 4) });
 
-    // Manually skip to placeMeeple phase to test END_TURN specifically
+    // Manually skip to placeMeeple phase (meeple placed: the turn may end) to test END_TURN specifically
     s = patch(s, { phase: 'placeMeeple' });
+    s = patchPlayer(s, pid0, { meepleOnPieceId: 'mine-1', meepleSlotIndex: 0 });
 
     const et = applyAction(s, { type: 'END_TURN' });
     expect(et.ok).toBe(true);

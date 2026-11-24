@@ -25,9 +25,10 @@ import {
   PRODUCTION_INCREASE_BUDGET,
   MAX_CARDS_PLAYED_PER_TURN,
   MAX_CLAIMS_PER_BUILDING,
+  PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
 } from '../config';
-import { isCoordsOccupied, isAdjacentToBoard, makeBuffers } from './pieces';
-import { tryPayExact, tryPayFlexible } from './flow';
+import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation } from './pieces';
+import { payMaterials } from './flow';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -72,7 +73,7 @@ export function applyBuyCard(state: GameState, _action: BuyCardAction): ActionRe
   if (!player) return err('INTERNAL', 'Player not found');
 
   const cost = cardCost(state.mineCount);
-  const newInv = tryPayFlexible(player.inventory, cost);
+  const newInv = payMaterials(player.inventory, cost);
   if (!newInv) {
     return err('CANNOT_AFFORD', `Card costs ${cost} value unit(s)`);
   }
@@ -88,9 +89,15 @@ export function applyBuyCard(state: GameState, _action: BuyCardAction): ActionRe
   };
 
   if (PLAY_ON_DRAW_CARDS.has(card)) {
-    // Resolve immediately; never goes to hand. A play-on-draw card is also "played".
+    // Resolve immediately; never goes to hand. A play-on-draw card is also "played": it uses up
+    // one of the turn's plays if any are left (PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT) and resolves
+    // anyway when none are left. Buying is never blocked by the limit (RULES_CHANGES.md #36).
+    const plays = PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT && baseState.cardsPlayedThisTurn < MAX_CARDS_PLAYED_PER_TURN
+      ? baseState.cardsPlayedThisTurn + 1
+      : baseState.cardsPlayedThisTurn;
     const withDiscard: GameState = {
       ...baseState,
+      cardsPlayedThisTurn: plays,
       cardDiscard: [...baseState.cardDiscard, card],
       players: mapPlayer(baseState.players, activeId, p => ({
         ...p, stats: { ...p.stats, cardsPlayed: p.stats.cardsPlayed + 1 },
@@ -164,6 +171,7 @@ export function applyPlaceOverstockPiece(
   }
 
   const { coord, rotation = 0 } = action;
+  if (!validRotation(rotation)) return err('INVALID_ROTATION', `Rotation ${rotation} is not 0–5`);
 
   if (isCoordsOccupied(coord, state.board)) {
     return err('COORD_OCCUPIED', `${coord.q},${coord.r} is already occupied`);
@@ -304,22 +312,36 @@ function resolveOverstockSupplies(state: GameState): ActionResult {
   };
 }
 
-// scoutingDrone: look through any available stack, choose any piece, place it now.
+// The pieceIndex a Scouting Drone play actually takes: the first piece in that stack of the
+// same type as the one named. Pieces of one type are interchangeable, so naming any copy takes
+// the topmost copy (RULES_CHANGES.md #41); legalActions lists exactly these indexes. Returns
+// the index unchanged when it does not name a piece of an existing stack.
+export function scoutingDronePieceIndex(state: GameState, stackIndex: number, pieceIndex: number): number {
+  const stack = state.stacks[stackIndex as 0 | 1 | 2] as PieceStack | undefined;
+  const named = Number.isInteger(pieceIndex) ? stack?.pieces[pieceIndex] : undefined;
+  if (!stack || !named) return pieceIndex;
+  return stack.pieces.findIndex(p => p.type === named.type);
+}
+
+// scoutingDrone: look through any available stack, choose any piece (by type), place it now.
 function resolveScoutingDrone(
   state: GameState,
   action: PlayCardAction,
   _activeId: PlayerId,
 ): ActionResult {
-  const { stackIndex, pieceIndex, coord, rotation = 0 } = action;
-  if (stackIndex === undefined || pieceIndex === undefined || coord === undefined) {
+  const { stackIndex, coord, rotation = 0 } = action;
+  if (stackIndex === undefined || action.pieceIndex === undefined || coord === undefined) {
     return err('MISSING_PARAMS', 'scoutingDrone requires stackIndex, pieceIndex, and coord');
   }
 
-  const stack = state.stacks[stackIndex];
+  const stack = state.stacks[stackIndex] as PieceStack | undefined;
+  if (!stack) return err('INVALID_STACK', `There is no stack ${String(stackIndex)}`);
   if (!stack.available) return err('STACK_LOCKED', `Stack ${stackIndex} is not available`);
-  if (pieceIndex < 0 || pieceIndex >= stack.pieces.length) {
-    return err('INVALID_PIECE_INDEX', `Piece index ${pieceIndex} out of range`);
+  if (!Number.isInteger(action.pieceIndex) || action.pieceIndex < 0 || action.pieceIndex >= stack.pieces.length) {
+    return err('INVALID_PIECE_INDEX', `Piece index ${action.pieceIndex} out of range`);
   }
+  if (!validRotation(rotation)) return err('INVALID_ROTATION', `Rotation ${rotation} is not 0–5`);
+  const pieceIndex = scoutingDronePieceIndex(state, stackIndex, action.pieceIndex);
 
   if (isCoordsOccupied(coord, state.board)) {
     return err('COORD_OCCUPIED', `${coord.q},${coord.r} is already occupied`);
@@ -505,6 +527,9 @@ function resolveChangingPriorities(
   if (toPiece.type === 'blank' || toPiece.type === 'mine') {
     return err('NOT_CLAIMABLE', 'Target must be a factory or power plant');
   }
+  if (toPiece.id === fromPiece.id) {
+    return err('SAME_BUILDING', 'The Control Module must move to a different building');
+  }
 
   const claimIdx = fromPiece.claims.findIndex(
     c => c.ownerId === activeId && c.controlModule === controlModule,
@@ -626,8 +651,9 @@ function resolveAssetForfeiture(state: GameState, activeId: PlayerId): ActionRes
   };
 }
 
-// rdTaxWriteOff: place a teleporter on one of your buildings for free.
-// OQ-3 defaults: yes, consumes a teleporter from supply and ticks the global counter.
+// rdTaxWriteOff: place a teleporter on one of your buildings for free. It is one of your 4
+// teleporters and, like any teleporter on the board, raises the teleporter price for everyone
+// (designer's decision, RULES_CHANGES.md #35).
 function resolveRdTaxWriteOff(
   state: GameState,
   action: PlayCardAction,

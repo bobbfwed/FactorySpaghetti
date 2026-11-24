@@ -17,8 +17,8 @@ import type {
   RulesError,
 } from '../actions';
 import { MINE_COSTS, MAX_CLAIMS_PER_BUILDING } from '../config';
-import { tryPayFlexible } from './flow';
-import { hexEqual, isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord } from './pieces';
+import { payMaterials } from './flow';
+import { isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord, validRotation } from './pieces';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -61,6 +61,13 @@ export function applyClaimBuilding(
   action: ClaimBuildingAction,
 ): ActionResult {
   const { fromProductionIncrease = false, fromFreeClaim = false } = action;
+
+  // A claim is always funded by exactly one source of upgrade-units: the Mine's free claim
+  // (round end) or the Production Increase budget (actions). A claim naming neither used to be
+  // accepted for nothing in the actions phase, although the move list never offered it.
+  if (fromFreeClaim === fromProductionIncrease) {
+    return err('UNFUNDED_CLAIM', 'A claim must be paid from the Mine free claim or from Production Increase');
+  }
 
   if (fromFreeClaim) {
     if (state.phase !== 'roundEnd') {
@@ -279,6 +286,27 @@ export function applyUpgradeBuilding(
   };
 }
 
+// ── Where a Mine may go ───────────────────────────────────────────────────────
+
+// Why a Mine may not be put down with its rich hex at `coord` and its lean hex in direction
+// `rotation`, or null when it may: both hexes free, and the rich hex next to the board. (The
+// rich hex must touch the board; a Mine touching it only with its lean hex used to be accepted
+// although the move list never offered it — RULES_CHANGES.md #43.)
+function minePlacementError(state: GameState, coord: BoardPiece['coord'], rotation: number): { ok: false; error: RulesError } | null {
+  if (!validRotation(rotation)) return err('INVALID_ROTATION', `Rotation ${rotation} is not 0–5`);
+  const secondary = mineSecondaryCoord(coord, rotation);
+  if (isCoordsOccupied(coord, state.board)) {
+    return err('COORD_OCCUPIED', `${coord.q},${coord.r} is already occupied`);
+  }
+  if (isCoordsOccupied(secondary, state.board)) {
+    return err('COORD_OCCUPIED', `secondary mine hex ${secondary.q},${secondary.r} is already occupied`);
+  }
+  if (!isAdjacentToBoard(coord, state.board)) {
+    return err('NOT_ADJACENT', "the Mine's rich hex is not adjacent to any board piece");
+  }
+  return null;
+}
+
 // ── BUY_MINE ──────────────────────────────────────────────────────────────────
 
 export function applyBuyMine(state: GameState, action: BuyMineAction): ActionResult {
@@ -306,23 +334,14 @@ export function applyBuyMine(state: GameState, action: BuyMineAction): ActionRes
   const cost = MINE_COSTS[costIdx];
   if (cost === undefined) return err('INTERNAL', 'Invalid mine cost index');
 
-  const newInv = tryPayFlexible(player.inventory, cost);
+  const newInv = payMaterials(player.inventory, cost);
   if (!newInv) {
     return err('CANNOT_AFFORD', `Buying this mine costs ${cost} value unit(s)`);
   }
 
   const { coord, rotation = 0 } = action;
-  const secondary = mineSecondaryCoord(coord, rotation);
-
-  if (isCoordsOccupied(coord, state.board)) {
-    return err('COORD_OCCUPIED', `${coord.q},${coord.r} is already occupied`);
-  }
-  if (isCoordsOccupied(secondary, state.board)) {
-    return err('COORD_OCCUPIED', `secondary mine hex ${secondary.q},${secondary.r} is already occupied`);
-  }
-  if (!isAdjacentToBoard(coord, state.board) && !isAdjacentToBoard(secondary, state.board)) {
-    return err('NOT_ADJACENT', 'mine is not adjacent to any board piece');
-  }
+  const placeErr = minePlacementError(state, coord, rotation);
+  if (placeErr) return placeErr;
 
   const mineToPlace = state.unplacedMines[0]!;
   const newMineCount = state.mineCount + 1;
@@ -355,17 +374,8 @@ export function applyPlaceMine(state: GameState, action: PlaceMineAction): Actio
   }
 
   const { coord, rotation = 0 } = action;
-  const secondary = mineSecondaryCoord(coord, rotation);
-
-  if (isCoordsOccupied(coord, state.board)) {
-    return err('COORD_OCCUPIED', `${coord.q},${coord.r} is already occupied`);
-  }
-  if (isCoordsOccupied(secondary, state.board)) {
-    return err('COORD_OCCUPIED', `secondary mine hex ${secondary.q},${secondary.r} is already occupied`);
-  }
-  if (!isAdjacentToBoard(coord, state.board) && !isAdjacentToBoard(secondary, state.board)) {
-    return err('NOT_ADJACENT', 'mine is not adjacent to any board piece');
-  }
+  const placeErr = minePlacementError(state, coord, rotation);
+  if (placeErr) return placeErr;
 
   const mineId = state.pendingMineIds[0]!;
   const newMineCount = state.mineCount + 1;

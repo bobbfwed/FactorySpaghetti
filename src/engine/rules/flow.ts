@@ -141,15 +141,28 @@ function circularDistance(a: number, b: number, n: number): number {
   return Math.min(d, n - d);
 }
 
-// True if the specific connection point on `piece` faces a mine hex directly.
-// Used for the mine-belt-limit rule: only one belt whose endpoint faces a mine per turn.
-export function beltEndpointFacesMine(
+// True if the specific connection point on `piece` faces a Mine's ore exit (a mine point whose
+// template role is ore_output) across the shared edge. The one-Mine-belt-per-turn limit counts
+// only these belt ends, not ends facing a part of a Mine without an exit (RULES_CHANGES.md #39).
+export function beltEndpointFacesOreExit(
   piece: BoardPiece,
   point: number,
   board: ReadonlyArray<BoardPiece>,
 ): boolean {
   const adj = adjAt(piece.coord, piece.rotation ?? 0, point, board);
-  return adj != null && adj.piece.type === 'mine';
+  return adj != null && adj.piece.type === 'mine' && getRole(adj.piece, adj.pos) === 'ore_output';
+}
+
+// True when point `pos` of `piece` is an input or output of a building that has at least one
+// claim and none of them is `playerId`'s: the point is reserved for the building's owners.
+// One predicate for two rules: a NEW belt of that player may not end facing it (placement,
+// POINT_RESERVED, RULES_CHANGES.md #31), and a belt of that player already lying there is a
+// dead end — no material enters or leaves the belt chain through that end (flow, the Belt
+// Weaver chain and the table's flow display; RULES_CHANGES.md #38).
+export function isReservedPoint(piece: BoardPiece, pos: number, playerId: PlayerId): boolean {
+  const role = getRole(piece, pos);
+  return (role === 'input_buffer' || role === 'output_buffer') &&
+    piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === playerId);
 }
 
 // Why player `me` may not end a belt at (piece, pos), judged by what sits across that
@@ -159,8 +172,8 @@ export function beltEndpointFacesMine(
 //     may use it; anyone may use it while the building is unclaimed);
 //   • 'BELT_BLOCKED'   — another player's belt connects there (you may not join it).
 // Used by belt placement, legalActions, and the router so all three agree. Only NEW belts
-// are checked: a belt already lying at a point stays (and keeps carrying material) when
-// someone later claims the building it faces.
+// are checked here: a belt already lying at a point stays when someone later claims the
+// building it faces, but is then a dead end at that point (isReservedPoint, used by flow).
 export type BeltEndpointConflict = 'POINT_RESERVED' | 'BELT_BLOCKED';
 
 export function beltEndpointConflict(
@@ -171,11 +184,7 @@ export function beltEndpointConflict(
 ): BeltEndpointConflict | null {
   const n = adjAt(piece.coord, piece.rotation ?? 0, pos, state.board);
   if (!n) return null;
-  const role = getRole(n.piece, n.pos);
-  if ((role === 'input_buffer' || role === 'output_buffer') &&
-      n.piece.claims.length > 0 && !n.piece.claims.some(c => c.ownerId === me)) {
-    return 'POINT_RESERVED';
-  }
+  if (isReservedPoint(n.piece, n.pos, me)) return 'POINT_RESERVED';
   // Can't terminate where another player's belt connects across the seam.
   const joinsOther = state.belts.some(
     b => b.ownerId !== me && b.pieceId === n.piece.id && (b.fromPoint === n.pos || b.toPoint === n.pos),
@@ -192,10 +201,101 @@ export function beltEndpointBlocked(
   return beltEndpointConflict(state, piece, pos, me) !== null;
 }
 
+// True when an inventory's total value (MATERIAL_VALUES) covers `cost`. This is the one
+// affordability test for every material payment (cards, Mines, belts, teleporters): with
+// change given back (payMaterials), any set of materials worth enough can pay.
+export function canAfford(inventory: Readonly<Record<Material, number>>, cost: number): boolean {
+  return inventoryValue(inventory) >= cost;
+}
+
+export function inventoryValue(inventory: Readonly<Record<Material, number>>): number {
+  return (Object.keys(MATERIAL_VALUES) as Material[]).reduce((s, m) => s + (inventory[m] ?? 0) * MATERIAL_VALUES[m], 0);
+}
+
+// Pay `cost` value-units from `inventory` the way a sensible player would at the table, so they
+// keep the highest denominations they can (RULES_CHANGES.md #42). Returns the inventory after
+// paying, or null when the total value is short of the cost.
+//
+// Every way of handing in whole units worth at least the cost is considered (each material
+// from 0 up to what is held). The change (handed-in value − cost) comes back from the bank in
+// materials strictly LOWER than the highest material handed in (exchanging down only), highest
+// first, each only up to the room left under INVENTORY_CAP; change that fits nowhere is lost.
+// Of all outcomes, the one that (1) loses the least value to the cap, then (2) leaves the most
+// Tesseracts, then Spheres, then Plates, then Ore is chosen. Values come from MATERIAL_VALUES.
+// Examples (Ore 1, Plate 3, Sphere 7, Tesseract 23), paying 3: Sphere + Ore → Plate + 2 Ore;
+// 2 Spheres → Sphere + Plate + Ore; a Tesseract → 2 Spheres + 2 Plates.
+export function payMaterials(
+  inventory: Readonly<Record<Material, number>>,
+  cost: number,
+): Record<Material, number> | null {
+  if (!canAfford(inventory, cost)) return null;
+  const held = PAY_MATS.map(m => Math.max(0, Math.floor(inventory[m] ?? 0)));
+  // Pure and called often (every purchase the bots consider), so the choice is remembered.
+  const memoKey = `${held.join(',')}|${cost}`;
+  const kept = payMemo.get(memoKey) ?? choosePayment(held, cost);
+  if (!payMemo.has(memoKey)) {
+    if (payMemo.size >= PAY_MEMO_MAX) payMemo.clear();
+    payMemo.set(memoKey, kept);
+  }
+  const out = { ...inventory } as Record<Material, number>;
+  PAY_MATS.forEach((m, i) => { out[m] = kept[i]!; });
+  return out;
+}
+
+// Materials from the most to the least valuable, and their values.
+const PAY_MATS: readonly Material[] = (Object.keys(MATERIAL_VALUES) as Material[])
+  .sort((a, b) => MATERIAL_VALUES[b] - MATERIAL_VALUES[a]);
+const PAY_VALUES: readonly number[] = PAY_MATS.map(m => MATERIAL_VALUES[m]);
+const payMemo = new Map<string, readonly number[]>();
+const PAY_MEMO_MAX = 20_000;
+
+// The search behind payMaterials, over counts in PAY_MATS order (most valuable first). `held`
+// is worth at least `cost`. Returns the counts kept after paying and taking the change.
+function choosePayment(held: readonly number[], cost: number): readonly number[] {
+  const k = held.length;
+  const handIn = new Array<number>(k).fill(0);
+  const after = new Array<number>(k).fill(0);
+  let best: number[] = [...held].fill(0);
+  let bestLost = Infinity;
+  for (;;) {
+    let paid = 0;
+    let top = -1; // index of the most valuable material handed in
+    for (let i = 0; i < k; i++) {
+      paid += handIn[i]! * PAY_VALUES[i]!;
+      if (top < 0 && handIn[i]! > 0) top = i;
+    }
+    if (paid >= cost) {
+      for (let i = 0; i < k; i++) after[i] = held[i]! - handIn[i]!;
+      let change = paid - cost;
+      for (let i = top + 1; i < k && change > 0; i++) {
+        const room = Math.max(0, INVENTORY_CAP - after[i]!);
+        const n = Math.min(Math.floor(change / PAY_VALUES[i]!), room);
+        after[i] = after[i]! + n;
+        change -= n * PAY_VALUES[i]!;
+      }
+      // `change` left over could not be given back under the cap: it is lost.
+      let better = change < bestLost;
+      if (change === bestLost) {
+        // Lexicographically greatest from the most valuable material down.
+        let i = 0;
+        while (i < k && after[i] === best[i]) i++;
+        better = i < k && after[i]! > best[i]!;
+      }
+      if (better) { best = [...after]; bestLost = change; }
+    }
+    // Next hand-in (an odometer over 0..held[i] for each material).
+    let i = k - 1;
+    while (i >= 0 && handIn[i] === held[i]) { handIn[i] = 0; i--; }
+    if (i < 0) break;
+    handIn[i] = handIn[i]! + 1;
+  }
+  return best;
+}
+
 // Pay `cost` value-units from inventory, consuming cheapest materials first.
 // Returns the updated inventory if exact payment is possible, null otherwise.
-// Exact payment is required; if no combination sums precisely to cost,
-// the player must exchange materials first (future EXCHANGE action).
+// No longer used by the rules (every payment goes through payMaterials, with change); kept
+// for the interface, which still imports it.
 export function tryPayExact(
   inventory: Readonly<Record<Material, number>>,
   cost: number,
@@ -217,39 +317,6 @@ export function tryPayExact(
   return remaining === 0 ? inv : null;
 }
 
-// Pay `cost` value-units from inventory using flexible payment with change.
-// Spends lowest materials first; allows overpayment with higher materials.
-// Change is returned in ore (capped at INVENTORY_CAP).
-// Returns the updated inventory on success, null if total value is insufficient.
-export function tryPayFlexible(
-  inventory: Readonly<Record<Material, number>>,
-  cost: number,
-): Record<Material, number> | null {
-  const totalVal = (Object.keys(inventory) as Material[])
-    .reduce((s, m) => s + inventory[m] * MATERIAL_VALUES[m], 0);
-  if (totalVal < cost) return null;
-
-  const inv: Record<Material, number> = { ...inventory };
-  let remaining = cost;
-
-  // Spend lowest materials first; allow overpayment with higher materials
-  for (const mat of ['ore', 'plate', 'sphere', 'tesseract'] as const) {
-    if (remaining <= 0) break;
-    const val = MATERIAL_VALUES[mat];
-    while (inv[mat] > 0 && remaining > 0) {
-      inv[mat]--;
-      remaining -= val;
-    }
-  }
-
-  // Give change in ore if overpaid
-  if (remaining < 0) {
-    inv.ore = Math.min(inv.ore + (-remaining), INVENTORY_CAP);
-  }
-
-  return remaining <= 0 ? inv : null;
-}
-
 // ── BUY_BELT ──────────────────────────────────────────────────────────────────
 
 // Purchase one belt from the bank for BELT_COST ore value-units.
@@ -265,7 +332,7 @@ export function applyBuyBelt(state: GameState): ActionResult {
   const player = state.players[activeId];
   if (!player) return err('INTERNAL', 'Player not found');
 
-  const newInv = tryPayFlexible(player.inventory, BELT_COST);
+  const newInv = payMaterials(player.inventory, BELT_COST);
   if (!newInv) {
     return err('CANNOT_AFFORD', `Buying a belt costs ${BELT_COST} ore value unit(s)`);
   }
@@ -306,14 +373,11 @@ export function applyPlaceTeleporter(
     return err('NO_TELEPORTERS', 'You have no teleporters remaining');
   }
 
-  // Cost = globalTeleporterCount + 1 value-units
+  // Cost = teleporters currently on the board (all players) + 1 value-units, paid with change.
   const cost = teleporterCost(state.globalTeleporterCount);
-  const newInv = tryPayExact(player.inventory, cost);
+  const newInv = payMaterials(player.inventory, cost);
   if (!newInv) {
-    return err(
-      'CANNOT_AFFORD',
-      `Teleporter costs ${cost} value unit(s); exact payment impossible — exchange materials first`,
-    );
+    return err('CANNOT_AFFORD', `Teleporter costs ${cost} value unit(s)`);
   }
 
   let newPiece: BoardPiece;
@@ -346,6 +410,40 @@ export function applyPlaceTeleporter(
       players: newPlayers,
       globalTeleporterCount: state.globalTeleporterCount + 1,
     },
+  };
+}
+
+// ── Teleporters that lost their claim ─────────────────────────────────────────
+
+// A teleporter works for the building it sits on only while its placer holds a claim there.
+// As soon as a player holds no claim on a building any more (today only Changing Priorities
+// can move their last Control Module off it), every teleporter of theirs on that building's
+// buffers goes back to their supply, the buffer has no teleporter, and the teleporter price
+// drops with the count on the board (RULES_CHANGES.md #37). Material in the buffers stays.
+// Pure; run after every action (reducer) so any future claim-removing effect is covered too.
+export function returnOrphanedTeleporters(state: GameState): GameState {
+  // Fast path (this runs after every action, including every move a bot tries).
+  const orphaned = (piece: BoardPiece, owner: PlayerId | null | undefined): boolean =>
+    owner != null && !piece.claims.some(c => c.ownerId === owner);
+  if (!state.board.some(p => orphaned(p, p.input?.teleporterOwner) || orphaned(p, p.output?.teleporterOwner))) return state;
+  let returned = 0;
+  let players = state.players;
+  const board = state.board.map(piece => {
+    let next = piece;
+    for (const side of ['input', 'output'] as const) {
+      const buf = next[side];
+      const owner = buf?.teleporterOwner ?? null;
+      if (!buf || owner === null || next.claims.some(c => c.ownerId === owner)) continue;
+      next = { ...next, [side]: { ...buf, teleporterOwner: null } };
+      players = mapPlayer(players, owner, p => ({ ...p, teleportersRemaining: p.teleportersRemaining + 1 }));
+      returned++;
+    }
+    return next;
+  });
+  if (returned === 0) return state;
+  return {
+    ...state, board, players,
+    globalTeleporterCount: Math.max(0, state.globalTeleporterCount - returned),
   };
 }
 
@@ -439,11 +537,11 @@ export function applyPlaceBelt(state: GameState, action: PlaceBeltAction): Actio
     return err('BELT_BLOCKED', "A belt endpoint may not join another player's belt");
   }
 
-  // One mine-facing belt endpoint per turn: only belt endpoints that directly face a mine hex count.
-  const adjacentToMine = beltEndpointFacesMine(piece, fromPoint, state.board) ||
-                         beltEndpointFacesMine(piece, toPoint, state.board);
+  // One Mine belt per turn: only belt ends that face a Mine's ore exit count.
+  const adjacentToMine = beltEndpointFacesOreExit(piece, fromPoint, state.board) ||
+                         beltEndpointFacesOreExit(piece, toPoint, state.board);
   if (adjacentToMine && state.mineBeltPlacedThisTurn) {
-    return err('MINE_BELT_LIMIT', 'Only one belt with a mine-facing endpoint may be placed per turn');
+    return err('MINE_BELT_LIMIT', 'Only one belt with an end facing a Mine ore exit may be placed per turn');
   }
 
   // No ore cost — placing from supply is free. Only buying additional belts costs ore.
@@ -705,10 +803,19 @@ export function resolveDirectAdjacency(state: GameState): GameState {
   // "seam"). Material flows source → seam → belt → seam → belt → … → seam → input.
 
   // Other endpoint of the placed belt that uses (pieceId, pos), or null if none.
+  const beltAt = (pieceId: string, pos: number): Belt | undefined =>
+    state.belts.find(bl => bl.pieceId === pieceId && (bl.fromPoint === pos || bl.toPoint === pos));
   const beltPartner = (pieceId: string, pos: number): number | null => {
-    const b = state.belts.find(bl => bl.pieceId === pieceId && (bl.fromPoint === pos || bl.toPoint === pos));
+    const b = beltAt(pieceId, pos);
     if (!b) return null;
     return b.fromPoint === pos ? b.toPoint : b.fromPoint;
+  };
+  // A belt end facing an input or output reserved against the belt's owner is a dead end
+  // (RULES_CHANGES.md #38): no material enters or leaves the chain there. Belts of different
+  // players never join, so a chain has one owner; the check is still made per belt end.
+  const deadEnd = (beltPieceId: string, beltPos: number, faced: { piece: BoardPiece; pos: number }): boolean => {
+    const b = beltAt(beltPieceId, beltPos);
+    return !!b && isReservedPoint(faced.piece, faced.pos, b.ownerId);
   };
   const seamOf = (pieceId: string, pos: number): { piece: BoardPiece; pos: number } | null => {
     const p = cur(pieceId);
@@ -732,7 +839,7 @@ export function resolveDirectAdjacency(state: GameState): GameState {
         if (role === 'ore_output') {
           oreFound = true;
         } else if (role === 'output_buffer') {
-          outputs.push({ pieceId: s.piece.id, pos: s.pos });
+          if (!deadEnd(e.pieceId, e.pos, s)) outputs.push({ pieceId: s.piece.id, pos: s.pos });
         } else if (beltPartner(s.piece.id, s.pos) !== null) {
           // a placed belt continues the chain on the neighbouring piece
           const key = `${s.piece.id}:${s.pos}`;
@@ -770,6 +877,7 @@ export function resolveDirectAdjacency(state: GameState): GameState {
       const q = adjAt(b.coord, b.rotation ?? 0, ptDef.position, board);
       if (!q || q.piece.type === 'mine') continue;           // direct mine adjacency handled above
       if (beltPartner(q.piece.id, q.pos) === null) continue; // the adjacent point has no belt
+      if (deadEnd(q.piece.id, q.pos, { piece: b, pos: ptDef.position })) continue; // not the belt owner's building
 
       const src = findChainSource(q.piece.id, q.pos);
       if (!src) continue;

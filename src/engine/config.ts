@@ -103,7 +103,7 @@ export const CONTROL_MODULE_MAX = 18; // modules numbered 1–18
 
 // ── Limits and goal ───────────────────────────────────────────────────────────
 
-export const MAX_CARDS_PLAYED_PER_TURN = 2;  // Leverage cards played per turn (play-on-draw cards excepted)
+export const MAX_CARDS_PLAYED_PER_TURN = 2;  // Leverage cards played per turn (see PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT)
 export const MAX_CLAIMS_PER_BUILDING = 3;    // one player's Control Modules on one building
 export const TESSERACTS_TO_WIN = 4;          // Tesseracts (bonus cards count) shown on your own turn
 
@@ -123,20 +123,25 @@ export const BELT_COST = 1;
 // Card price: #mines currently on board + 1 (formula tunable — RULES_CHANGES.md #14).
 export const cardCost = (mineCount: number): number => mineCount + 1;
 
-// Teleporter price: teleporters ever placed (all players) + 1, paid exactly.
-export const teleporterCost = (placedSoFar: number): number => placedSoFar + 1;
+// Teleporter price: teleporters currently on the board (all players) + 1, paid like any other
+// purchase (change given back).
+export const teleporterCost = (onBoard: number): number => onBoard + 1;
 
 // Production Increase grants this many Control Module upgrade-units to spend this turn
 // (claims and upgrades draw from this budget; never paid with materials). Tunable.
 export const PRODUCTION_INCREASE_BUDGET = 4;
 
-// Cards that resolve immediately on purchase (never enter hand; don't count toward 2/turn limit).
-// OQ-4 default: play-on-draw does NOT count against the 2-cards-per-turn play limit.
+// Cards that resolve immediately on purchase (never enter the hand).
 export const PLAY_ON_DRAW_CARDS: ReadonlySet<CardType> = new Set<CardType>([
   'overstockSupplies',
   'mineInspection',
   'solarFlare',
 ]);
+
+// Whether a play-on-draw card counts toward the cards-played-per-turn limit (designer's
+// decision: yes). When on, a play-on-draw card uses up one of the turn's plays if any are left,
+// and still resolves when none are left; buying cards is never blocked by the limit.
+export const PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT = true;
 
 // ── Leverage card counts ──────────────────────────────────────────────────────
 

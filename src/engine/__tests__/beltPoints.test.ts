@@ -111,7 +111,7 @@ describe('points facing a claimed building are reserved for its owners (#31)', (
     }
   });
 
-  it('a belt already lying at the point stays, and keeps feeding, when someone else claims the building later', () => {
+  it('a belt already lying at the point stays when someone else claims the building later, but stops feeding it (#38)', () => {
     // Player 0 lays A 0→7 into the unclaimed factory's input.
     let s = actionsState([MINE, A, F([])]);
     const placed = applyAction(s, belt('A', 0, 7));
@@ -127,9 +127,9 @@ describe('points facing a claimed building are reserved for its owners (#31)', (
     if (!claimed.ok) return;
     expect(claimed.state.board.find(p => p.id === 'F')!.claims.map(c => c.ownerId)).toEqual([1]);
     expect(claimed.state.belts.map(b => b.id)).toEqual(placed.state.belts.map(b => b.id)); // untouched
-    // Player 0's belt carries mine ore into player 1's factory.
+    // Player 0's belt is now a dead end at player 1's factory: no ore goes in (RULES_CHANGES #38).
     const flowed = resolveDirectAdjacency(claimed.state);
-    expect(flowed.board.find(p => p.id === 'F')!.input!.slots[0]).toBe('ore');
+    expect(flowed.board.find(p => p.id === 'F')!.input!.slots[0]).toBeNull();
     // But player 0 could not lay it again now.
     const again = actionsState([MINE, A, F([{ ownerId: 1, controlModule: 1 }])]);
     expect(errCode(again, belt('A', 0, 7))).toBe('POINT_RESERVED');

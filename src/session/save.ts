@@ -95,8 +95,14 @@ function stable(x: unknown): unknown {
  * Changes to config data are picked up by the fingerprint on their own.
  *   1: the rules before the revision existed (saves without it in their fingerprint).
  *   2: the draw step (DRAW_PIECE, one of several open stacks) and reserved belt points (POINT_RESERVED).
+ *   3: the designer's answers to the open rules questions and paying with change (RULES_CHANGES.md
+ *      #35–#43): teleporters return when the claim is lost, belt dead ends at reserved points, the
+ *      Mine-belt limit counts ore exits only, a pending factory decision blocks other moves,
+ *      Scouting Drone takes any piece by type, payment keeps the highest materials, and the
+ *      engine refuses the moves the move list never offered (unfunded claims, re-placing the
+ *      meeple, ending the turn without placing it, a Mine touching the board only by its lean hex).
  */
-export const RULES_REVISION = 2;
+export const RULES_REVISION = 3;
 
 let fingerprint: string | null = null;
 
@@ -125,6 +131,7 @@ export function rulesFingerprint(): string {
     cardCost: [1, 2, 3].map(n => config.cardCost(n)),
     piBudget: config.PRODUCTION_INCREASE_BUDGET,
     playOnDraw: config.PLAY_ON_DRAW_CARDS,
+    playOnDrawCounts: config.PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
     cards: config.CARD_COUNTS,
     ppBase: config.POWER_PLANT_BASE_YIELD,
     ppYield: config.POWER_PLANT_MATERIAL_YIELD,

@@ -20,6 +20,11 @@ export function hexNeighbours(coord: HexCoord): HexCoord[] {
   return HEX_DIRECTIONS.map(d => ({ q: coord.q + d.q, r: coord.r + d.r }));
 }
 
+// A placement rotation: omitted (read as 0) or a whole number of 60° steps, 0–5.
+export function validRotation(rotation: number | undefined): boolean {
+  return rotation === undefined || (Number.isInteger(rotation) && rotation >= 0 && rotation <= 5);
+}
+
 export function hexEqual(a: HexCoord, b: HexCoord): boolean {
   return a.q === b.q && a.r === b.r;
 }
@@ -149,6 +154,9 @@ export function applyPlacePiece(state: GameState, action: PlacePieceAction): Act
   }
   if (drawn === null && openStacks(state).length > 1) {
     return err('MUST_DRAW', 'More than one stack is open; draw from one before placing');
+  }
+  if (!validRotation(action.rotation)) {
+    return err('INVALID_ROTATION', `Rotation ${String(action.rotation)} is not 0–5`);
   }
 
   if (isCoordsOccupied(coord, state.board)) {
