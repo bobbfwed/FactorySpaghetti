@@ -13,6 +13,7 @@ import { menuView } from './menuView';
 import { resumeView } from './resumeView';
 import { replayView } from './replayView';
 import { reportDialogView } from './reportDialog';
+import { closeConfirm, refreshConfirm } from './confirmDialog';
 import { onViewChange, preferredView } from './viewPref';
 
 type ViewKey = Exclude<Screen, 'game'> | 'game-table' | 'game-text';
@@ -36,6 +37,8 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
     const screen = ctrl.screen;
     const next = keyFor(screen);
     if (next !== key || !view) {
+      // A question belongs to the screen it was asked on.
+      closeConfirm();
       view?.unmounted?.();
       key = next;
       view = next === 'menu' ? menuView(ctrl, version)
@@ -52,6 +55,7 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
     } else {
       view.update();
     }
+    refreshConfirm();
     const notice = ctrl.state.notice;
     toast.hidden = !notice;
     toast.textContent = notice ?? '';

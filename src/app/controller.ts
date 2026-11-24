@@ -13,6 +13,7 @@ import { CODE_LETTERS, codeFromLocation, inviteLink, normalizeCode } from '../ne
 import type { OnlineOptions } from '../online/onlineRoom';
 import { OnlineRoom } from '../online/onlineRoom';
 import { autoplay } from '../online/autoplay';
+import { DEFAULT_BOT_ID } from './lobby';
 import type { ActResult } from '../session/clientSession';
 import { chooseSuccessor } from '../session/seating';
 import type { Room, RoomSettings, SeatColor } from '../session/room';
@@ -429,6 +430,11 @@ export class AppController {
     return !!this.deps.share;
   }
 
+  /** The app's full version label, e.g. "0.1.1+abc1234" (the views show it without the build). */
+  get appVersion(): string {
+    return this.deps.appVersion;
+  }
+
   private notify(text: string): void {
     if (this.noticeTimer !== null) this.sched.clearTimeout(this.noticeTimer);
     this.noticeTimer = this.sched.setTimeout(() => {
@@ -577,7 +583,7 @@ export class AppController {
     const room = online?.client.room;
     if (!online || !room || room.phase !== 'lobby') return;
     for (const s of room.seats) {
-      if (s.kind === 'open') await online.client.setSeat(s.index, 'bot', 'greedy');
+      if (s.kind === 'open') await online.client.setSeat(s.index, 'bot', DEFAULT_BOT_ID);
     }
     await online.client.setReady(true);
   }
@@ -653,7 +659,17 @@ export class AppController {
   start(): Promise<boolean> { return this.command(this.client?.start() ?? null); }
   continueGame(): Promise<boolean> { return this.command(this.client?.resumeGame() ?? null); }
   assign(waitingId: string, seat: number): Promise<boolean> { return this.command(this.client?.assign(waitingId, seat) ?? null); }
-  seatToBot(seat: number): Promise<boolean> { return this.command(this.client?.setSeat(seat, 'bot', 'greedy') ?? null); }
+  /** The host puts a bot in a seat (an open seat, or an absent player's): Smart Bot unless another kind is named. */
+  seatToBot(seat: number, botId: string = DEFAULT_BOT_ID): Promise<boolean> { return this.command(this.client?.setSeat(seat, 'bot', botId) ?? null); }
+  /**
+   * The host changes which kind of bot (bots/registry.ts) plays a bot seat. In the lobby the seat
+   * takes the new bot's name; in a resumed game waiting to continue, the seat keeps its name.
+   */
+  setBotKind(seat: number, botId: string): Promise<boolean> {
+    const s = this.room?.seats[seat];
+    if (!s || s.kind !== 'bot' || s.botId === botId) return Promise.resolve(false);
+    return this.command(this.client?.setSeat(seat, 'bot', botId) ?? null);
+  }
   openSeat(seat: number): Promise<boolean> { return this.command(this.client?.setSeat(seat, 'open') ?? null); }
 
   /** The host sets how fast bots move (lobby or game): 'instant', 'fast' or 'normal'. */

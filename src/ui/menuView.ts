@@ -6,6 +6,8 @@ import { savedWhen } from '../app/controller';
 import { MAX_REPLAY_BYTES } from '../session/replay';
 import { h } from './dom';
 import { icon, mark } from './icons';
+import { askConfirm } from './confirmDialog';
+import { versionTag } from './version';
 
 export interface View {
   el: HTMLElement;
@@ -135,6 +137,7 @@ export function menuView(ctrl: AppController, version: string): View {
     h('div', { class: 'title' },
       mark('mark'),
       h('h1', null, 'Factory', h('br'), h('span', { text: 'Spaghetti' })),
+      versionTag(version),
       h('p', { text: 'Build the factory. Untangle the belts. First to 4 Tesseracts.' })),
     nameField,
     errorBox,
@@ -150,7 +153,6 @@ export function menuView(ctrl: AppController, version: string): View {
     h('div', { class: 'foot' },
       install,
       h('div', { class: 'ver' },
-        h('span', { text: `Version ${version}` }), ' · ',
         h('a', { text: 'Network check', attrs: { href: './net-check.html' } }))));
 
   let lastSaves: unknown = null;
@@ -193,7 +195,11 @@ export function menuView(ctrl: AppController, version: string): View {
             : h('button', { class: 'btn btn-gold', attrs: { 'data-resume': sv.code }, onclick: () => ctrl.resumeStored(sv.key) }, 'Resume'),
           h('button', {
             class: 'btn btn-quiet icon-only', title: `Delete the ${what} of room ${sv.code}`, attrs: { 'aria-label': `Delete the ${what} of room ${sv.code}` },
-            onclick: () => { if (window.confirm(`Delete the ${what} of room ${sv.code}?`)) ctrl.deleteSave(sv.key); },
+            onclick: () => askConfirm({
+              question: `Delete the ${what} of room ${sv.code}?`, confirmLabel: 'Delete',
+              stillValid: () => ctrl.screen === 'menu' && ctrl.state.saves.some(x => x.key === sv.key),
+              onConfirm: () => ctrl.deleteSave(sv.key),
+            }),
           }, icon('trash')));
       };
       if (open.length > 0) {

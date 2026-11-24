@@ -126,6 +126,17 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .linkbox { width: min(560px, 100%); padding: 16px; }
 .linkbox-head { display: flex; align-items: center; justify-content: space-between; font-size: 16px; }
 .linkbox p { margin: 4px 0 10px; font-size: 14px; }
+/* The in-page yes-or-no question (confirmDialog.ts): above every screen, the 3D table and other dialogs.
+   On a phone it sits at the bottom, in reach of a thumb. */
+.btn-danger { background: #c8323c; color: #fff; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 6px 18px rgba(200, 50, 60, 0.25); }
+.confirm-veil { z-index: 1000; }
+.confirm-box { width: min(440px, 100%); padding: 18px 16px 16px; }
+.confirm-text { margin: 0 0 16px; font-size: 16px; line-height: 1.45; color: var(--text); overflow-wrap: anywhere; }
+.confirm-btns { display: flex; gap: 10px; }
+.confirm-btns .btn { flex: 1 1 0; min-width: 0; }
+@media (max-width: 559px) {
+  .confirm-veil { place-items: end center; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
 .linkbox-text { width: 100%; font: 13px/1.4 ui-monospace, Consolas, monospace; color: var(--text); background: #0c0c0e; border: 0; border-radius: 10px; padding: 10px; resize: vertical; word-break: break-all; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1); }
 
 /* ---- start menu ---- */
@@ -137,6 +148,16 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .menu h1 { margin: 0; font-weight: 900; font-size: 34px; line-height: 0.98; letter-spacing: 0.01em; text-transform: uppercase; text-shadow: 0 4px 18px rgba(0, 0, 0, 0.7); }
 .menu h1 span { color: var(--gold); }
 .menu .title p { margin: 8px 0 0; color: #d6d1c6; font-size: 13.5px; }
+/* The version: a large "0.1" and a small ".01" (version.ts). */
+.version-tag, .version-line { font-variant-numeric: tabular-nums; }
+.menu .title .version-tag { margin: 10px 0 0; display: inline-flex; align-items: baseline; gap: 0; padding: 4px 14px 6px; border-radius: 12px; background: rgba(232, 183, 48, 0.08); box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.28); color: var(--text-2); }
+.version-tag .v-label { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 800; color: var(--text-3); margin-right: 8px; }
+.version-tag .v-big { font: 900 30px/1 var(--heavy); color: var(--gold); letter-spacing: 0.01em; }
+.version-tag .v-small { font: 800 15px/1 var(--heavy); color: var(--gold); opacity: 0.8; }
+.version-line { margin: 0; padding: 10px 12px 4px; font-size: 12px; color: var(--text-3); }
+.version-line .v-label { margin-right: 2px; }
+.version-line .v-big { font-weight: 800; color: var(--text-2); }
+.version-line .v-small { font-size: 10.5px; color: var(--text-2); }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .input {
   height: 52px; border-radius: 12px; background: #0d0d0f; display: flex; align-items: center; padding: 0 14px; gap: 10px;
@@ -234,7 +255,18 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .seatcard.open .bar { background: repeating-linear-gradient(180deg, var(--seat) 0 8px, transparent 8px 14px); }
 .seatcard.open .av { background: transparent; box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--seat) 50%, transparent); }
 .seatcard.mine { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--seat) 55%, transparent), inset 0 2px 6px rgba(0, 0, 0, 0.8); }
-.seat-controls { display: flex; gap: 8px; margin-left: auto; }
+.seat-controls { display: flex; gap: 8px; margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
+/* The host's choice of bot kind (a native picker: easy on a phone). 16 px text: no zoom on focus. */
+.bot-kind-select {
+  min-height: 44px; max-width: 100%; padding: 0 34px 0 12px; border: 0; border-radius: 12px; font: 700 16px system-ui, sans-serif;
+  color: var(--text); background-color: var(--panel-3); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14); cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-2) 50%), linear-gradient(135deg, var(--text-2) 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%; background-size: 5px 5px; background-repeat: no-repeat;
+}
+.bot-kind-select option { color: var(--text); background: var(--panel-2); }
+.bot-set .k { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; }
+.bot-set .k small { flex-basis: 100%; }
 .tagh { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--gold); color: var(--ink); font-size: 11px; font-weight: 900; letter-spacing: 0.04em; }
 .tagh .ic { width: 12px; height: 12px; }
 .swatches { display: flex; align-items: center; gap: 6px; padding-left: 4px; flex-wrap: wrap; }

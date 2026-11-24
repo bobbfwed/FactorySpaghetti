@@ -5,6 +5,7 @@ import type { AppController } from '../app/controller';
 import type { Child } from './dom';
 import { h } from './dom';
 import { icon, mark } from './icons';
+import { askConfirm } from './confirmDialog';
 
 export function connectionWords(ctrl: AppController): string {
   const online = ctrl.state.online;
@@ -29,10 +30,23 @@ export function topBar(ctrl: AppController, subtitle: string, extra: Child = nul
         onclick: () => {
           const r = ctrl.room;
           const playing = r && r.phase === 'playing' && !ctrl.state.solo && ctrl.state.online?.status === 'online';
-          if (playing && !window.confirm('Leave the game? The others continue, and you can come back with the same room code.')) return;
-          ctrl.leave();
+          if (!playing) { ctrl.leave(); return; }
+          askLeave(ctrl, 'Leave the game? The others continue, and you can come back with the same room code.');
         },
       }, icon('leave'), h('span', { class: 'hide-narrow', text: 'Leave' }))));
+}
+
+/**
+ * Ask before leaving the room ("Leave" / "Cancel" in the page). The question closes by itself
+ * if this device is no longer in that room (the room closed, or it was left another way).
+ */
+export function askLeave(ctrl: AppController, question: string): void {
+  const online = ctrl.state.online;
+  askConfirm({
+    question, confirmLabel: 'Leave',
+    stillValid: () => online !== null && ctrl.state.online === online,
+    onConfirm: () => { if (ctrl.state.online === online) ctrl.leave(); },
+  });
 }
 
 /** The connection banner (reconnecting, taking over, lost, closed), or null. */

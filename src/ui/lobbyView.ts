@@ -4,12 +4,13 @@
 import type { BotSpeed } from '../session/pacing';
 import { botSpeedOf } from '../session/pacing';
 import type { AppController } from '../app/controller';
-import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
+import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, botChoices, botKindOf, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
 import type { Room, RoomSettings, Seat } from '../session/room';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import { COLORS, COLOR_NAME, icon } from './icons';
 import { connectionBanner, messageStrip, topBar } from './common';
+import { askConfirm } from './confirmDialog';
 import type { View } from './menuView';
 
 export function lobbyView(ctrl: AppController): View {
@@ -20,8 +21,33 @@ export function lobbyView(ctrl: AppController): View {
     const fresh = h('main', { class: 'screen lobby' });
     append(fresh, render(ctrl, room));
     morph(el, fresh);
+    syncSelects(el);
   };
   return { el, update };
+}
+
+/**
+ * A kept <select> shows what the player last picked, not what its `selected` attributes now
+ * say; set it to the room's value (data-value) after every redraw.
+ */
+function syncSelects(root: HTMLElement): void {
+  for (const sel of root.querySelectorAll<HTMLSelectElement>('select[data-value]')) {
+    const want = sel.getAttribute('data-value')!;
+    if (sel.value !== want) sel.value = want;
+  }
+}
+
+/** The host's choice of bot kind for a bot seat: every bot in the registry, Smart Bot first. */
+function botKindSelect(ctrl: AppController, s: Seat): HTMLElement {
+  const choices = botChoices(s);
+  const cur = choices.find(c => c.current)!;
+  const sel = h('select', {
+    class: 'bot-kind-select',
+    attrs: { 'aria-label': `Kind of bot for ${s.name}`, 'data-value': cur.id, 'data-bot-kind': String(s.index) },
+    onchange: () => { void ctrl.setBotKind(s.index, sel.value); },
+  }, choices.map(c => h('option', { value: c.id, ...(c.current ? { attrs: { selected: '' } } : {}) }, c.label)));
+  sel.value = cur.id;
+  return sel;
 }
 
 function render(ctrl: AppController, room: Room): Child[] {
@@ -90,8 +116,10 @@ function seatCard(ctrl: AppController, room: Room, s: Seat, isHost: boolean, res
     if (isHost) controls.push(actionButton([icon('bot'), 'Add bot'], 'btn btn-quiet', () => ctrl.seatToBot(s.index)));
   } else if (s.kind === 'bot') {
     nameLine.push(h('span', { text: s.name }), icon('bot', undefined, 'ic small muted'));
-    meta += ' · computer player';
+    // Everyone sees which kind of bot plays the seat; only the host can change it.
+    meta += ` · ${botKindOf(s).label}`;
     state = h('span', { class: 'state bot', text: 'Bot · ready' });
+    if (isHost) controls.push(botKindSelect(ctrl, s));
     if (isHost && !resuming && !ctrl.state.solo) controls.push(actionButton('Open seat', 'btn btn-quiet', () => ctrl.openSeat(s.index)));
   } else {
     nameLine.push(h('span', { text: s.name }));
@@ -105,10 +133,21 @@ function seatCard(ctrl: AppController, room: Room, s: Seat, isHost: boolean, res
       if (!mine) meta += s.connected ? ' · connected' : ' · not connected';
       state = s.ready ? h('span', { class: 'state ready' }, icon('check'), 'Ready') : h('span', { class: 'state wait', text: 'Not ready' });
     }
-    if (isHost && !mine && !resuming) controls.push(actionButton('Remove', 'btn btn-quiet', () => {
-      if (window.confirm(`Remove ${s.name} from the room?`)) return ctrl.kick(s.index);
-      return undefined;
-    }));
+    if (isHost && !mine && !resuming) {
+      controls.push(h('button', {
+        class: 'btn btn-quiet',
+        onclick: () => askConfirm({
+          question: `Remove ${s.name} from the room?`, confirmLabel: 'Remove',
+          // Gone already (left, or the seat changed): nothing to ask.
+          stillValid: () => {
+            const r = ctrl.room;
+            const t = r?.seats[s.index];
+            return !!r && r.phase === 'lobby' && ctrl.mySeat === r.hostSeat && t?.kind === 'human' && t.name === s.name;
+          },
+          onConfirm: () => ctrl.kick(s.index),
+        }),
+      }, 'Remove'));
+    }
   }
 
   const card = h('div', { class: `seatcard well${s.kind === 'open' ? ' open' : ''}${mine ? ' mine' : ''}`, style: `--seat:${color}` },
@@ -217,8 +256,12 @@ function soloSetup(ctrl: AppController, room: Room, info: ReturnType<typeof lobb
           ], botSpeedOf(st), v => ctrl.setBotSpeed(v), 'Bot speed'))),
         h('div', { class: 'set wide' },
           h('div', { class: 'k' }, 'Your colour'),
-          h('div', { class: 'v swatches' }, swatches))),
-      bots.length ? h('p', { class: 'hint' }, 'Against: ', bots.map((b, i) => [i ? ', ' : '', h('b', { text: b.name, style: `color:${COLORS[b.color]}` })])) : null,
+          h('div', { class: 'v swatches' }, swatches)),
+        // Each opponent, and which kind of bot plays it.
+        bots.map(b => h('div', { class: 'set wide bot-set', attrs: { 'data-bot-seat': String(b.index) } },
+          h('div', { class: 'k' }, h('span', { class: 'sw', style: `--seat:${COLORS[b.color]}` }), ' ', h('b', { text: b.name, style: `color:${COLORS[b.color]}` }),
+            h('small', { text: `${COLOR_NAME[b.color]} · computer player` })),
+          h('div', { class: 'v' }, botKindSelect(ctrl, b))))),
       h('div', { class: 'row end' },
         h('button', { class: 'btn btn-quiet btn-lg', onclick: () => ctrl.leave() }, 'Back'),
         actionButton([icon('play'), 'Start'], 'btn btn-gold btn-xl', () => ctrl.start(), { disabled: !info.canStart }))),

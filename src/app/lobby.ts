@@ -1,6 +1,8 @@
 // What the lobby says about a room: whether the host could start now and, if not, what is
 // still needed, in plain words. Mirrors the host session's own start checks.
 
+import type { BotType } from '../bots/registry';
+import { BOT_TYPES, botById } from '../bots/registry';
 import type { Room, Seat, SeatColor } from '../session/room';
 import { SEAT_COLORS } from '../session/room';
 
@@ -63,6 +65,20 @@ export function lobbyInfo(room: Room, mySeat: number | null): LobbyInfo {
 
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** The kind of bot a new bot seat gets: Smart Bot. */
+export const DEFAULT_BOT_ID = 'greedy';
+
+/** The kind of bot playing a seat, as the host runs it (an unknown id plays as the default). */
+export function botKindOf(seat: Seat): BotType {
+  return botById(seat.botId ?? DEFAULT_BOT_ID);
+}
+
+/** Every kind of bot the host may choose for a bot seat, in registry order, marking the current one. */
+export function botChoices(seat: Seat): { id: string; label: string; current: boolean }[] {
+  const cur = botKindOf(seat).id;
+  return BOT_TYPES.map(b => ({ id: b.id, label: b.label, current: b.id === cur }));
 }
 
 /** Colours this seat may switch to: free, or held only by an open or bot seat (they swap). */

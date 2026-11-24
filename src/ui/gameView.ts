@@ -15,9 +15,10 @@ import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import type { IconName } from './icons';
 import { COLORS, icon } from './icons';
-import { connectionBanner, messageStrip } from './common';
+import { askLeave, connectionBanner, messageStrip } from './common';
 import type { View } from './menuView';
 import { playtestItems } from './playtestMenu';
+import { versionTag } from './version';
 
 const LOG_LINES = 15;
 
@@ -61,9 +62,11 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
       onclick: () => {
         const solo = ctrl.state.solo;
         const text = solo ? 'Leave this solo game? It stays in your saved games.' : 'Leave the game? The others continue, and you can come back with the same room code.';
-        if (g.gameOver || ctrl.state.online?.status !== 'online' || window.confirm(text)) ctrl.leave();
+        if (g.gameOver || ctrl.state.online?.status !== 'online') ctrl.leave();
+        else askLeave(ctrl, text);
       },
-    }, icon('leave'), 'Leave game')) : null;
+    }, icon('leave'), 'Leave game'),
+    versionTag(ctrl.appVersion, 'version-line')) : null;
 
   const header = h('header', { class: 'gamebar tray' },
     h('div', { class: 'gb-code' }, h('span', { class: 'label', text: 'Room' }), h('b', { class: 'num', text: ctrl.state.online?.code ?? room.code })),

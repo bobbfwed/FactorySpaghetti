@@ -7,6 +7,8 @@ import { setPreferredView } from '../viewPref';
 import type { Ctx } from './context';
 import { feelItems } from './feelMenu';
 import { playtestItems } from '../playtestMenu';
+import { askLeave } from '../common';
+import { versionTag } from '../version';
 
 export function menuButton(ctx: Ctx): HTMLElement {
   return h('button', {
@@ -45,9 +47,11 @@ export function gameMenu(ctx: Ctx): HTMLElement | null {
       onclick: () => {
         const text = c.state.solo ? 'Leave this solo game? It stays in your saved games.'
           : 'Leave the game? The others continue, and you can come back with the same room code.';
-        if (ctx.game.gameOver || c.state.online?.status !== 'online' || window.confirm(text)) c.leave();
+        if (ctx.game.gameOver || c.state.online?.status !== 'online') c.leave();
+        else askLeave(c, text);
       },
     }, icon('leave'), 'Leave game'),
+    versionTag(c.appVersion, 'version-line'),
   ];
   return h('div', { class: 'tg-menu tray', attrs: { role: 'menu' } }, items);
 }
