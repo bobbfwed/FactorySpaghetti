@@ -572,7 +572,7 @@ describe('Disabled reasons', () => {
     // value short of the price disables it (1 Ore for a price of 2).
     const { state, player } = atActions(5, 3);
     const s = patchPlayer({ ...state, globalTeleporterCount: 1 }, player, { teleportersRemaining: 2, inventory: { ore: 1, plate: 0, sphere: 0, tesseract: 0 } });
-    expect(item(harness(s, player).c.view, 'bank:teleporter')).toMatchObject({ enabled: false, reason: W.cantPayExact(2) });
+    expect(item(harness(s, player).c.view, 'bank:teleporter')).toMatchObject({ enabled: false, reason: W.cantAfford(2, 1) });
   });
 
   it('step 4: the big button says to place the meeple first', () => {
