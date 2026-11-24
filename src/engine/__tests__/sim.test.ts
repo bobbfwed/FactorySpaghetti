@@ -115,6 +115,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
       steps: 0, actions: 0, offTurnPending: 0, staleOperates: 0, drones: 0,
       drawsApplied: 0, laterMineStates: 0, coOwnedStates: 0, minesBought: 0, buyMineListed: 0,
       beltSweeps: 0, beltsAccepted: 0, reversedAccepted: 0, drawSweeps: 0, drawsAccepted: 0,
+      ownPendingStates: 0, ownPendingSweeps: 0,
     };
 
     // `saving` games steer towards an early Mine purchase (two open stacks: the draw step); the
@@ -144,10 +145,11 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             if (e.ownerId === p && !legal.some(a => a.type === 'OPERATE_BUILDING' && a.pieceId === e.pieceId)) checked.staleOperates++;
           }
         }
-        // Accepted ⇒ listed, for the active player (applyAction acts for the active player). Only
-        // where that player has no factory decision of their own pending: legalActions then offers
-        // only operate/skip by design, while applyAction does not check it.
+        // Accepted ⇒ listed, for the active player (applyAction acts for the active player), in
+        // every state, including those where the active player has a factory decision of their own
+        // pending: the engine then refuses everything but operate/skip (DECISION_PENDING, #40).
         const ownPending = state.pendingFactoryOps.some(e => e.ownerId === active);
+        if (ownPending) checked.ownPendingStates++;
         const activeLegal = choices.filter(c => c.p === active).map(c => c.a);
         // Index the listed belts and draws by their canonical form (one lookup per probe instead of
         // a scan of the whole list); the match found is then confirmed with sameMove itself.
@@ -159,7 +161,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
           const l = listedByKey.get(JSON.stringify(canonicalAction(a)));
           return l && sameMove(l, a) ? l : undefined;
         };
-        if (state.phase === 'placePiece' && !ownPending) {
+        if (state.phase === 'placePiece') {
           checked.drawSweeps++;
           for (const stackIndex of [0, 1, 2] as const) {
             const a: Action = { type: 'DRAW_PIECE', stackIndex };
@@ -168,8 +170,9 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             expect(listedAs(a) !== undefined, `seed ${seed} step ${step}: ${JSON.stringify(a)}`).toBe(accepted);
           }
         }
-        if (state.phase === 'actions' && !ownPending && step % 12 === 0) {
+        if (state.phase === 'actions' && (step % 12 === 0 || (ownPending && step % 3 === 0))) {
           checked.beltSweeps++;
+          if (ownPending) checked.ownPendingSweeps++;
           for (const piece of state.board) {
             const n = piece.type === 'mine' ? 24 : 12;
             for (let i = 0; i < n; i++) {
@@ -239,6 +242,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
     expect(checked.beltSweeps).toBeGreaterThan(0);
     expect(checked.reversedAccepted).toBeGreaterThan(0);
     expect(checked.drawsAccepted).toBeGreaterThan(0);
+    expect(checked.ownPendingSweeps).toBeGreaterThan(0); // swept with the active player's own decision pending
   });
 });
 

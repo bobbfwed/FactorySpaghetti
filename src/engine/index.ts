@@ -5,6 +5,8 @@ export { applyAction, legalActions } from './reducer';
 export { revealedStack } from './rules/pieces';
 export { upcomingTurnOrder } from './rules/production';
 export { canonicalAction, sameMove } from './actions';
+export { listedForm, isListedMove } from './rules/legalActions';
+export { payMaterials, canAfford, isReservedPoint } from './rules/flow';
 
 export type {
   GameState,

@@ -131,7 +131,8 @@ export interface BuyCardAction {
   readonly type: 'BUY_CARD';
 }
 
-// Play a card from hand (max 2 non-play-on-draw cards per turn).
+// Play a card from hand (at most MAX_CARDS_PLAYED_PER_TURN cards played per turn, play-on-draw
+// cards included — see PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT).
 // Per-card parameters are optional — only the relevant fields need be set for each card:
 //   scoutingDrone  : stackIndex + pieceIndex + coord (+ rotation?)
 //   shortSale      : pieceId
@@ -260,14 +261,44 @@ export type Action =
 
 // ── Comparing moves ───────────────────────────────────────────────────────────
 
-// The listed form of a move. Only PLACE_BELT has more than one form: its two endpoint orders
-// are the same move (legalActions lists the lower point first), so this swaps them into that
-// order. Every other action is returned unchanged.
+// The listed form of a move, as far as it can be told without the game state:
+//   • PLACE_BELT: its two endpoint orders are the same move (legalActions lists the lower point
+//     first), so they are swapped into that order;
+//   • a placement (PLACE_PIECE, PLACE_MINE, BUY_MINE, PLACE_OVERSTOCK_PIECE, a Scouting Drone
+//     play) without a rotation is rotation 0, as the engine reads it (the list always names it);
+//   • an optional flag set to false is the same as leaving it out, and an upgrade paid from Mine
+//     credits or Production Increase ignores the other payment fields, as the engine does;
+//   • a Leverage card play keeps only the choices that card takes (the engine ignores others).
+// Every other action is returned unchanged. For a Scouting Drone play, which copy of a piece
+// type is named also does not matter; that needs the state: listedForm (rules/legalActions.ts).
+const CARD_CHOICES: Readonly<Record<string, readonly string[]>> = {
+  scoutingDrone: ['stackIndex', 'pieceIndex', 'coord', 'rotation'],
+  shortSale: ['pieceId'],
+  sinkHole: ['pieceId'],
+  rdTaxWriteOff: ['pieceId', 'bufferType'],
+  changingPriorities: ['pieceId', 'toPieceId', 'controlModule'],
+};
+
 export function canonicalAction(a: Action): Action {
-  if (a.type === 'PLACE_BELT' && a.fromPoint > a.toPoint) {
-    return { ...a, fromPoint: a.toPoint, toPoint: a.fromPoint };
+  if (a.type === 'PLACE_BELT') {
+    return a.fromPoint > a.toPoint ? { ...a, fromPoint: a.toPoint, toPoint: a.fromPoint } : a;
   }
-  return a;
+  const rec = { ...(a as unknown as Record<string, unknown>) };
+  let changed = false;
+  const drop = (k: string): void => { if (k in rec) { delete rec[k]; changed = true; } };
+  if (a.type === 'PLAY_CARD') {
+    const keep = new Set(['type', 'cardType', ...(CARD_CHOICES[a.cardType] ?? [])]);
+    for (const k of Object.keys(rec)) if (!keep.has(k)) drop(k);
+  }
+  const placement = a.type === 'PLACE_PIECE' || a.type === 'PLACE_MINE' || a.type === 'BUY_MINE' ||
+    a.type === 'PLACE_OVERSTOCK_PIECE' || (a.type === 'PLAY_CARD' && a.cardType === 'scoutingDrone');
+  if (placement && rec.rotation === undefined) { rec.rotation = 0; changed = true; }
+  if (a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') {
+    for (const f of ['fromProductionIncrease', 'fromFreeClaim', 'fromMineCredit']) if (rec[f] === false) drop(f);
+    if (rec.fromMineCredit === true) { drop('fromProductionIncrease'); drop('freeCredits'); }
+    if (rec.fromProductionIncrease === true && a.type === 'UPGRADE_BUILDING') drop('freeCredits');
+  }
+  return changed ? rec as unknown as Action : a;
 }
 
 // True when two actions are the same move: equal fields after canonicalAction (so a PLACE_BELT

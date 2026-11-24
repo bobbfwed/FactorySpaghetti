@@ -35,6 +35,7 @@ export type SessionErrorCode =
   | 'STALE'           // a re-sent move arrived after the game moved on; it was not applied
   | 'INTERNAL'        // the host hit an unexpected error; nothing changed
   | 'BAD_ACTION'      // the move could not be read
+  | 'NOT_LISTED'      // the engine would take the move, but it is not one the move list offers now
   | 'BUSY'            // client side: a move is already waiting for the host
   | 'CLOSED';         // client side: the room closed
 

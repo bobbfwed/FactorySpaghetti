@@ -285,6 +285,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   WRONG_PHASE: 'That is not allowed at this step of the turn.',
   GAME_OVER: 'The game is over.',
   PENDING_FACTORY_OPS: 'Every activated factory must be run or skipped first.',
+  DECISION_PENDING: 'First choose whether to run or skip your activated factory.',
   NOT_PENDING: 'That building was not activated by this roll.',
   OVERSTOCK_PENDING: 'Place the Overstock Supplies pieces first.',
   PENDING_MINE: 'Place the dropped Mine first.',
@@ -310,6 +311,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NO_MINES_AVAILABLE: 'All the Mines are already in play.',
   NO_PENDING_MINE: 'No Mine is waiting to be placed.',
   NO_OVERSTOCK: 'There is no Overstock Supplies piece to place.',
+  INVALID_ROTATION: 'A piece can only be turned to one of its six sides.',
   // Engine: Control Modules
   ALREADY_CLAIMED: 'That building is already claimed.',
   NOT_CLAIMABLE: 'Only factories and Power Plants can be claimed.',
@@ -326,6 +328,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   WRONG_FREE_UPGRADE_TARGET: 'Your free upgrades this round belong to another building.',
   INSUFFICIENT_PI_BUDGET: 'Production Increase does not have enough upgrades left for that.',
   PI_CLAIM_USED: 'Production Increase allows only one claim per turn.',
+  UNFUNDED_CLAIM: 'A claim must be paid with the Mine\'s free claim or with Production Increase.',
+  SAME_BUILDING: 'Move the Control Module to a different building.',
   // Engine: buildings, materials and Power Tokens
   CANNOT_AFFORD: 'You cannot afford that.',
   INSUFFICIENT_MATERIAL: 'You do not have that material.',
@@ -342,6 +346,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   // Engine: meeple
   INVALID_MEEPLE_TARGET: 'Your meeple can go only on one of your buildings or on a Mine.',
   MINE_SLOT_OCCUPIED: 'Another meeple is already on that spot of the Mine.',
+  MEEPLE_ALREADY_PLACED: 'Your meeple is already placed this turn.',
+  MEEPLE_REQUIRED: 'Place your meeple before ending your turn.',
   // Engine: belts and teleporters
   NO_BELTS: 'You have no belts left.',
   BELT_NOT_FOUND: 'That belt is no longer on the board.',
@@ -354,7 +360,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   POINT_OCCUPIED: 'A belt already uses that connection point.',
   BELT_BLOCKED: 'A belt may not join another player\'s belt.',
   POINT_RESERVED: 'That connection point is reserved for the owner of the building next to it.',
-  MINE_BELT_LIMIT: 'Only one belt touching a Mine may be placed per turn.',
+  MINE_BELT_LIMIT: 'Only one belt touching a Mine\'s ore exit may be placed per turn.',
   NO_TELEPORTERS: 'You have no teleporters left.',
   TELEPORTER_EXISTS: 'There is already a teleporter there.',
   BUFFER_OCCUPIED: 'That buffer already has a teleporter.',
@@ -389,6 +395,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   SEAT_REQUIRED: 'Choose which player you are.',
   STALE: 'The game moved on, so that move was not made.',
   BAD_ACTION: 'That move could not be read.',
+  NOT_LISTED: 'That move is not available right now.',
   BUSY: 'Still waiting for the host to confirm your last move.',
   CLOSED: 'Not connected to the game.',
 };

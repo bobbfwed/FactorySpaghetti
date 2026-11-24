@@ -36,17 +36,24 @@ function actionsState(overrides: Partial<GameState> = {}): GameState {
 
 // ── CLAIM_BUILDING ────────────────────────────────────────────────────────────
 
+// A claim in the actions phase is paid from a Production Increase budget (a claim paid by
+// nothing is refused: UNFUNDED_CLAIM, RULES_CHANGES.md #43). A budget large enough for any
+// module, so these cases test the other claim rules.
+function piState(overrides: Partial<GameState> = {}): GameState {
+  return actionsState({ productionIncreaseBudget: 20, ...overrides });
+}
+
 describe('CLAIM_BUILDING', () => {
   it('places a module, removes module from hand, does not deduct ore', () => {
     const piece = makePiece({ id: 'pf-1', type: 'plateFact' });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, piece],
       players: createGame(1, 2).players.map((p, i): Player =>
         i === 0 ? { ...p, inventory: { ...p.inventory, ore: 5 } } : p,
       ) as ReadonlyArray<Player>,
     });
 
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-1', controlModule: 3 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-1', controlModule: 3, fromProductionIncrease: true });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
 
@@ -62,7 +69,7 @@ describe('CLAIM_BUILDING', () => {
 
   it("rejects module below claim floor ('1' retired at 2 mines)", () => {
     const piece = makePiece({ id: 'pf-floor', type: 'plateFact' });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, piece],
       mineCount: 2, // floor = 2
       players: createGame(1, 2).players.map((p, i): Player =>
@@ -70,7 +77,7 @@ describe('CLAIM_BUILDING', () => {
       ) as ReadonlyArray<Player>,
     });
 
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-floor', controlModule: 1 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-floor', controlModule: 1, fromProductionIncrease: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe('CLAIM_FLOOR_VIOLATION');
@@ -85,7 +92,7 @@ describe('CLAIM_BUILDING', () => {
         { ownerId: 0, controlModule: 4 },
       ],
     });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, piece],
       players: createGame(1, 2).players.map((p, i): Player =>
         i === 0
@@ -94,7 +101,7 @@ describe('CLAIM_BUILDING', () => {
       ) as ReadonlyArray<Player>,
     });
 
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-multi', controlModule: 6 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-multi', controlModule: 6, fromProductionIncrease: true });
     expect(res.ok).toBe(true);
     if (!res.ok) return;
     expect(res.state.board.find(p => p.id === 'pf-multi')!.claims).toHaveLength(3);
@@ -110,7 +117,7 @@ describe('CLAIM_BUILDING', () => {
         { ownerId: 0, controlModule: 6 },
       ],
     });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, piece],
       players: createGame(1, 2).players.map((p, i): Player =>
         i === 0
@@ -119,7 +126,7 @@ describe('CLAIM_BUILDING', () => {
       ) as ReadonlyArray<Player>,
     });
 
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-full', controlModule: 8 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-full', controlModule: 8, fromProductionIncrease: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe('TOO_MANY_CLAIMS');
@@ -127,14 +134,14 @@ describe('CLAIM_BUILDING', () => {
 
   it('rejects when module is not in the player hand', () => {
     const piece = makePiece({ id: 'pf-no-module', type: 'plateFact' });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, piece],
       players: createGame(1, 2).players.map((p, i): Player =>
         i === 0 ? { ...p, controlModules: p.controlModules.filter(m => m !== 3) } : p,
       ) as ReadonlyArray<Player>,
     });
 
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-no-module', controlModule: 3 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'pf-no-module', controlModule: 3, fromProductionIncrease: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe('MODULE_NOT_AVAILABLE');
@@ -142,13 +149,13 @@ describe('CLAIM_BUILDING', () => {
 
   it('rejects claiming a blank piece', () => {
     const blank = makePiece({ id: 'blank-nc', type: 'blank' });
-    const state = actionsState({
+    const state = piState({
       board: [createGame(1, 2).board[0]!, blank],
       players: createGame(1, 2).players.map((p, i): Player =>
         i === 0 ? { ...p, inventory: { ...p.inventory, ore: 5 } } : p,
       ) as ReadonlyArray<Player>,
     });
-    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'blank-nc', controlModule: 3 });
+    const res = applyAction(state, { type: 'CLAIM_BUILDING', pieceId: 'blank-nc', controlModule: 3, fromProductionIncrease: true });
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error.code).toBe('NOT_CLAIMABLE');

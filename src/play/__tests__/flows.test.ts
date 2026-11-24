@@ -567,9 +567,11 @@ describe('Disabled reasons', () => {
     expect(item(v, 'bank:buyBelt')?.enabled).toBe(true);
   });
 
-  it('teleporter needs exact payment', () => {
+  it('teleporter needs enough material', () => {
+    // Since RULES_CHANGES #42 a teleporter is paid with change like any purchase: only a total
+    // value short of the price disables it (1 Ore for a price of 2).
     const { state, player } = atActions(5, 3);
-    const s = patchPlayer({ ...state, globalTeleporterCount: 1 }, player, { teleportersRemaining: 2, inventory: { ore: 0, plate: 1, sphere: 0, tesseract: 0 } });
+    const s = patchPlayer({ ...state, globalTeleporterCount: 1 }, player, { teleportersRemaining: 2, inventory: { ore: 1, plate: 0, sphere: 0, tesseract: 0 } });
     expect(item(harness(s, player).c.view, 'bank:teleporter')).toMatchObject({ enabled: false, reason: W.cantPayExact(2) });
   });
 

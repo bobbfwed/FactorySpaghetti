@@ -5,7 +5,7 @@
 import type { Conn } from '../net/conn';
 import type { Action } from '../engine/actions';
 import type { GameState, PlayerId } from '../engine/state';
-import { applyAction, createGame, legalActions } from '../engine';
+import { applyAction, createGame, isListedMove, legalActions } from '../engine';
 import { botById } from '../bots/registry';
 import type { LogEntry, Room, RoomSettings, Seat, TableEvent } from './room';
 import {
@@ -533,6 +533,13 @@ export class HostSession {
       return { ok: false, error: err('BAD_ACTION', 'That move could not be read.') };
     }
     if (!res.ok) return { ok: false, error: { code: res.error.code, message: res.error.message } };
+    // A player's move must also be one the move list offers them (the interface only ever sends
+    // those). The engine's own refusal comes first, for its more specific reason; a move the
+    // engine would take but the list does not offer is refused here and changes nothing.
+    // (Host-filled fields are not compared: the dice of a roll, the owner of an answer.)
+    if (source === 'human' && !isListedMove(game, seat as PlayerId, action)) {
+      return { ok: false, error: err('NOT_LISTED', 'That move is not available right now.') };
+    }
 
     const after = res.state;
     const seq = r.seq + 1;

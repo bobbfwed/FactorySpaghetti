@@ -1,9 +1,12 @@
 // Where material travels on the table: from a source (a mine's ore points or a building's output)
 // along the chain of belts that touches a building's input, as a polyline in world millimetres.
 // Pure geometry on the drawn table (which belts touch which holes); it decides nothing about the
-// rules: the engine already moved the material, this only shows the way it went.
+// rules: the engine already moved the material, this only shows the way it went. The one rule it
+// needs — a belt end facing a building it may not serve is a dead end — is the engine's own
+// predicate (isReservedPoint), so the drawn way never passes where the material could not.
 
 import type { BoardPiece, GameState } from '../engine/state';
+import { isReservedPoint } from '../engine/rules/flow';
 import {
   beltCurve, bufferSlotWorld, pointWorld, positionsWithRole, sampleCurve, type XZ,
 } from './layout';
@@ -42,11 +45,11 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   const destEdge = pointWorld(dest, destPos, 0);
   const destSlot = bufferSlotWorld(dest, 'input', slot);
 
-  const srcPts: { i: number; p: XZ }[] = [];
+  const srcPts: { i: number; p: XZ; piece: BoardPiece; pos: number }[] = [];
   sources.forEach((s, i) => {
     const piece = game.board.find(b => b.id === s.pieceId);
     if (!piece) return;
-    for (const pos of sourcePositions(piece, s.kind)) srcPts.push({ i, p: pointWorld(piece, pos, 0) });
+    for (const pos of sourcePositions(piece, s.kind)) srcPts.push({ i, p: pointWorld(piece, pos, 0), piece, pos });
   });
   const startOf = (i: number): XZ => sourceWorld(game, sources[i]!)!;
 
@@ -62,7 +65,11 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   interface Node { belt: number; enter: 0 | 1; parent: Node | null }
   const seen = new Set<string>();
   let frontier: Node[] = [];
+  // A belt end facing an input or output reserved against the belt's owner (a building with
+  // claims, none of them theirs) is a dead end: no material passes there (the engine's rule,
+  // isReservedPoint; RULES_CHANGES.md #38).
   belts.forEach((x, k) => {
+    if (isReservedPoint(dest, destPos, x.b.ownerId)) return;
     for (const e of [0, 1] as const) {
       if (near(x.ends[e], destEdge)) { frontier.push({ belt: k, enter: e, parent: null }); seen.add(`${k}`); }
     }
@@ -71,8 +78,9 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   for (let depth = 0; depth < 64 && frontier.length > 0 && !found; depth++) {
     const next: Node[] = [];
     for (const n of frontier) {
+      const owner = belts[n.belt]!.b.ownerId;
       const out = belts[n.belt]!.ends[n.enter === 0 ? 1 : 0];
-      const s = srcPts.find(sp => near(sp.p, out));
+      const s = srcPts.find(sp => near(sp.p, out) && !isReservedPoint(sp.piece, sp.pos, owner));
       if (s) { found = { node: n, src: s.i }; break; }
       belts.forEach((x, k) => {
         if (seen.has(`${k}`)) return;

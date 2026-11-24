@@ -248,7 +248,7 @@ export function factoryExpectedProduct(piece: BoardPiece): Material | null {
 // FACTORIES of ANY owner are deferred to pendingOps: each factory that COULD operate
 // (inputs completable, enough power) becomes a pending decision for its owner to
 // OPERATE_BUILDING or SKIP_FACTORY_ROLL. This means a roll on anyone's turn never spends
-// your power/materials without your consent (resolves OQ-1: everyone activates, but the
+// your power/materials without your consent (RULES_CHANGES.md #25: everyone activates, but the
 // owner always chooses). For multiple matching claims on one building, each distinct owner
 // gets a pending entry.
 function resolveProduction(state: GameState, diceSum: number): { state: GameState; pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> } {
@@ -371,6 +371,24 @@ export function applyEndActions(state: GameState): ActionResult {
 
 // ── PLACE_MEEPLE ──────────────────────────────────────────────────────────────
 
+// Every place `playerId`'s meeple may go this turn: each free point (resource 0, upgrade 1) of
+// each Mine, and each building they hold a claim on. Shared by legalActions and END_TURN (the
+// meeple must be placed when any of these exists).
+export function meepleTargets(state: GameState, playerId: PlayerId): Array<{ pieceId: string; slotIndex?: 0 | 1 }> {
+  const out: Array<{ pieceId: string; slotIndex?: 0 | 1 }> = [];
+  for (const piece of state.board) {
+    if (piece.type === 'mine') {
+      for (const slotIndex of [0, 1] as const) {
+        const taken = state.players.some(p => p.id !== playerId && p.meepleOnPieceId === piece.id && p.meepleSlotIndex === slotIndex);
+        if (!taken) out.push({ pieceId: piece.id, slotIndex });
+      }
+    } else if (piece.claims.some(c => c.ownerId === playerId)) {
+      out.push({ pieceId: piece.id });
+    }
+  }
+  return out;
+}
+
 export function applyPlaceMeeple(
   state: GameState,
   pieceId: string,
@@ -390,16 +408,26 @@ export function applyPlaceMeeple(
     return err('PIECE_NOT_FOUND', `No board piece with id ${pieceId}`);
   }
 
-  // Valid targets: mines, or buildings owned by the active player
+  // The meeple goes down once per turn (the move list offers only ending the turn after it).
+  if (state.players[activePlayerId]?.meepleOnPieceId != null) {
+    return err('MEEPLE_ALREADY_PLACED', 'Your meeple is already placed this turn');
+  }
+
+  // Valid targets: a Mine's resource (0) or upgrade (1) point, or a building of the active player
   const isMine = piece.type === 'mine';
   const isOwned = piece.claims.some(c => c.ownerId === activePlayerId);
 
   if (!isMine && !isOwned) {
     return err('INVALID_MEEPLE_TARGET', 'Meeple may only be placed on your buildings or a mine');
   }
+  if (isMine ? (slotIndex !== 0 && slotIndex !== 1) : slotIndex !== undefined) {
+    return err('INVALID_MEEPLE_TARGET', isMine
+      ? 'On a Mine the meeple goes on its resource point or its upgrade point'
+      : 'Only a Mine has meeple points to choose from');
+  }
 
   // Mine slots are exclusive: only one meeple per slot index
-  if (isMine && slotIndex !== undefined) {
+  if (isMine) {
     const slotTaken = state.players.some(
       p => p.id !== activePlayerId &&
            p.meepleOnPieceId === pieceId &&
@@ -471,7 +499,7 @@ export function applyLoadBuildingInput(
   const player = state.players[activeId];
   if (!player) return err('INTERNAL', 'Player not found');
 
-  if (player.meepleOnPieceId !== action.pieceId) {
+  if (player.meepleOnPieceId !== action.pieceId || player.meepleSlotIndex !== null) {
     return err('INVALID_TARGET', 'You can only load input into the building your meeple is on');
   }
 
@@ -541,7 +569,7 @@ export function applyOperateBuilding(
     operatorId = activeId;
     const player = state.players[activeId];
     if (!player) return err('INTERNAL', 'Player not found');
-    if (player.meepleOnPieceId !== action.pieceId) {
+    if (player.meepleOnPieceId !== action.pieceId || player.meepleSlotIndex !== null) {
       return err('INVALID_TARGET', 'You can only operate the building your meeple is on');
     }
     if (player.meepleOperatedThisRound) {
@@ -607,7 +635,7 @@ export function applyCollectOutput(state: GameState, action: CollectOutputAction
   const player = state.players[activeId];
   if (!player) return err('INTERNAL', 'Player not found');
 
-  if (player.meepleOnPieceId !== action.pieceId) {
+  if (player.meepleOnPieceId !== action.pieceId || player.meepleSlotIndex !== null) {
     return err('INVALID_TARGET', 'You can only collect output from the building your meeple is on');
   }
 
@@ -655,10 +683,24 @@ export function upcomingTurnOrder(state: GameState): PlayerId[] {
   return state.phase === 'roundEnd' ? [...state.turnOrder] : rotateTurnOrder(state.turnOrder);
 }
 
-export function applyEndTurn(state: GameState): ActionResult {
+// Why the active player may not end their turn now, or null when they may: only in the
+// place-meeple step, and only once the meeple is down (unless it has nowhere to go). Checked
+// before the end-of-turn victory check, so a Tesseract win is also declared only from there.
+export function endTurnError(state: GameState): { ok: false; error: RulesError } | null {
   if (state.phase !== 'placeMeeple') {
     return err('WRONG_PHASE', `Expected placeMeeple phase, got ${state.phase}`);
   }
+  const activeId = state.turnOrder[state.activePlayerIndex];
+  const player = activeId === undefined ? undefined : state.players[activeId];
+  if (player && player.meepleOnPieceId === null && meepleTargets(state, player.id).length > 0) {
+    return err('MEEPLE_REQUIRED', 'Place your meeple before ending your turn');
+  }
+  return null;
+}
+
+export function applyEndTurn(state: GameState): ActionResult {
+  const refused = endTurnError(state);
+  if (refused) return refused;
 
   const isLastPlayerOfRound = state.activePlayerIndex === state.turnOrder.length - 1;
 

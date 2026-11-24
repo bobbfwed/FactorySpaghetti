@@ -5,11 +5,13 @@
 
 import type { GameState, PlayerId, HexCoord } from '../state';
 import type { Action, OperateBuildingAction } from '../actions';
+import { canonicalAction, sameMove } from '../actions';
+import { scoutingDronePieceIndex } from './cards';
 import type { CardType } from '../config';
-import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, MATERIAL_VALUES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
+import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
 import type { Material } from '../config';
-import { tryPayExact, beltEndpointFacesMine, beltEndpointBlocked } from './flow';
-import { applyOperateBuilding, canLoadMaterial } from './production';
+import { canAfford, beltEndpointFacesOreExit, beltEndpointBlocked } from './flow';
+import { applyOperateBuilding, canLoadMaterial, meepleTargets } from './production';
 import {
   hexNeighbours,
   isCoordsOccupied,
@@ -55,6 +57,30 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
     case 'placeMeeple':  return computePlaceMeeple(state, playerId);
     case 'roundEnd':     return computeRoundEnd(state, playerId);
   }
+}
+
+// The form in which legalActions would list `action` in this state: canonicalAction (belt end
+// order, default rotation, false flags), and for a Scouting Drone play the first index of the
+// named piece's type in its stack — the copy the engine takes (scoutingDronePieceIndex).
+export function listedForm(state: GameState, action: Action): Action {
+  const a = canonicalAction(action);
+  if (a.type === 'PLAY_CARD' && a.cardType === 'scoutingDrone' && a.stackIndex !== undefined && a.pieceIndex !== undefined) {
+    const pieceIndex = scoutingDronePieceIndex(state, a.stackIndex, a.pieceIndex);
+    if (pieceIndex !== a.pieceIndex) return { ...a, pieceIndex };
+  }
+  return a;
+}
+
+// True when `action` is one of the moves legalActions offers `playerId` now (compared in its
+// listed form with sameMove). ROLL_DICE is never listed (the dice are an input); it counts as
+// listed for the active player in the roll step. The online host accepts a player's move only
+// when this holds (session/hostSession.ts).
+export function isListedMove(state: GameState, playerId: PlayerId, action: Action): boolean {
+  if (action.type === 'ROLL_DICE') {
+    return !state.gameOver && state.phase === 'roll' && state.turnOrder[state.activePlayerIndex] === playerId;
+  }
+  const form = listedForm(state, action);
+  return legalActions(state, playerId).some(l => sameMove(l, form));
 }
 
 // Probe the engine's own OPERATE_BUILDING check, so the list can never disagree with it
@@ -197,10 +223,7 @@ function addBuyCard(state: GameState, playerId: PlayerId, out: Action[]) {
   if (state.cardDeck.length === 0) return;
   const player = state.players[playerId];
   if (!player) return;
-  const cost = cardCost(state.mineCount);
-  const totalValue = (Object.keys(player.inventory) as Material[])
-    .reduce((s, m) => s + player.inventory[m] * MATERIAL_VALUES[m], 0);
-  if (totalValue >= cost) {
+  if (canAfford(player.inventory, cardCost(state.mineCount))) {
     out.push({ type: 'BUY_CARD' });
   }
 }
@@ -279,13 +302,18 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
     }
 
     case 'scoutingDrone': {
+      // Any piece of any open stack may be chosen. Pieces of one type are interchangeable, so
+      // each type present in a stack is listed once, at its first (topmost) index: the copy the
+      // engine takes whichever index of that type is named (scoutingDronePieceIndex, cards.ts).
       // The chosen piece goes down exactly like a normally placed tile: any free cell
       // adjacent to the board, any rotation (resolveScoutingDrone checks the same).
       const placements = tilePlacements(state);
       for (let si = 0; si <= 2; si++) {
         const stack = state.stacks[si as 0 | 1 | 2];
         if (!stack.available) continue;
-        for (let pi = 0; pi < Math.min(stack.pieces.length, 5); pi++) {
+        const firstOfType = new Map<string, number>();
+        stack.pieces.forEach((p, i) => { if (!firstOfType.has(p.type)) firstOfType.set(p.type, i); });
+        for (const pi of [...firstOfType.values()].sort((x, y) => x - y)) {
           for (const { coord, rotation } of placements) {
             out.push({
               type: 'PLAY_CARD', cardType: 'scoutingDrone',
@@ -441,9 +469,7 @@ function computeRoundEnd(state: GameState, playerId: PlayerId): Action[] {
 function addBuyBelt(state: GameState, playerId: PlayerId, out: Action[]) {
   const player = state.players[playerId];
   if (!player) return;
-  const totalValue = (Object.keys(player.inventory) as Material[])
-    .reduce((s, m) => s + player.inventory[m] * MATERIAL_VALUES[m], 0);
-  if (totalValue >= BELT_COST) {
+  if (canAfford(player.inventory, BELT_COST)) {
     out.push({ type: 'BUY_BELT' });
   }
 }
@@ -456,9 +482,7 @@ function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]) {
   const costIdx = 2 - state.unplacedMines.length;
   const cost = MINE_COSTS[costIdx];
   if (cost === undefined) return;
-  const totalValue = (Object.keys(player.inventory) as Material[])
-    .reduce((s, m) => s + player.inventory[m] * MATERIAL_VALUES[m], 0);
-  if (totalValue < cost) return;
+  if (!canAfford(player.inventory, cost)) return;
 
   const board = state.board;
   for (const coord of adjacentFreeCoords(state)) {
@@ -498,9 +522,9 @@ function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
         if (beltEndpointBlocked(state, piece, b, playerId)) continue;
         const dist = Math.min(Math.abs(a - b), totalPos - Math.abs(a - b));
         if (dist <= 2) continue;
-        // Endpoint-level mine-belt limit: skip pairs where either endpoint faces a mine.
+        // One Mine belt per turn: skip pairs where either end faces a Mine ore exit.
         if (state.mineBeltPlacedThisTurn &&
-            (beltEndpointFacesMine(piece, a, state.board) || beltEndpointFacesMine(piece, b, state.board))) continue;
+            (beltEndpointFacesOreExit(piece, a, state.board) || beltEndpointFacesOreExit(piece, b, state.board))) continue;
         out.push({ type: 'PLACE_BELT', pieceId: piece.id, fromPoint: a, toPoint: b });
       }
     }
@@ -516,7 +540,7 @@ function addRemoveBelt(state: GameState, playerId: PlayerId, out: Action[]) {
 function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[]) {
   const player = state.players[playerId];
   if (!player || player.teleportersRemaining <= 0) return;
-  if (tryPayExact(player.inventory, teleporterCost(state.globalTeleporterCount)) === null) return;
+  if (!canAfford(player.inventory, teleporterCost(state.globalTeleporterCount))) return;
 
   for (const piece of state.board) {
     if (!piece.claims.some(c => c.ownerId === playerId)) continue;
@@ -544,23 +568,12 @@ function addExchangeMaterials(state: GameState, playerId: PlayerId, out: Action[
 
 function computePlaceMeeple(state: GameState, playerId: PlayerId): Action[] {
   const player = state.players[playerId];
-  // Once placed: only END_TURN (prevents bot infinite loops; UI re-placement
-  // bypasses legalActions via direct applyAction call in the canvas handler).
+  // Once placed: only END_TURN (the engine refuses a second placement: MEEPLE_ALREADY_PLACED).
   if (!player || player.meepleOnPieceId !== null) return [{ type: 'END_TURN' }];
 
-  // Meeple placement is mandatory — END_TURN withheld until a target is chosen.
-  const actions: Action[] = [];
-  for (const piece of state.board) {
-    if (piece.type === 'mine') {
-      // Only offer slots not already occupied by another player
-      const slot0Taken = state.players.some(p => p.meepleOnPieceId === piece.id && p.meepleSlotIndex === 0);
-      const slot1Taken = state.players.some(p => p.meepleOnPieceId === piece.id && p.meepleSlotIndex === 1);
-      if (!slot0Taken) actions.push({ type: 'PLACE_MEEPLE', pieceId: piece.id, slotIndex: 0 });
-      if (!slot1Taken) actions.push({ type: 'PLACE_MEEPLE', pieceId: piece.id, slotIndex: 1 });
-    } else if (piece.claims.some(c => c.ownerId === playerId)) {
-      actions.push({ type: 'PLACE_MEEPLE', pieceId: piece.id });
-    }
-  }
+  // Meeple placement is mandatory: END_TURN is withheld until a target is chosen (the engine
+  // refuses it too: MEEPLE_REQUIRED).
+  const actions: Action[] = meepleTargets(state, playerId).map(t => ({ type: 'PLACE_MEEPLE' as const, ...t }));
   if (actions.length === 0) return [{ type: 'END_TURN' }]; // no valid targets (edge case)
   return actions;
 }

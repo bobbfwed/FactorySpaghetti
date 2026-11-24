@@ -325,6 +325,6 @@ Each has a default the work will follow unless changed.
 | D5 | TURN relay for same-wifi and strict networks | Ship with the free PeerJS relays and an empty slot; pick a relay account before relying on in-person play. | Keep the LAN WebSocket server from `vite-prototype` as the in-person option. |
 | D6 | GitHub Pages on a private repository | Assumed available on the account's plan. | Make the repository public, or publish from a separate public repository. |
 | D7 | Rules values that differ between `RULES.md` and the card-text spreadsheet | Follow `RULES.md` and the engine: mines cost 6 and 18, Investor ≥10, Factory Empire ≥6, no "draw a card" step. | The spreadsheet lists 5 and 15, Investor 14+, Factory Empire 8+, and a card-draw step each turn. |
-| D8 | Rules questions still open in `RULES_CHANGES.md` (OQ-2 to OQ-6) | The defaults already coded. | — |
+| D8 | Rules questions in `RULES_CHANGES.md` (OQ-1 to OQ-9) | Closed: the designer answered all of them on 2026-11-24; the engine follows the answers (`RULES_CHANGES.md` #35–#43). | — |
 | D9 | Spectators | Not in the first version. | Read-only joiners beyond four. |
 | D10 | How a save travels between devices | Save link first (about 2,000–4,000 characters), save file beside it, and automatic saves on every player's device. | Link only; or a short code backed by a small paid storage service, which would make links short but adds a server. |
