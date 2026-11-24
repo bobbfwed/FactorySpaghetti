@@ -13,7 +13,13 @@ const MAX_SCALE = 6;
 
 interface View { tx: number; tz: number; az: number; el: number; scale: number }
 
-interface Tween { from: View; to: View; start: number; dur: number }
+/**
+ * A table point that keeps its place on the screen while the view turns: `a` and `b` are its
+ * offset from the screen centre along the camera's right and up axes, in table millimetres.
+ */
+interface Pivot { x: number; z: number; a: number; b: number }
+
+interface Tween { from: View; to: View; start: number; dur: number; pivot?: Pivot }
 
 const ease = (t: number): number => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 
@@ -54,6 +60,9 @@ export class CameraRig {
       el: a.el + (b.el - a.el) * k,
       scale: a.scale * Math.pow(b.scale / a.scale, k),
     };
+    // Turning about a pivot: the pivot stays where it is on the screen all the way round.
+    const p = this.tween.pivot;
+    if (p) this.view = { ...this.view, ...pivotTarget(p, this.view.az, this.view.el) };
     if (t >= 1) {
       this.view = { ...b, az: normAngle(b.az) };
       this.tween = null;
@@ -62,15 +71,37 @@ export class CameraRig {
     return this.tween !== null;
   }
 
-  private animateTo(to: Partial<View>, dur = 420): void {
+  private animateTo(to: Partial<View>, dur = 420, pivot?: Pivot): void {
     const from = { ...this.view };
     const target = { ...(this.tween ? this.tween.to : this.view), ...to };
-    this.tween = { from, to: target, start: performance.now(), dur };
+    this.tween = pivot ? { from, to: target, start: performance.now(), dur, pivot } : { from, to: target, start: performance.now(), dur };
   }
 
-  rotateBy(steps: number): void {
-    // Positive steps turn the table clockwise as seen from above (the camera moves anticlockwise).
-    this.animateTo({ az: this.targetAzimuth - steps * Math.PI / 3 });
+  /**
+   * Turn the table by 60-degree steps. Positive steps turn it clockwise as seen from above (the
+   * camera moves anticlockwise). The turn is about table point `pivot`, which keeps its place on
+   * the screen; without one, about the point in the middle of the free area (the canvas less the
+   * insets), so what the player sees in the middle stays in the middle. The scale is kept.
+   */
+  rotateBy(steps: number, pivot: { x: number; z: number } | null = null): void {
+    const goal = this.tween ? this.tween.to : this.view;
+    const az = goal.az - steps * Math.PI / 3;
+    const p = pivot ?? this.freeCentreGround(goal);
+    const { right, up } = axes(goal.az, goal.el);
+    const dx = p.x - goal.tx, dz = p.z - goal.tz;
+    const piv: Pivot = { x: p.x, z: p.z, a: dx * right.x + dz * right.z, b: dx * up.x + dz * up.z };
+    this.animateTo({ az, ...pivotTarget(piv, az, goal.el) }, 420, piv);
+  }
+
+  /** The table point in the middle of the free area, for view `v`. */
+  private freeCentreGround(v: View): { x: number; z: number } {
+    const { offX, offY } = this.freeArea();
+    // The inverse of pivotTarget: the point at screen offset (offX, -offY) px from the centre.
+    const a = offX * v.scale, b = -offY * v.scale;
+    const s = Math.max(0.2, Math.sin(v.el));
+    const rgt = { x: Math.cos(v.az), z: -Math.sin(v.az) };
+    const fwd = { x: -Math.sin(v.az), z: -Math.cos(v.az) };
+    return { x: v.tx + rgt.x * a + fwd.x * (b / s), z: v.tz + rgt.z * a + fwd.z * (b / s) };
   }
 
   /** Look from azimuth `az` (radians), the short way round when animated. */
@@ -216,11 +247,12 @@ export class CameraRig {
   }
 
   private cancelTweenKeepingRotation(): void {
-    // A user pan/zoom stops a framing animation but lets a rotation or tilt finish.
+    // A user pan/zoom stops a framing animation but lets a rotation or tilt finish (about the
+    // camera target from here on: the pan or zoom has moved what was under the pivot).
     if (this.tween) {
       const to = this.tween.to;
       this.tween = (to.az !== this.tween.from.az || to.el !== this.tween.from.el)
-        ? { ...this.tween, from: { ...this.view }, to: { ...to, tx: this.view.tx, tz: this.view.tz, scale: this.view.scale }, start: performance.now() }
+        ? { from: { ...this.view }, to: { ...to, tx: this.view.tx, tz: this.view.tz, scale: this.view.scale }, start: performance.now(), dur: this.tween.dur }
         : null;
     }
   }
@@ -264,6 +296,16 @@ function axes(az: number, el: number): { right: THREE.Vector3; up: THREE.Vector3
   const right = new THREE.Vector3(Math.cos(az), 0, -Math.sin(az));
   const up = new THREE.Vector3().crossVectors(dir, right).normalize();
   return { right, up };
+}
+
+/** The camera target that puts pivot `p` at its screen offset (p.a, p.b) when looking from (az, el). */
+function pivotTarget(p: Pivot, az: number, el: number): { tx: number; tz: number } {
+  // A ground step d along the camera's right axis moves a point d along screen u; a step d along
+  // the ground "forward" direction moves it d * sin(el) along screen v (see fitView).
+  const s = Math.max(0.2, Math.sin(el));
+  const rgt = { x: Math.cos(az), z: -Math.sin(az) };
+  const fwd = { x: -Math.sin(az), z: -Math.cos(az) };
+  return { tx: p.x - rgt.x * p.a - fwd.x * (p.b / s), tz: p.z - rgt.z * p.a - fwd.z * (p.b / s) };
 }
 
 function clamp(v: number, lo: number, hi: number): number { return Math.min(hi, Math.max(lo, v)); }

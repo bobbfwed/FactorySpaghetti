@@ -12,6 +12,7 @@ import {
   POWER_TOKEN_CAP,
 } from '../engine/config';
 import { applyAction, legalActions } from '../engine/reducer';
+import { payMaterials } from '../engine/rules/flow';
 import { findInputCompletion, factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
 
@@ -66,6 +67,29 @@ export function activeId(game: GameState): PlayerId | null {
 
 export function inventoryValue(p: Player): number {
   return MATERIALS.reduce((s, m) => s + p.inventory[m] * MATERIAL_VALUES[m], 0);
+}
+
+/**
+ * What paying `prices` one after the other (each with change, the engine's payMaterials) leaves
+ * in `inv`, when change is involved: the materials kept and the value of change lost to the limit.
+ * Null when no change comes back (the price is paid with exactly what is handed in) or when the
+ * materials do not cover it.
+ */
+export function paymentWithChange(inv: Readonly<Record<Material, number>>, prices: readonly number[]):
+  { kept: Record<Material, number>; lost: number } | null {
+  let cur: Record<Material, number> = { ...inv };
+  let change = false;
+  let paid = 0;
+  for (const price of prices) {
+    const next = payMaterials(cur, price);
+    if (!next) return null;
+    if (MATERIALS.some(m => next[m] > cur[m])) change = true;
+    cur = next;
+    paid += price;
+  }
+  if (!change) return null;
+  const value = (x: Readonly<Record<Material, number>>): number => MATERIALS.reduce((s, m) => s + x[m] * MATERIAL_VALUES[m], 0);
+  return { kept: cur, lost: Math.max(0, value(inv) - paid - value(cur)) };
 }
 
 export function pieceById(game: GameState, id: string): BoardPiece | undefined {

@@ -5,7 +5,7 @@ import type { Material, PieceType } from '../../engine/config';
 import {
   BELT_COST, BONUS_THRESHOLDS, FACTORY_POWER_COST, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MAX_CARDS_PLAYED_PER_TURN,
   MAX_CLAIMS_PER_BUILDING, MINE_COSTS, POWER_PLANT_BASE_YIELD, POWER_PLANT_MATERIAL_YIELD, POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET,
-  PLAY_ON_DRAW_CARDS, TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
+  PLAY_ON_DRAW_CARDS, PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT, TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
 } from '../../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../../session/describe';
 import { W } from '../../play/words';
@@ -58,22 +58,27 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     h('ol', { class: 'tg-turnlist' },
       h('li', null, h('b', { text: 'Place a piece' }), ' next to the board, from a stack that is open.'),
       h('li', null, h('b', { text: 'Roll' }), ` one die per Mine (now ${plural(mines, 'die', 'dice')}). Every building whose Control Module matches the total may run, on anyone's turn.`),
-      h('li', null, h('b', { text: 'Actions' }), `: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, play up to ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards.`),
-      h('li', null, h('b', { text: 'Place meeple' }), ' on one of your buildings or on a Mine point.')),
-    h('p', { class: 'muted', text: `End of the round (after everyone has had a turn): each player in turn gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, may spend Mine credits, and may load, run and collect the building their meeple stands on. Doing nothing is fine.${ctx.room.settings.roundEndTimeoutMs > 0 ? ` A round-end turn with no move for ${Math.round(ctx.room.settings.roundEndTimeoutMs / 1000)} s ends by itself.` : ''}` }),
+      h('li', null, h('b', { text: 'Actions' }), `: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, play up to ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards. A factory of yours the roll activated is run or skipped first.`),
+      h('li', null, h('b', { text: 'Place meeple' }), ' on one of your buildings or on a Mine point. If it has anywhere to go, it must be placed.')),
+    h('p', { class: 'muted', text: `End of the round (after everyone has had a turn): each player in turn gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, may spend Mine credits, may exchange materials, and may load, run and collect the building their meeple stands on. Doing nothing is fine.${ctx.room.settings.roundEndTimeoutMs > 0 ? ` A round-end turn with no move for ${Math.round(ctx.room.settings.roundEndTimeoutMs / 1000)} s ends by itself.` : ''}` }),
 
     h('h3', { text: 'Prices' }),
     row([icon('belt'), 'Belt'], String(BELT_COST)),
     row([icon('card'), 'Leverage card'], `Mines + 1 (now ${cardCost(mines)})`),
-    h('p', { class: 'muted', text: W.playOnDrawRule([...PLAY_ON_DRAW_CARDS].map(c => CARD_NAME[c])) }),
-    row([icon('mine'), 'Mine'], MINE_COSTS.join(' then ')),
-    row([icon('teleporter'), 'Teleporter'], `teleporters placed + 1 (now ${teleporterCost(g.globalTeleporterCount)}), paid exactly`),
+    h('p', { class: 'muted', text: W.playOnDrawRule([...PLAY_ON_DRAW_CARDS].map(c => CARD_NAME[c]))
+      + (PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ` They count toward the ${MAX_CARDS_PLAYED_PER_TURN} cards played per turn, but always take effect.` : '') }),
+    row([icon('mine'), 'Mine'], `${MINE_COSTS.join(' then ')}; its rich hex must touch the board`),
+    row([icon('teleporter'), 'Teleporter'], `teleporters on the board + 1 (now ${teleporterCost(g.globalTeleporterCount)})`),
+    h('p', { class: 'muted', text: 'A teleporter cannot be taken back. It returns to its owner (and the price drops) only when they lose their last claim on its building.' }),
     row('Claim with Control Module M', `M − Mines + 1 upgrades (now M − ${mines - 1})`),
     row('Upgrade', 'new − old Control Module, in upgrades'),
     row('Production Increase', `${PRODUCTION_INCREASE_BUDGET} upgrades`),
     h('div', { class: 'tg-values' }, (Object.keys(MATERIAL_VALUES) as Material[]).map(m =>
       h('span', { class: 'tg-count' }, icon(MATERIAL_ICON[m]), h('span', { text: MATERIAL_NAME[m] }), h('b', { class: 'num', text: String(MATERIAL_VALUES[m]) })))),
-    h('p', { class: 'muted', text: 'Prices are paid in material value. Exchange breaks a material down into smaller ones.' }),
+    h('p', { class: 'muted', text: `Prices are paid in material value, with change: you can buy whatever your materials are worth in total, and the game hands in materials so you keep the highest ones, giving change in smaller materials. Change that does not fit under your limit of ${INVENTORY_CAP} is lost. Exchange (in your actions step or round-end turn) breaks a material down into smaller ones.` }),
+
+    h('h3', { text: 'Belts' }),
+    h('p', { class: 'muted', text: 'Only one belt facing a Mine ore exit may be placed per turn. No material passes through a belt end that faces the input or output of a building claimed only by other players, and no new belt may end there.' }),
 
     h('h3', { text: 'Factories' }),
     factories.map(([type, r]) => {
@@ -94,7 +99,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     row('Each material', `${INVENTORY_CAP}`),
     row('Power Tokens', `${POWER_TOKEN_CAP}`),
     outputBufferRow(g),
-    row('Leverage cards played per turn', String(MAX_CARDS_PLAYED_PER_TURN)),
+    row('Leverage cards played per turn', `${MAX_CARDS_PLAYED_PER_TURN}${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ' (cards played as soon as drawn count)' : ''}; buy any number`),
     row('Your claims on one building', String(MAX_CLAIMS_PER_BUILDING)),
 
     h('h3', { text: 'How to win' }),

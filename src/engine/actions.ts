@@ -57,8 +57,10 @@ export interface EndTurnAction {
 // fromPoint and toPoint are indices [0, CONNECTION_POINTS_PER_PIECE[pieceType]).
 // The circular distance between the two points must be > 2 (straight-through routing).
 // ENDPOINT ORDER IS A CONTRACT: the engine accepts both orders and stores the belt exactly as
-// given (the 3D belt draws its arrowhead at fromPoint; the interface lays a route in the
-// direction the player tapped it). No rule depends on the order. legalActions lists each belt
+// given (the interface lays a route in the direction the player tapped it). The table draws each
+// belt in the direction rules/beltDirection.ts (beltDirections) works out from its chain; the
+// stored order only decides a chain that nothing else decides (neither end at a source or an
+// input, both ends alike, or a loop). No rule depends on the order. legalActions lists each belt
 // once, lower point first; use sameMove()/canonicalAction() to compare (see below).
 export interface PlaceBeltAction {
   readonly type: 'PLACE_BELT';

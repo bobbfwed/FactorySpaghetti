@@ -12,7 +12,7 @@ import { Overlay } from './overlay';
 import { PreviewLayer } from './preview';
 import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from './layout';
-import { frameAll, keepInView as keepAreaInView, type FramingTable } from './framing';
+import { frameAll, frameArea, keepInView as keepAreaInView, turnPivot, turnRefitArea, type FramingTable } from './framing';
 import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
@@ -89,6 +89,10 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let framedArea: Bounds | null = null;
   /** The player has dragged, pinched, scrolled, turned or tilted the view. */
   let touched = false;
+  /** The player has panned or zoomed since the camera was last framed (turning by the button does not count). */
+  let userMoved = false;
+  /** A turn by the round button is under way: check the board is still in view when it ends. */
+  let turnPending = false;
   /** The default view's azimuth (the player's side of the table). */
   let homeAz = 0;
   const pickers = new Set<(hit: Target | null, ev: { x: number; y: number }) => void>();
@@ -115,7 +119,12 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   }
 
   function draw(now: number): boolean {
-    const camMoving = rig.update(now);
+    let camMoving = rig.update(now);
+    if (!camMoving && turnPending) {
+      turnPending = false;
+      afterTurn();
+      camMoving = rig.animating;
+    }
     table.setFar(rig.scale > FAR_SCALE);
     const wasAnimating = animator.active;
     animator.update(now);
@@ -203,7 +212,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const p = local(e);
     if (pointers.size === 1) {
       if (!dragged && Math.hypot(p.x - cur.sx, p.y - cur.sy) > TAP_SLOP_PX) dragged = true;
-      if (dragged) { touched = true; rig.panPixels(cur.x, cur.y, p.x, p.y); invalidate(); }
+      if (dragged) { touched = true; userMoved = true; rig.panPixels(cur.x, cur.y, p.x, p.y); invalidate(); }
       cur.x = p.x; cur.y = p.y;
       return;
     }
@@ -213,6 +222,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       const d = Math.hypot(a!.x - b!.x, a!.y - b!.y);
       const mx = (a!.x + b!.x) / 2, my = (a!.y + b!.y) / 2;
       touched = true;
+      userMoved = true;
       rig.panPixels(pinch.mx, pinch.my, mx, my);
       if (pinch.d > 0 && d > 0) rig.zoomAt(mx, my, d / pinch.d);
       pinch = { d, mx, my };
@@ -237,6 +247,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const p = local(e);
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
     touched = true;
+    userMoved = true;
     rig.zoomAt(p.x, p.y, Math.exp(-dy * 0.0015));
     invalidate();
   }
@@ -303,6 +314,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
 
   function recenter(animate = true): void {
     framedArea = frameAll(rig, framingTable(), animate);
+    userMoved = false;
     invalidate();
   }
 
@@ -312,7 +324,18 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const area = keepAreaInView(rig, framingTable(), framedArea);
     if (!area) return;
     framedArea = area;
+    userMoved = false;
     invalidate();
+  }
+
+  /** A turn by the round button has ended: frame again if the board left the free area (framing.ts). */
+  function afterTurn(): void {
+    if (!game) return;
+    const t = framingTable();
+    const area = turnRefitArea({ framed: framedArea, needed: t.needed, userMoved, boardVisible: rig.boxVisible(t.board, TILE_TOP) });
+    if (!area) return;
+    frameArea(rig, t, area, true, true);
+    framedArea = area;
   }
 
   function refreshTargets(): void {
@@ -424,7 +447,10 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     rotateBy(steps) {
       if (steps === 0) return;
       touched = true;
-      rig.rotateBy(steps);
+      // Turn about the framed content (or, after a pan or zoom, the middle of the free area), so
+      // it stays where it is on the screen; when the turn ends, the board is checked (afterTurn).
+      rig.rotateBy(steps, turnPivot(framedArea, userMoved));
+      turnPending = true;
       invalidate();
     },
     recenter() { recenter(true); },

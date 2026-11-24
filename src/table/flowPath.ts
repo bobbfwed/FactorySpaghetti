@@ -99,6 +99,9 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   let count = 0;
   while (n) {
     const x = belts[n.belt]!;
+    // The stored fromPoint -> toPoint order only gives the curve's sampling order here; the way the
+    // material runs comes from the walk itself (source to input), so it always agrees with the
+    // arrows the table draws (beltDirections) on a chain that links a source to an input.
     const curve = sampleCurve(beltCurve(x.piece, x.b.fromPoint, x.b.toPoint), 12).pts;
     // The material enters this belt at the end away from the input (`enter` is the input side).
     const ordered = n.enter === 1 ? curve : [...curve].reverse();

@@ -6,7 +6,7 @@ import type { Conn } from '../net/conn';
 import type { Action } from '../engine/actions';
 import type { GameState, PlayerId } from '../engine/state';
 import { applyAction, createGame, isListedMove, legalActions } from '../engine';
-import { botById } from '../bots/registry';
+import { BOT_TYPES, botById } from '../bots/registry';
 import type { LogEntry, Room, RoomSettings, Seat, TableEvent } from './room';
 import {
   NAME_MAX, STAND_IN_BOT, activeSeat, appendLog, cleanName, clipName, isBotControlled,
@@ -662,8 +662,12 @@ export class HostSession {
         this.forgetSeatTokens(seat.index);
         this.clearAway(seat.index);
         this.locked.delete(seat.index);
-        this.patchSeat(seat.index, { kind: 'bot', botId: bot.id, autopilot: false, awaySince: null, connected: false, ready: false });
-        this.note(seat.index, `${bot.label} now plays ${seat.name}'s seat.`);
+        // A bot seat that still has the name it was given automatically ("Smart Bot", "Smart Bot 2")
+        // is renamed after its new kind, by the same rule; a name a person chose is kept.
+        const rename = seat.kind === 'bot' && isAutoBotName(seat.name) && botById(seat.botId ?? STAND_IN_BOT).id !== bot.id;
+        const name = rename ? dedupeName(bot.label, namesInUse(r, seat.index)) : seat.name;
+        this.patchSeat(seat.index, { kind: 'bot', botId: bot.id, name, autopilot: false, awaySince: null, connected: false, ready: false });
+        this.note(seat.index, rename ? `${seat.name} is replaced by ${name}.` : `${bot.label} now plays ${seat.name}'s seat.`);
         return done();
       }
 
@@ -1191,4 +1195,17 @@ function mergeSettings(cur: RoomSettings, patch: Partial<RoomSettings>): RoomSet
     next.botSpeed = next.botDelayMs > 0 ? 'fast' : 'instant';
   }
   return next;
+}
+
+/**
+ * A name the host gave a bot seat automatically: a bot kind's label, or that label with the
+ * number dedupeName adds ("Smart Bot", "Random Bot 2"). Any other name was chosen by a person
+ * (a player's seat handed to a bot keeps the player's name) and is never replaced.
+ */
+export function isAutoBotName(name: string): boolean {
+  const t = name.trim().toLowerCase();
+  return BOT_TYPES.some(b => {
+    const l = b.label.trim().toLowerCase();
+    return t === l || (t.startsWith(`${l} `) && /^[1-9]\d*$/.test(t.slice(l.length + 1)));
+  });
 }

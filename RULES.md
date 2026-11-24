@@ -56,7 +56,7 @@ factory to **operate**):
 ## Buildings: claiming & upgrading
 - **Control Module upgrades are a currency** earned only from meeple on mine upgrade points, the end-of-round free upgrades (**= #mines**, usable only to raise one in-play module), or cards (e.g. Production Increase). **Upgrades are never bought with materials** — there is no mechanism to exchange ore (or any material) for module upgrades.
 - **Upgrade:** swap a building's module for a higher available one; cost = numeric difference, paid from upgrade-currency.
-- **Claim:** place an available module on an unclaimed building; initial value = **#mines** (so "1" is unusable at 2 mines, etc.). Claiming and upgrading combine: placing module *M* costs **(M − #mines + 1)** upgrade-units, paid from the Mine upgrade point's credits (one free claim at round end) or from Production Increase (one claim on that turn) — a claim is never free of charge (`RULES_CHANGES.md` #43). A building may be claimed up to **3 times** by the same player.
+- **Claim:** place an available module on an unclaimed building; initial value = **#mines** (so "1" is unusable at 2 mines, etc.). Claiming and upgrading combine: placing module *M* costs **(M − #mines + 1)** upgrade-units. An ordinary claim (in your actions step or round-end turn) must be paid: from the Mine upgrade point's credits (one free claim at round end) or from Production Increase (one claim on that turn); a claim paid by nothing is refused (`RULES_CHANGES.md` #43). Only two claims cost nothing: the setup claims (S7) and **Short Sale**, whose card is the payment. A building may be claimed up to **3 times** by the same player.
 
 ## Mines (CHANGED)
 - Mine count drives: dice count, card price, claim floor, end-of-round upgrades, and card scaling.

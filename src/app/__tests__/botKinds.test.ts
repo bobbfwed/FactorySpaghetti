@@ -134,8 +134,9 @@ describe('choosing the kind of bot', () => {
     expect(lobbyInfo(again.room!, 0).resuming).toBe(true);
     expect(again.room!.seats.map(s => s.botId)).toEqual([null, 'random', DEFAULT_BOT_ID]);
 
-    // While the resumed game waits to continue, the host can still change a bot's kind; the seat keeps its name.
+    // While the resumed game waits to continue, the host can still change a bot's kind; the seat's
+    // automatic name follows the kind (numbered, as Random Bot is taken).
     expect(await run(w, again.setBotKind(2, 'random'))).toBe(true);
-    expect(again.room!.seats[2]).toMatchObject({ kind: 'bot', botId: 'random', name: 'Smart Bot' });
+    expect(again.room!.seats[2]).toMatchObject({ kind: 'bot', botId: 'random', name: 'Random Bot 2' });
   }, 60_000);
 });

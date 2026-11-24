@@ -90,3 +90,59 @@ describe('camera framing', () => {
     for (const p of pts) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
   });
 });
+
+describe('turning the table with the round button', () => {
+  // 1280 x 800 with the tray along the bottom and the side panel on the right (the browser finding).
+  const ins = { top: 70, right: 300, bottom: 230, left: 12 };
+  const free = { l: ins.left, r: 1280 - ins.right, t: ins.top, b: 800 - ins.bottom };
+  const wide: Bounds = { minX: -260, maxX: 260, minZ: -140, maxZ: 140 };
+  const centre = { x: 0, z: 0 };
+  const done = (rig: CameraRig): void => { rig.update(performance.now() + 60_000); };
+  function setUp(): CameraRig {
+    const rig = new CameraRig();
+    rig.setSize(1280, 800);
+    rig.setInsets(ins);
+    rig.frame(wide, false, 0);
+    return rig;
+  }
+
+  it('turns about the framed content: its centre keeps its place in the free area, every step', () => {
+    const rig = setUp();
+    const start = rig.project(centre.x, 0, centre.z);
+    expect(Math.abs(start.x - (free.l + free.r) / 2)).toBeLessThan(3);
+    expect(Math.abs(start.y - (free.t + free.b) / 2)).toBeLessThan(3);
+    const scale = rig.scale;
+    for (let step = 1; step <= 6; step++) {
+      rig.rotateBy(1, centre);
+      // Half way round, too: the pivot does not swing about the screen.
+      rig.update(performance.now() + 210);
+      const mid = rig.project(centre.x, 0, centre.z);
+      expect(Math.hypot(mid.x - start.x, mid.y - start.y)).toBeLessThan(1);
+      done(rig);
+      const p = rig.project(centre.x, 0, centre.z);
+      expect(Math.hypot(p.x - start.x, p.y - start.y), `after ${step * 60} degrees`).toBeLessThan(0.5);
+      expect(rig.scale).toBeCloseTo(scale, 9);
+    }
+  });
+
+  it('without a pivot it turns about the middle of the free area, not the middle of the canvas', () => {
+    const rig = setUp();
+    // Pan a little (the player moved the view): the table point in the middle of the free area stays there.
+    rig.panPixels(600, 400, 640, 380);
+    const mid = { x: (free.l + free.r) / 2, y: (free.t + free.b) / 2 };
+    const g = rig.groundAt(mid.x, mid.y)!;
+    for (const steps of [1, 2, 3]) {
+      rig.rotateBy(steps);
+      done(rig);
+      const p = rig.project(g.x, 0, g.z);
+      expect(Math.hypot(p.x - mid.x, p.y - mid.y)).toBeLessThan(0.5);
+    }
+  });
+
+  it('the old way (about the camera target) pushed the board down behind the tray at 180 degrees; now it stays in view', () => {
+    const rig = setUp();
+    rig.rotateBy(3, centre);
+    done(rig);
+    expect(rig.boxVisible(wide, 0)).toBe(true);
+  });
+});

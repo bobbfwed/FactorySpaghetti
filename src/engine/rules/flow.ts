@@ -292,31 +292,6 @@ function choosePayment(held: readonly number[], cost: number): readonly number[]
   return best;
 }
 
-// Pay `cost` value-units from inventory, consuming cheapest materials first.
-// Returns the updated inventory if exact payment is possible, null otherwise.
-// No longer used by the rules (every payment goes through payMaterials, with change); kept
-// for the interface, which still imports it.
-export function tryPayExact(
-  inventory: Readonly<Record<Material, number>>,
-  cost: number,
-): Record<Material, number> | null {
-  if (cost === 0) return { ...inventory };
-  const inv: Record<Material, number> = { ...inventory };
-  let remaining = cost;
-
-  const MATS: Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
-  for (const mat of MATS) {
-    const val = MATERIAL_VALUES[mat];
-    while (inv[mat] > 0 && val <= remaining) {
-      inv[mat]--;
-      remaining -= val;
-    }
-    if (remaining === 0) break;
-  }
-
-  return remaining === 0 ? inv : null;
-}
-
 // ── BUY_BELT ──────────────────────────────────────────────────────────────────
 
 // Purchase one belt from the bank for BELT_COST ore value-units.
@@ -450,8 +425,10 @@ export function returnOrphanedTeleporters(state: GameState): GameState {
 // ── PLACE_BELT ────────────────────────────────────────────────────────────────
 
 // Endpoint order (a deliberate contract, see PlaceBeltAction): both orders are accepted and the
-// belt is stored exactly as given, because the 3D belt draws its arrowhead at fromPoint and the
-// interface lays a route in the direction the player tapped it. Every check below treats the
+// belt is stored exactly as given, because the interface lays a route in the direction the player
+// tapped it. The table draws each belt along the direction beltDirections (beltDirection.ts)
+// works out from the chain it belongs to (from a source towards an input); the stored order only
+// decides the direction of a chain that nothing else decides. Every check below treats the
 // two endpoints alike, and no rule reads the stored order: material flow (beltPartner) takes
 // whichever end is the other one, the Belt Weaver chain and the router use both ends as an
 // unordered pair, and removal/undo work by belt id. The one visible difference is the belt id,

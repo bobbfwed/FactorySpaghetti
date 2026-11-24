@@ -27,7 +27,7 @@ export function buildingMenu(ctx: Ctx): HTMLElement | null {
   },
   h('span', { class: 'lb', text: it.label }),
   it.enabled ? (it.detail ? h('span', { class: 'dt', text: it.detail }) : null) : h('span', { class: 'dt', text: it.reason ?? '' }),
-  it.danger && it.enabled ? h('span', { class: 'warnline', text: 'Permanent: it cannot be taken back.' }) : null)));
+  it.danger && it.enabled ? h('span', { class: 'warnline', text: 'You cannot take it back.' }) : null)));
 }
 
 /** What the three looks of a planned route mean, with how many belts each has. */

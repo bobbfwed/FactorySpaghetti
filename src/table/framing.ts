@@ -1,7 +1,8 @@
 // When the camera and the piles beside the board move by themselves. Pure, no Three.js.
 //
 // The camera moves on its own only when a game or replay opens, when the player presses
-// Re-centre, and when something that must be seen would fall outside the view. In that last case
+// Re-centre, after the player turns the table and the board no longer fits the free part of the
+// screen, and when something that must be seen would fall outside the view. In that last case
 // it re-frames once, with head-room for the next several placements, and never zooms in. The piles
 // beside the board are laid out around an area that only grows, in coarse steps, so that a placed
 // piece normally moves neither the piles nor the camera.
@@ -64,6 +65,38 @@ export function reframeArea(c: FrameCheck, headroom = FRAME_HEADROOM): Bounds | 
     minZ: c.needed.minZ < c.framed.minZ ? u.minZ - headroom : u.minZ,
     maxZ: c.needed.maxZ > c.framed.maxZ ? u.maxZ + headroom : u.maxZ,
   };
+}
+
+/**
+ * What the round "turn the table" button turns the view about. While the player has not panned or
+ * zoomed since the camera was last framed, the centre of the area framed then (so the framed
+ * content turns in place, in the free part of the screen); otherwise null: the camera turns about
+ * the point in the middle of the free part of the screen, whatever the player has put there.
+ */
+export function turnPivot(framed: Bounds | null, userMoved: boolean): { x: number; z: number } | null {
+  if (userMoved || !framed) return null;
+  return { x: (framed.minX + framed.maxX) / 2, z: (framed.minZ + framed.maxZ) / 2 };
+}
+
+export interface TurnCheck {
+  /** The table area the camera was last framed to (null: never framed). */
+  readonly framed: Bounds | null;
+  /** What must be in view now: the board and everything beside it. */
+  readonly needed: Bounds;
+  /** The player panned or zoomed since the last framing (turning by the button does not count). */
+  readonly userMoved: boolean;
+  /** The board lies inside the free part of the screen with the view turned. */
+  readonly boardVisible: boolean;
+}
+
+/**
+ * When a turn of the table has ended: the area to frame again because the board no longer lies
+ * inside the free part of the screen (a turned board is wider or taller on the screen), or null to
+ * leave the camera alone. A view the player has panned or zoomed is left as they put it.
+ */
+export function turnRefitArea(c: TurnCheck): Bounds | null {
+  if (c.userMoved || c.boardVisible) return null;
+  return c.framed ? unionBounds(c.framed, c.needed) : c.needed;
 }
 
 /** What framing needs of the camera (CameraRig has it all). */

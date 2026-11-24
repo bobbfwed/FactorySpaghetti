@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  ANCHOR_PAD, ANCHOR_STEP, FRAME_HEADROOM, frameAll, keepInView, reframeArea, sideAnchor,
+  ANCHOR_PAD, ANCHOR_STEP, FRAME_HEADROOM, frameAll, frameArea, keepInView, reframeArea, sideAnchor, turnPivot, turnRefitArea,
   type FramingCamera, type FramingTable,
 } from '../framing';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, containsBounds, sideLayout, tableBounds, type Bounds } from '../layout';
@@ -123,4 +123,53 @@ describe('a whole game: the camera and the piles mostly stay put', () => {
       }
     });
   }
+});
+
+describe('turning the table with the round button (turnPivot, turnRefitArea)', () => {
+  const framed = box(-300, 300, -200, 100);
+
+  it('turns about the centre of the framed area until the player pans or zooms', () => {
+    expect(turnPivot(framed, false)).toEqual({ x: 0, z: -50 });
+    expect(turnPivot(framed, true)).toBeNull();   // then about the middle of the free area
+    expect(turnPivot(null, false)).toBeNull();
+  });
+
+  it('after the turn: frame again only when the board left the free area, and never against the player', () => {
+    const needed = box(-250, 320, -200, 100);
+    expect(turnRefitArea({ framed, needed, userMoved: false, boardVisible: true })).toBeNull();
+    expect(turnRefitArea({ framed, needed, userMoved: false, boardVisible: false })).toEqual(box(-300, 320, -200, 100));
+    expect(turnRefitArea({ framed: null, needed, userMoved: false, boardVisible: false })).toEqual(needed);
+    expect(turnRefitArea({ framed, needed, userMoved: true, boardVisible: false })).toBeNull();
+  });
+
+  it('a whole turn round, step by step, on a 1280 x 800 screen and a phone: the board always ends in the free area', () => {
+    const screens = [
+      { w: 1280, h: 800, insets: { top: 70, right: 300, bottom: 230, left: 12 } },
+      { w: 390, h: 760, insets: { top: 70, right: 12, bottom: 220, left: 12 }, maxScale: ACROSS_FLATS / 64 },
+    ];
+    for (const screen of screens) {
+      const game = createBotGame(11, 3, 'greedy');
+      for (let i = 0; i < 400 && game.step(); i++) { /* a board a few rounds in */ }
+      const g = game.state;
+      const rig = new CameraRig();
+      rig.setSize(screen.w, screen.h);
+      rig.setInsets(screen.insets, screen.maxScale);
+      const cam: FramingCamera = {
+        boxVisible: (b, top) => rig.boxVisible(b, top),
+        boxFits: (b, top) => rig.boxFits(b, top),
+        frame: (b, _animate, top, margin, noZoomIn) => rig.frame(b, false, top, margin, noZoomIn),
+      };
+      const anchor = sideAnchor(null, boardBounds(g.board));
+      const t: FramingTable = { board: boardBounds(g.board), needed: tableBounds(g, false, anchor), stackTop: 110 };
+      let framed: Bounds | null = frameAll(cam, t, false);
+      for (let step = 1; step <= 6; step++) {
+        rig.rotateBy(1, turnPivot(framed, false));
+        rig.update(performance.now() + 60_000);
+        // What table.ts does when the turn ends.
+        const area = turnRefitArea({ framed, needed: t.needed, userMoved: false, boardVisible: rig.boxVisible(t.board, TILE_TOP) });
+        if (area) { frameArea(cam, t, area, false, true); framed = area; }
+        if (rig.boxFits(t.board, TILE_TOP)) expect(rig.boxVisible(t.board, TILE_TOP, 0), `${screen.w} px, after ${step * 60} degrees`).toBe(true);
+      }
+    }
+  });
 });

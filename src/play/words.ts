@@ -153,13 +153,16 @@ export const W = {
   bankExchangeDetail: 'Break one material down into smaller ones',
   bankUndoBelts: 'Take back this turn\'s belts',
   bankUndoDetail: (n: number): string => `${plural(n, 'belt', 'belts')} placed this turn`,
-  price: (n: number): string => `Price ${n}, paid from your materials (change in Ore)`,
-  priceExact: (n: number): string => `Price ${n}, paid exactly from your materials`,
-  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials · ${left} left in the deck · some cards are played as soon as they are drawn`,
+  price: (n: number): string => `Price ${n}, paid from your materials with change`,
+  /** The teleporter's price: teleporters on the board + 1. */
+  teleporterPrice: (n: number): string => `Price ${n} (teleporters on the board + 1), paid from your materials with change`,
+  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials with change · ${left} left in the deck · some cards are played as soon as they are drawn`,
+  /** What a purchase paid with change leaves (" · You keep 1 Plate and 2 Ore"); `lost`: change that did not fit under the limit. */
+  payKeep: (kept: string, lost: number): string =>
+    ` · You keep ${kept}${lost > 0 ? `; ${lost} of the change is lost (limit of ${INVENTORY_CAP} each)` : ''}`,
   noBelts: 'No belts in your supply. Buy one first.',
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
-  cantPayExact: (cost: number): string => `Costs exactly ${cost}; exchange materials to make that amount first.`,
   deckEmpty: 'The Leverage deck is empty.',
   deckFinishFirst: 'Confirm or cancel what you are doing first, then tap the deck to buy a Leverage card.',
   allMinesIn: 'All Mines are already in play.',
@@ -188,11 +191,12 @@ export const W = {
 
   // Teleporter
   teleporterPick: 'Tap the buffer of one of your buildings for the teleporter.',
-  teleporterConfirm: (buffer: string, building: string): string => `Place a teleporter on the ${buffer} of this ${building}? Teleporters are permanent.`,
+  teleporterConfirm: (buffer: string, building: string): string =>
+    `Place a teleporter on the ${buffer} of this ${building}? You cannot take it back; it returns to you only if you lose your last claim on this building.`,
   teleporterWhich: 'Which buffer gets the teleporter?',
   bufferName: (b: 'input' | 'output'): string => (b === 'input' ? 'input' : 'output'),
   teleporterOn: (b: 'input' | 'output'): string => `Teleporter on the ${b === 'input' ? 'input' : 'output'}`,
-  teleporterDetail: (price: number): string => `Price ${price}, paid exactly · permanent`,
+  teleporterDetail: (price: number): string => `Price ${price}, paid from your materials with change`,
 
   // Belts
   beltPickStart: 'Tap a glowing connection point where the belts should start.',
@@ -202,7 +206,7 @@ export const W = {
   routeBlocked: 'That route cannot be laid right now.',
   routeNeedsBuy: (cost: number, have: number): string => `This route needs ${plural(cost, 'belt', 'belts')}; you have ${have}.`,
   routeBuy: (need: number): string => `Buy ${plural(need, 'belt', 'belts')} and lay the route`,
-  routeBuyDetail: (need: number): string => `Price ${need}, paid from your materials`,
+  routeBuyDetail: (need: number): string => `Price ${need}, paid from your materials with change`,
   routeCantBuy: (need: number): string => `You cannot afford ${plural(need, 'more belt', 'more belts')}.`,
   routeCancel: 'Cancel plan',
   routeTotals: (n: number, have: number, buy: number, short: number): string =>
@@ -305,7 +309,8 @@ export const W = {
   cpPickModule: 'Which Control Module moves?',
   cpConfirm: (module: number, from: string, to: string): string => `Move Control Module ${module} from the ${from} to the ${to}?`,
   rdPick: 'R&D Tax Write-Off: tap the buffer of one of your buildings for a free teleporter.',
-  rdConfirm: (buffer: string, building: string): string => `Place a free teleporter on the ${buffer} of this ${building}? Teleporters are permanent.`,
+  rdConfirm: (buffer: string, building: string): string =>
+    `Place a free teleporter on the ${buffer} of this ${building}? You cannot take it back; it returns to you only if you lose your last claim on this building.`,
   dronePile: 'Scouting Drone: choose a piece from the stacks',
   droneItem: (stack: number, what: string): string => `Stack ${stack}: ${what}`,
   /** The same piece type is offered more than once from one stack: tell them apart by position. */

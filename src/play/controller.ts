@@ -22,7 +22,7 @@ import type { Ghost, Target } from '../table/types';
 import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
 import {
   EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, exchangeOutcome, inventoryValue, isBuilding,
-  legalFor, nextMinePrice, pieceById, runBlock, runPreview, teleporterSpotFree,
+  legalFor, nextMinePrice, paymentWithChange, pieceById, runBlock, runPreview, teleporterSpotFree,
 } from './info';
 import {
   CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, amountOf, materialList, pieceName, playerName, selectionLabel,
@@ -902,7 +902,8 @@ export class PlayController {
     for (const buf of ['input', 'output'] as const) {
       const tp = legal.find(a => a.type === 'PLACE_TELEPORTER' && a.pieceId === id && a.bufferType === buf);
       if (tp) {
-        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(teleporterCost(g.globalTeleporterCount)), enabled: true, danger: true },
+        const price = teleporterCost(g.globalTeleporterCount);
+        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(price) + keepText(player, [price]), enabled: true, danger: true },
           () => this.send(tp)));
       }
     }
@@ -1076,7 +1077,7 @@ export class PlayController {
       b.onPrimary = placeOwn;
     } else {
       if (own > 0) items.push(b.item({ id: 'route:own', label: W.routePlaceOwn(own), detail: W.routeOwnDetail, enabled: true }, placeOwn));
-      if (buy > 0) items.push(b.item({ id: 'route:buy', label: W.routeBuyPlace(buy, own + buy), detail: W.routeBuyDetail(buy * BELT_COST), enabled: true }, placeBuy));
+      if (buy > 0) items.push(b.item({ id: 'route:buy', label: W.routeBuyPlace(buy, own + buy), detail: W.routeBuyDetail(buy * BELT_COST) + (g.players[me] ? keepText(g.players[me], new Array<number>(buy).fill(BELT_COST)) : ''), enabled: true }, placeBuy));
       const first = items[0];
       if (first) {
         v.primary = { label: first.label, enabled: true };
@@ -1465,19 +1466,20 @@ export class PlayController {
       () => W.noBeltPoint, () => this.setMode({ k: 'belt', start: null }));
     add({ id: 'bank:removeBelt', label: W.bankRemoveBelt, detail: W.bankRemoveBeltDetail }, has('REMOVE_BELT'),
       () => W.noBeltToRemove, () => this.setMode({ k: 'removeBelt', beltId: null }));
-    add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST), price: BELT_COST }, has('BUY_BELT'),
+    const keep = (price: number): string => keepText(player, [price]);
+    add({ id: 'bank:buyBelt', label: W.bankBuyBelt, detail: W.price(BELT_COST) + keep(BELT_COST), price: BELT_COST }, has('BUY_BELT'),
       () => W.cantAfford(BELT_COST, worth), () => this.send({ type: 'BUY_BELT' }));
     add({ id: 'bank:undoBelts', label: W.bankUndoBelts, detail: W.bankUndoDetail(g.beltsPlacedThisTurn.length) }, has('UNDO_BELTS'),
       () => W.noBeltsThisTurn, () => this.send({ type: 'UNDO_BELTS' }));
     const cc = cardCost(g.mineCount);
-    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length), price: cc }, has('BUY_CARD'),
+    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length) + keep(cc), price: cc }, has('BUY_CARD'),
       () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }, this.modeAfterBuy()));
     const mp = nextMinePrice(g, MINE_COSTS);
-    add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp), ...(mp === null ? {} : { price: mp }) }, has('BUY_MINE'),
+    add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp) + keep(mp), ...(mp === null ? {} : { price: mp }) }, has('BUY_MINE'),
       () => (mp === null ? W.allMinesIn : g.pendingMineIds.length > 0 ? W.mineDropPending : W.cantAfford(mp, worth)),
       () => this.setMode({ k: 'place', src: { kind: 'buyMine' }, coord: null, rotation: 0, auto: false }));
     const tpPrice = teleporterCost(g.globalTeleporterCount);
-    add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.priceExact(tpPrice), price: tpPrice }, has('PLACE_TELEPORTER'),
+    add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.teleporterPrice(tpPrice) + keep(tpPrice), price: tpPrice }, has('PLACE_TELEPORTER'),
       () => this.teleporterReason(g, player, tpPrice, worth),
       () => this.setMode({ k: 'teleporter', pick: null, whichOn: null }));
     const exGate = this.gate(g, myTurn, pending, true);
@@ -1497,8 +1499,8 @@ export class PlayController {
   private teleporterReason(g: GameState, player: Player, price: number, worth: number): string {
     if (player.teleportersRemaining <= 0) return W.noTeleporters;
     if (!teleporterSpotFree(g, player.id)) return W.noFreeBuffer;
-    // The materials are the problem: too little value, or (with exact payment) the wrong change.
-    return worth < price ? W.cantAfford(price, worth) : W.cantPayExact(price);
+    // Otherwise the materials are the problem: paid with change, only their total value counts.
+    return W.cantAfford(price, worth);
   }
 
   /** Plate, Sphere, Tesseract in my materials: pressing one offers to break it down, when the engine allows it. */
@@ -1648,6 +1650,19 @@ function baseTray(player: Player): TrayEntry[] {
     module: i + 1,
     state: inTray.has(i + 1) ? 'inTray' as const : 'onBoard' as const,
   }));
+}
+
+/**
+ * " · You keep 1 Plate and 2 Ore" when paying `prices` (one purchase each, with change) gives
+ * change back; empty when it is paid with exactly what is handed in, or cannot be paid.
+ */
+export function keepText(player: Player, prices: readonly number[]): string {
+  const pay = paymentWithChange(player.inventory, prices);
+  if (!pay) return '';
+  const held = [...MATERIALS].reverse().filter(m => pay.kept[m] > 0).map(m => amountOf(pay.kept[m], m));
+  const kept = held.length === 0 ? 'nothing'
+    : held.length === 1 ? held[0]! : `${held.slice(0, -1).join(', ')} and ${held[held.length - 1]!}`;
+  return W.payKeep(kept, pay.lost);
 }
 
 function runBlockText(why: string, need: number, have: number): string {
