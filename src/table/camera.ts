@@ -3,10 +3,10 @@
 // (45 degrees, or 90 for top-down) and a scale in millimetres per CSS pixel.
 
 import * as THREE from 'three';
-import type { Bounds } from './layout';
+import { VIEW_ELEVATION, type Bounds } from './layout';
 
 const DIST = 4000;
-export const ISO_ELEVATION = Math.PI / 4;
+export const ISO_ELEVATION = VIEW_ELEVATION;
 const TOP_ELEVATION = Math.PI / 2 - 1e-4;
 const MIN_SCALE = 0.04;
 const MAX_SCALE = 6;
@@ -73,6 +73,16 @@ export class CameraRig {
     this.animateTo({ az: this.targetAzimuth - steps * Math.PI / 3 });
   }
 
+  /** Look from azimuth `az` (radians), the short way round when animated. */
+  turnTo(az: number, animate: boolean): void {
+    const from = this.targetAzimuth;
+    const t = Math.PI * 2;
+    let d = ((az - from) % t + t) % t;
+    if (d > Math.PI) d -= t;
+    if (animate) this.animateTo({ az: from + d });
+    else { this.tween = null; this.view = { ...this.view, az: normAngle(az) }; this.apply(); }
+  }
+
   setTopDown(on: boolean): void {
     this.animateTo({ el: on ? TOP_ELEVATION : ISO_ELEVATION });
   }
@@ -90,15 +100,45 @@ export class CameraRig {
     this.frameMaxScale = clamp(maxScale, MIN_SCALE, MAX_SCALE);
   }
 
-  /** Frame the given table area (a height `top` above the table is included for stacks). */
-  frame(b: Bounds, animate: boolean, top = 30, margin = 1.08): void {
+  /**
+   * Frame the given table area (a height `top` above the table is included for stacks), keeping
+   * the rotation. `noZoomIn`: never closer than the camera is going to be already (automatic
+   * re-frames only ever zoom out).
+   */
+  frame(b: Bounds, animate: boolean, top = 30, margin = 1.08, noZoomIn = false): void {
     const goal = this.tween ? this.tween.to : this.view;
-    const fitted = this.fitView(b, goal.az, goal.el, top, margin);
+    const fitted = this.fitView(b, goal.az, goal.el, top, margin, noZoomIn ? goal.scale : 0);
     if (animate) this.animateTo(fitted, 480);
     else { this.tween = null; this.view = fitted; this.apply(); }
   }
 
-  private fitView(b: Bounds, az: number, el: number, top: number, margin: number): View {
+  /**
+   * Whether area `b` (up to height `top`) lies inside the free part of the screen (the canvas less
+   * the insets, less `marginPx`) with the camera where it is going (the end of any animation).
+   */
+  boxVisible(b: Bounds, top = 0, marginPx = 4): boolean {
+    const v = this.tween ? this.tween.to : this.view;
+    const { right, up } = axes(v.az, v.el);
+    const ins = this.insets;
+    const l = ins.left + marginPx, r = this.width - ins.right - marginPx;
+    const t = ins.top + marginPx, btm = this.height - ins.bottom - marginPx;
+    for (const x of [b.minX, b.maxX]) for (const z of [b.minZ, b.maxZ]) for (const y of [0, top]) {
+      const dx = x - v.tx, dz = z - v.tz;
+      const sx = this.width / 2 + (dx * right.x + y * right.y + dz * right.z) / v.scale;
+      const sy = this.height / 2 - (dx * up.x + y * up.y + dz * up.z) / v.scale;
+      if (sx < l || sx > r || sy < t || sy > btm) return false;
+    }
+    return true;
+  }
+
+  /** Whether area `b` could be framed whole without zooming out past the framing limit. */
+  boxFits(b: Bounds, top = 0, margin = 1.08): boolean {
+    const v = this.tween ? this.tween.to : this.view;
+    return this.fitScale(b, v.az, v.el, top, margin) <= this.frameMaxScale;
+  }
+
+  /** The free area between the insets, its size and the offset of its centre from the canvas centre. */
+  private freeArea(): { freeW: number; freeH: number; offX: number; offY: number } {
     const ins = this.insets;
     // The free area between the insets; if panels leave less than 30 % of the canvas, a 30 % area
     // around the free area's own centre (kept on the canvas) is used instead.
@@ -110,11 +150,12 @@ export class CameraRig {
     };
     const [fl, fr] = span(ins.left, this.width - ins.right, this.width);
     const [ft, fb] = span(ins.top, this.height - ins.bottom, this.height);
-    const freeW = fr - fl, freeH = fb - ft;
     // Where the free area's centre sits relative to the canvas centre (CSS px, y down).
-    const offX = (fl - (this.width - fr)) / 2;
-    const offY = (ft - (this.height - fb)) / 2;
-    // Camera axes for this azimuth/elevation.
+    return { freeW: fr - fl, freeH: fb - ft, offX: (fl - (this.width - fr)) / 2, offY: (ft - (this.height - fb)) / 2 };
+  }
+
+  /** Box extent on screen (table mm along the camera's right and up axes) around the box centre. */
+  private extent(b: Bounds, az: number, el: number, top: number): { minU: number; maxU: number; minV: number; maxV: number } {
     const { right, up } = axes(az, el);
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
     let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity;
@@ -124,8 +165,23 @@ export class CameraRig {
       const v = dx * up.x + y * up.y + dz * up.z;
       minU = Math.min(minU, u); maxU = Math.max(maxU, u); minV = Math.min(minV, v); maxV = Math.max(maxV, v);
     }
-    const fit = Math.max((maxU - minU) / freeW, (maxV - minV) / freeH) * margin;
-    const scale = clamp(Math.min(fit, this.frameMaxScale), MIN_SCALE, MAX_SCALE);
+    return { minU, maxU, minV, maxV };
+  }
+
+  private fitScale(b: Bounds, az: number, el: number, top: number, margin: number): number {
+    const { freeW, freeH } = this.freeArea();
+    const e = this.extent(b, az, el, top);
+    return Math.max((e.maxU - e.minU) / freeW, (e.maxV - e.minV) / freeH) * margin;
+  }
+
+  private fitView(b: Bounds, az: number, el: number, top: number, margin: number, minScale = 0): View {
+    const { offX, offY } = this.freeArea();
+    const { minU, maxU, minV, maxV } = this.extent(b, az, el, top);
+    const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
+    const fit = this.fitScale(b, az, el, top, margin);
+    // Never closer than minScale (an automatic re-frame does not zoom in), and the framing limit
+    // never zooms in past where the camera already is either.
+    const scale = clamp(Math.max(Math.min(fit, Math.max(this.frameMaxScale, minScale)), minScale), MIN_SCALE, MAX_SCALE);
     // Shift the target so the box centre lands in the middle of the free area: a move of d along
     // the ground "forward" direction shifts screen v by d * sin(el).
     const du = (minU + maxU) / 2 - offX * scale, dv = (minV + maxV) / 2 + offY * scale;

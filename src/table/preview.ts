@@ -9,6 +9,7 @@ import type { Preview, RouteSegment, RouteTier } from './types';
 import { partsOf, type ModelLib } from './models';
 import { bendBeltItems, type BeltItem, type TableScene } from './scene';
 import { softRing } from './overlay';
+import { orientRoute } from './beltArrows';
 import {
   HEX_RADIUS, PENDING_MINE_LIFT, TILE_TOP, axialToWorld, buildingMeepleWorld, ghostPlacement,
   minePileAt, mineSlotWorld, modelFor, pieceCells, pointCount, type XZ,
@@ -102,12 +103,22 @@ export class PreviewLayer {
     this.routeKey = '';
   }
 
+  private orientedFor: { game: GameState | null; route: readonly RouteSegment[] | null; segs: RouteSegment[] } | null = null;
+
   private buildRoute(game: GameState | null): void {
     const board = game?.board ?? [];
-    const segs = (this.route ?? []).filter(s => {
-      const p = board.find(b => b.id === s.pieceId);
-      return !!p && s.from >= 0 && s.to >= 0 && s.from < pointCount(p) && s.to < pointCount(p) && s.from !== s.to;
-    });
+    // Drawn pointing the way the belts will point once laid (from = the arrow's end, beltArrows.ts);
+    // worked out once per state and route (this runs every frame).
+    if (!this.orientedFor || this.orientedFor.game !== game || this.orientedFor.route !== this.route) {
+      this.orientedFor = {
+        game, route: this.route,
+        segs: orientRoute(game, (this.route ?? []).filter(s => {
+          const p = board.find(b => b.id === s.pieceId);
+          return !!p && s.from >= 0 && s.to >= 0 && s.from < pointCount(p) && s.to < pointCount(p) && s.from !== s.to;
+        })),
+      };
+    }
+    const segs = this.orientedFor.segs;
     const key = segs.map(s => `${s.pieceId}/${s.from}/${s.to}/${s.tier}`).join('|') + '#' + this.routeColor.getHexString()
       + '#' + segs.map(s => { const p = board.find(b => b.id === s.pieceId)!; return `${p.coord.q},${p.coord.r},${p.rotation ?? 0}`; }).join('|');
     if (key === this.routeKey) return;

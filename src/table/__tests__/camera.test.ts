@@ -41,6 +41,50 @@ describe('camera framing', () => {
     expect(framed({ top: 0, right: 0, bottom: 400, left: 0 }).rig.scale).toBeGreaterThan(framed({ top: 0, right: 0, bottom: 0, left: 0 }).rig.scale);
   });
 
+  it('boxVisible: a framed area is visible; one reaching past it is not', () => {
+    const { rig } = framed({ top: 90, right: 60, bottom: 260, left: 40 });
+    expect(rig.boxVisible(board, 0)).toBe(true);
+    expect(rig.boxVisible({ ...board, maxX: board.maxX + 400 }, 0)).toBe(false);
+    // Corners are checked at the given height too: a tall pile can stick out at the top.
+    expect(rig.boxVisible(board, 2000)).toBe(false);
+  });
+
+  it('boxFits honours the zoom-out limit', () => {
+    const rig = new CameraRig();
+    rig.setSize(400, 800);
+    rig.setInsets({ top: 0, right: 0, bottom: 0, left: 0 }, 0.5);
+    expect(rig.boxFits({ minX: -50, maxX: 50, minZ: -50, maxZ: 50 }, 0)).toBe(true);
+    expect(rig.boxFits({ minX: -500, maxX: 500, minZ: -50, maxZ: 50 }, 0)).toBe(false);
+  });
+
+  it('noZoomIn: framing a smaller area keeps the scale; plain framing zooms in', () => {
+    const { rig } = framed({ top: 0, right: 0, bottom: 0, left: 0 });
+    const before = rig.scale;
+    const small: Bounds = { minX: -20, maxX: 20, minZ: -20, maxZ: 20 };
+    rig.frame(small, false, 0, 1.08, true);
+    expect(rig.scale).toBeCloseTo(before, 9);
+    expect(rig.boxVisible(small, 0)).toBe(true);
+    rig.frame(small, false, 0);
+    expect(rig.scale).toBeLessThan(before);
+  });
+
+  it('framing keeps the rotation the view has (a seat\'s side, or turned with the button)', () => {
+    const rig = new CameraRig();
+    rig.setSize(1000, 800);
+    rig.turnTo(Math.PI * 1.5, false);
+    rig.frame(board, false, 0);
+    expect(rig.azimuth).toBeCloseTo(Math.PI * 1.5, 9);
+    expect(rig.boxVisible(board, 0)).toBe(true);
+    rig.rotateBy(1);
+    expect(rig.targetAzimuth).toBeCloseTo(Math.PI * 1.5 - Math.PI / 3, 9);
+  });
+
+  it('turnTo animates the short way round', () => {
+    const rig = new CameraRig();
+    rig.turnTo(Math.PI * 1.5, true);
+    expect(rig.targetAzimuth).toBeCloseTo(-Math.PI / 2, 9);
+  });
+
   it('ignores nonsense insets', () => {
     const { pts } = framed({ top: Number.NaN, right: -50, bottom: 0, left: Number.POSITIVE_INFINITY });
     for (const p of pts) expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);

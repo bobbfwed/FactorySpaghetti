@@ -5,6 +5,7 @@ export { applyAction, legalActions } from './reducer';
 export { revealedStack } from './rules/pieces';
 export { upcomingTurnOrder } from './rules/production';
 export { canonicalAction, sameMove } from './actions';
+export { beltDirections, type BeltDirection } from './rules/beltDirection';
 
 export type {
   GameState,
