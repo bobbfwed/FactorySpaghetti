@@ -6,10 +6,12 @@
 export interface GlbPart {
   readonly material: string;
   readonly positions: Float32Array; // x, y, z triples
+  /** Triangle vertex indices, when the primitive has them (unsigned byte, short or int). */
+  readonly indices?: Uint32Array;
 }
 
 interface GltfJson {
-  meshes?: Array<{ primitives: Array<{ attributes: Record<string, number>; material?: number }> }>;
+  meshes?: Array<{ primitives: Array<{ attributes: Record<string, number>; material?: number; indices?: number }> }>;
   accessors?: Array<{ bufferView?: number; byteOffset?: number; count: number; componentType: number; type: string }>;
   bufferViews?: Array<{ byteOffset?: number; byteLength: number; byteStride?: number }>;
   materials?: Array<{ name?: string }>;
@@ -36,7 +38,18 @@ export function parseGlb(bytes: Uint8Array): GlbPart[] {
         for (let k = 0; k < 3; k++) positions[i * 3 + k] = view.getFloat32(base + i * stride + k * 4, true);
       }
       const material = prim.material !== undefined ? (json.materials?.[prim.material]?.name ?? '') : '';
-      parts.push({ material, positions });
+      let indices: Uint32Array | undefined;
+      if (prim.indices !== undefined) {
+        const ia = json.accessors![prim.indices]!;
+        const ibv = json.bufferViews![ia.bufferView!]!;
+        const size = ia.componentType === 5125 ? 4 : ia.componentType === 5123 ? 2 : 1;
+        const at = binStart + (ibv.byteOffset ?? 0) + (ia.byteOffset ?? 0);
+        indices = new Uint32Array(ia.count);
+        for (let i = 0; i < ia.count; i++) {
+          indices[i] = size === 4 ? view.getUint32(at + i * 4, true) : size === 2 ? view.getUint16(at + i * 2, true) : view.getUint8(at + i);
+        }
+      }
+      parts.push(indices ? { material, positions, indices } : { material, positions });
     }
   }
   return parts;

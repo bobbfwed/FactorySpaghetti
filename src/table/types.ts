@@ -75,7 +75,20 @@ export interface Table {
   onPick(fn: (hit: Target | null, ev: { x: number; y: number }) => void): () => void;  // tap/click
   screenPosition(of: Target): { x: number; y: number } | null;      // canvas-relative CSS pixels, for HTML popovers
   rotateBy(steps: number): void;                    // 60-degree steps, animated
-  recenter(): void;                                 // frame the whole board
+  recenter(): void;                                 // frame the whole table (board and piles), keeping the rotation
+  /**
+   * Move the camera only if it must: when the board or the piles beside it have grown out of the
+   * area last framed, or the board is out of view although it fits. Then it re-frames once, with
+   * head-room, and never zooms in. Call it after the board grew or a panel came or went, unless the
+   * player has taken control of the camera.
+   */
+  keepInView(): void;
+  /**
+   * The player's default view: from their own side of the table (seat.ts: seat k of n, null for a
+   * spectator = the default side). Turns the view there at once (animated once a game is shown)
+   * unless the player has already moved or turned the view; the rotate button turns on from it.
+   */
+  setHomeView(seat: number | null, seatCount: number): void;
   setTopDown(on: boolean): void;
   resize(): void;
   dispose(): void;

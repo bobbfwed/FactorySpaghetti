@@ -45,6 +45,52 @@ function holeFrame(piece: BoardPiece, pos: number, v: XZ): { inFromEdge: number;
 }
 
 describe('belt model', () => {
+  it("chain links are chevrons pointing at the model's zMin end (its arrow tip)", () => {
+    // Rasterise the chain face that ends up on top (model y = 0) along the middle of the belt and
+    // compare where the centre line and two lines either side of it change between link and gap:
+    // on chevrons "^" pointing at -Z every change comes first (at lower z) on the centre line.
+    const part = parseGlb(new Uint8Array(readFileSync(join(MODELS_DIR, 'belt.glb'))))[0]!;
+    const P = part.positions, I = part.indices!;
+    expect(I.length).toBeGreaterThan(0);
+    const tris: Array<[number, number, number, number, number, number]> = [];
+    for (let t = 0; t < I.length; t += 3) {
+      const a = I[t]!, b = I[t + 1]!, c = I[t + 2]!;
+      if (Math.max(P[a * 3 + 1]!, P[b * 3 + 1]!, P[c * 3 + 1]!) > 0.05) continue;
+      tris.push([P[a * 3]!, P[a * 3 + 2]!, P[b * 3]!, P[b * 3 + 2]!, P[c * 3]!, P[c * 3 + 2]!]);
+    }
+    const filled = (x: number, z: number): boolean => tris.some(([ax, az, bx, bz, cx, cz]) => {
+      const s = (px: number, pz: number, qx: number, qz: number): number => (qx - px) * (z - pz) - (qz - pz) * (x - px);
+      const d1 = s(ax, az, bx, bz), d2 = s(bx, bz, cx, cz), d3 = s(cx, cz, ax, az);
+      return !((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0));
+    });
+    /** z of every link/gap change along the line at x (and which way it changes). */
+    const changes = (x: number): Array<{ z: number; on: boolean }> => {
+      const out: Array<{ z: number; on: boolean }> = [];
+      let prev = filled(x, -20);
+      for (let z = -20; z <= 20; z += 0.02) {
+        const f = filled(x, z);
+        if (f !== prev) out.push({ z, on: f });
+        prev = f;
+      }
+      return out;
+    };
+    const centre = changes(0);
+    expect(centre.length).toBeGreaterThan(10);
+    const lags: number[] = [];
+    for (const side of [changes(-1.2), changes(1.2)]) {
+      for (const c of centre) {
+        const near = side.filter(s => s.on === c.on && Math.abs(s.z - c.z) < 1.4);
+        if (near.length === 0) continue;
+        const s = near.reduce((a, b) => (Math.abs(a.z - c.z) < Math.abs(b.z - c.z) ? a : b));
+        lags.push(s.z - c.z);
+      }
+    }
+    expect(lags.length).toBeGreaterThan(10);
+    // Every change reaches the sides later (+z) than the centre line.
+    expect(lags.filter(l => l > 0.2).length / lags.length).toBeGreaterThan(0.9);
+  });
+
+
   it('has a D-shaped peg standing up from each end of a flat chain', () => {
     const s = beltShape(base);
     expect(s.chainTop).toBeCloseTo(BELT_THICKNESS, 1);
@@ -108,6 +154,37 @@ describe('belts on a tile', () => {
     expect(Math.max(...aPast.map(p => p.y))).toBeLessThan(TILE_TOP + BELT_THICKNESS - 0.05);
     const bPast = vb.filter(p => p.x < seam - 0.5);
     expect(Math.max(...bPast.map(p => p.y))).toBeLessThan(TILE_TOP + BELT_THICKNESS - 0.05);
+  });
+
+  it('the model end at zMin (the arrow tip) is laid at `from`', () => {
+    const piece = tile(0, 0);
+    const p = base.getAttribute('position') as THREE.BufferAttribute;
+    let iMin = 0, iMax = 0;
+    for (let i = 0; i < p.count; i++) { if (p.getZ(i) < p.getZ(iMin)) iMin = i; if (p.getZ(i) > p.getZ(iMax)) iMax = i; }
+    for (const [from, to] of [[0, 6], [6, 0], [2, 9]] as const) {
+      const v = verts(bendBeltItems(base, [{ piece, from, to, color: WHITE }]));
+      const hf = pointWorld(piece, from), ht = pointWorld(piece, to);
+      const d = (a: XZ, b: XZ): number => Math.hypot(a.x - b.x, a.z - b.z);
+      expect(d(v[iMin]!, hf)).toBeLessThan(10);
+      expect(d(v[iMax]!, ht)).toBeLessThan(10);
+    }
+  });
+
+  it('bendBelts points every belt of a chain at its head: away from a Mine, whichever way it was tapped', () => {
+    const mine: BoardPiece = { id: 'mine-1', type: 'mine', coord: { q: 0, r: 0 }, rotation: 0, claims: [], input: null, output: { slots: [null], teleporterOwner: null } };
+    const A = { ...tile(2, 0), id: 'A' }, B = { ...tile(3, 0), id: 'B' };
+    const p = base.getAttribute('position') as THREE.BufferAttribute;
+    let iMin = 0;
+    for (let i = 0; i < p.count; i++) if (p.getZ(i) < p.getZ(iMin)) iMin = i;
+    for (const order of [[0, 7], [7, 0]] as const) {
+      const belts = [A, B].map(t => ({ id: `b${t.id}`, pieceId: t.id, ownerId: 0 as const, fromPoint: order[0], toPoint: order[1] }));
+      const g = verts(bendBelts(base, { board: [mine, A, B], belts }, () => WHITE));
+      // Belt k's vertices start at k * p.count; its tip lies at point 7 (east, away from the Mine).
+      [A, B].forEach((t, k) => {
+        const tip = g[k * p.count + iMin]!, east = pointWorld(t, 7);
+        expect(Math.hypot(tip.x - east.x, tip.z - east.z)).toBeLessThan(10);
+      });
+    }
   });
 
   it('a belt on a piece that is not on the board is left out', () => {

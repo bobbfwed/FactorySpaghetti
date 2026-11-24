@@ -16,7 +16,7 @@
 
 import type { BoardPiece, GameState, HexCoord, PieceType } from '../engine/state';
 import type { PointRole } from '../engine/config';
-import { PIECE_TEMPLATES, pieceTemplate, type PieceTemplate } from '../engine/config';
+import { PIECE_TEMPLATES, STACK_COMPOSITION, STARTING_PIECES_PER_PLAYER, pieceTemplate, type PieceTemplate } from '../engine/config';
 
 /**
  * The layout of a piece: a piece type uses its type's layout (a mine type: Mine 1's); a piece
@@ -39,6 +39,8 @@ export const HEX_RADIUS = ACROSS_FLATS / Math.sqrt(3);
 export const HEX_PITCH = ACROSS_FLATS;
 /** Top face of a board tile or mine. */
 export const TILE_TOP = 3;
+/** The camera's usual height angle above the table (the "isometric" view). */
+export const VIEW_ELEVATION = Math.PI / 4;
 
 /**
  * Where the two connection points of an edge sit along it, as a fraction from the edge's first
@@ -441,6 +443,15 @@ export function distToSegment(x: number, z: number, a: XZ, b: XZ): number {
 
 export interface Bounds { minX: number; maxX: number; minZ: number; maxZ: number }
 
+export function unionBounds(a: Bounds, b: Bounds): Bounds {
+  return { minX: Math.min(a.minX, b.minX), maxX: Math.max(a.maxX, b.maxX), minZ: Math.min(a.minZ, b.minZ), maxZ: Math.max(a.maxZ, b.maxZ) };
+}
+
+/** True when `inner` lies inside `outer` (within eps mm). */
+export function containsBounds(outer: Bounds, inner: Bounds, eps = 0.01): boolean {
+  return inner.minX >= outer.minX - eps && inner.maxX <= outer.maxX + eps && inner.minZ >= outer.minZ - eps && inner.maxZ <= outer.maxZ + eps;
+}
+
 export function boardBounds(board: ReadonlyArray<Pick<BoardPiece, 'type' | 'coord' | 'rotation'>>): Bounds {
   const b: Bounds = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity };
   for (const p of board) {
@@ -471,21 +482,51 @@ export interface SideLayout {
   readonly dice: readonly XZ[];
 }
 
+/** Space kept between the card piles and the board (they are at most ~15 mm tall). */
+export const CARD_GAP = 22;
+/** Extra room between a stack and the board beyond the ground the stack can hide. */
+export const STACK_MARGIN = 8;
+
+const pieceCount = (c: object): number => Object.values(c as Record<string, number | undefined>).reduce<number>((s, n) => s + (n ?? 0), 0);
+
 /**
- * Where the stacks, card piles and dice go: the three stacks in a row behind the board (a full
- * stack is ~100 mm tall, so in the default view it rises away from the board instead of hiding it
- * or its neighbours), the Leverage deck and discard pile left of the board, the dice under them.
- * They move only when the board grows past its outermost tiles.
+ * Height of the tallest pile at the start of a game: the fullest stack with a Mine lying on it,
+ * or stack 1 (after the starting pieces left it) with its drawn piece floating above. Stacks only
+ * shrink during a game, so this is the tallest a pile ever stands.
  */
-export function sideLayout(bounds: Bounds, diceCount: number, portrait = false): SideLayout {
-  if (portrait) return portraitSide(bounds, diceCount);
-  const left = bounds.minX - 22 - CARD.w / 2;
+export function tallestPile(playerCount: number): number {
+  const n = (Math.min(4, Math.max(2, Math.round(playerCount))) as 2 | 3 | 4);
+  const [s1, s2, s3] = STACK_COMPOSITION[n].map(pieceCount) as [number, number, number];
+  const first = stackHeight(Math.max(0, s1 - pieceCount(STARTING_PIECES_PER_PLAYER) * n)) + REVEAL_LIFT + TILE_TOP;
+  const locked = stackHeight(Math.max(s2, s3)) + TILE_TOP;
+  return Math.max(first, locked);
+}
+
+/**
+ * Ground a pile of height h hides behind it, seen at the camera's elevation: h / tan(elevation).
+ * The stacks keep this far (plus a margin) from the board, so seen from any side of the table,
+ * even from across the board, no stack covers a board piece.
+ */
+export function stackGap(playerCount: number, elevation = VIEW_ELEVATION): number {
+  return tallestPile(playerCount) / Math.tan(elevation) + STACK_MARGIN;
+}
+
+/**
+ * Where the stacks, card piles and dice go, around `bounds` (the board area the piles leave room
+ * for, see framing.ts sideAnchor): the three stacks in a row behind the board, far enough that the
+ * tallest of them hides no board piece from any side (stackGap); the Leverage deck and discard
+ * pile left of the board, the dice under them, growing away from the board.
+ */
+export function sideLayout(bounds: Bounds, diceCount: number, portrait = false, playerCount = 4): SideLayout {
+  if (portrait) return portraitSide(bounds, diceCount, playerCount);
+  const left = bounds.minX - CARD_GAP - CARD.w / 2;
   const midZ = (bounds.minZ + bounds.maxZ) / 2;
   const midX = (bounds.minX + bounds.maxX) / 2;
   // A locked stack carries its two-hex mine centred on it (half a hex overhanging on each side),
   // so neighbouring stacks are a mine's length apart plus a gap.
   const gapX = MINE_LENGTH + PILE_GAP;
-  const rowZ = bounds.minZ - 24 - HEX_RADIUS;
+  // Stacks and the mines on them reach HEX_RADIUS either side of their centre along Z.
+  const rowZ = bounds.minZ - stackGap(playerCount) - HEX_RADIUS;
   const firstX = midX - gapX;
   const stacks: [XZ, XZ, XZ] = [
     { x: firstX, z: rowZ },
@@ -495,15 +536,16 @@ export function sideLayout(bounds: Bounds, diceCount: number, portrait = false):
   const deck = { x: left, z: midZ - CARD.d * 0.58 };
   const discard = { x: left, z: midZ + CARD.d * 0.58 };
   const dice: XZ[] = [];
-  for (let i = 0; i < diceCount; i++) dice.push({ x: left - 22 + i * (DIE_SIZE * 2.1), z: discard.z + CARD.d / 2 + 28 + (i % 2) * 6 });
+  // The first die where it always was; more dice go further left, never up to the board's edge.
+  for (let i = 0; i < diceCount; i++) dice.push({ x: left - 22 - i * (DIE_SIZE * 2.1), z: discard.z + CARD.d / 2 + 28 + (i % 2) * 6 });
   return { stacks, deck, discard, dice };
 }
 
 /** Narrow (portrait) screens: stacks behind the board as usual, cards and dice in front of it. */
-function portraitSide(bounds: Bounds, diceCount: number): SideLayout {
-  const wide = sideLayout(bounds, 0, false);
+function portraitSide(bounds: Bounds, diceCount: number, playerCount: number): SideLayout {
+  const wide = sideLayout(bounds, 0, false, playerCount);
   const midX = (bounds.minX + bounds.maxX) / 2;
-  const rowZ = bounds.maxZ + 22 + CARD.d / 2;
+  const rowZ = bounds.maxZ + CARD_GAP + CARD.d / 2;
   const deck = { x: midX - CARD.w * 0.6 - 30, z: rowZ };
   const discard = { x: midX + CARD.w * 0.6 - 30, z: rowZ };
   const dice: XZ[] = [];
@@ -566,10 +608,18 @@ export function revealedPose(side: SideLayout, index: number, n: number): { x: n
   return { x: at.x, y: stackHeight(Math.max(0, n - 1)) + REVEAL_LIFT, z: at.z };
 }
 
-/** Every piece on the board plus everything beside it, for framing the camera. */
-export function tableBounds(game: Pick<GameState, 'board' | 'mineCount'>, portrait = false): Bounds {
-  const b = boardBounds(game.board);
-  const side = sideLayout(b, game.mineCount, portrait);
+/**
+ * Every piece on the board plus everything beside it, for framing the camera. `area` is the board
+ * area the piles are laid out around (default: the board's own bounds); it is included too.
+ */
+export function tableBounds(
+  game: Pick<GameState, 'board' | 'mineCount'> & { readonly players?: ReadonlyArray<unknown> },
+  portrait = false,
+  area?: Bounds,
+): Bounds {
+  const board = boardBounds(game.board);
+  const b = area ? unionBounds(board, area) : board;
+  const side = sideLayout(b, game.mineCount, portrait, game.players?.length ?? 4);
   const out = { ...b };
   const grow = (p: XZ, rx: number, rz: number): void => {
     out.minX = Math.min(out.minX, p.x - rx);

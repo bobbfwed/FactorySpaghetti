@@ -11,7 +11,9 @@ import { Animator, type PiecePose } from './animator';
 import { Overlay } from './overlay';
 import { PreviewLayer } from './preview';
 import { woodTexture } from './textures';
-import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds } from './layout';
+import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from './layout';
+import { frameAll, keepInView as keepAreaInView, type FramingTable } from './framing';
+import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
@@ -83,6 +85,12 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let ghost: Ghost | null = null;
   let framedOnce = false;
   let lastBoardSize = 0;
+  /** The table area the camera was last framed to (framing.ts). */
+  let framedArea: Bounds | null = null;
+  /** The player has dragged, pinched, scrolled, turned or tilted the view. */
+  let touched = false;
+  /** The default view's azimuth (the player's side of the table). */
+  let homeAz = 0;
   const pickers = new Set<(hit: Target | null, ev: { x: number; y: number }) => void>();
   const frameListeners = new Set<() => void>();
   let disposed = false;
@@ -143,8 +151,18 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     if (draw(now)) invalidate();
   }
 
+  /** The board and everything beside it (piles laid out round the scene's growing pile area). */
+  function neededArea(): Bounds {
+    return game ? tableBounds(game, table.portrait, table.anchor ?? undefined) : boardBounds([]);
+  }
+
+  /** Height framing includes: the tallest stack plus a mine lying on it, so it is not cut off. */
+  function stackTop(): number {
+    return Math.max(20, ...[0, 1, 2].map(i => table.stackTopY(i) + TILE_TOP));
+  }
+
   function fitShadow(): void {
-    const b = game ? tableBounds(game, table.portrait) : boardBounds([]);
+    const b = neededArea();
     const cx = (b.minX + b.maxX) / 2, cz = (b.minZ + b.maxZ) / 2;
     const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) * 0.6 + 120;
     sun.position.set(cx - span * 0.55, span * 1.6, cz + span * 0.7);
@@ -185,7 +203,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const p = local(e);
     if (pointers.size === 1) {
       if (!dragged && Math.hypot(p.x - cur.sx, p.y - cur.sy) > TAP_SLOP_PX) dragged = true;
-      if (dragged) { rig.panPixels(cur.x, cur.y, p.x, p.y); invalidate(); }
+      if (dragged) { touched = true; rig.panPixels(cur.x, cur.y, p.x, p.y); invalidate(); }
       cur.x = p.x; cur.y = p.y;
       return;
     }
@@ -194,6 +212,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       const [a, b] = [...pointers.values()];
       const d = Math.hypot(a!.x - b!.x, a!.y - b!.y);
       const mx = (a!.x + b!.x) / 2, my = (a!.y + b!.y) / 2;
+      touched = true;
       rig.panPixels(pinch.mx, pinch.my, mx, my);
       if (pinch.d > 0 && d > 0) rig.zoomAt(mx, my, d / pinch.d);
       pinch = { d, mx, my };
@@ -217,6 +236,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     e.preventDefault();
     const p = local(e);
     const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+    touched = true;
     rig.zoomAt(p.x, p.y, Math.exp(-dy * 0.0015));
     invalidate();
   }
@@ -277,11 +297,21 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     invalidate();
   }
 
+  function framingTable(): FramingTable {
+    return { board: boardBounds(game?.board ?? []), needed: neededArea(), stackTop: stackTop() };
+  }
+
   function recenter(animate = true): void {
-    const b = game ? tableBounds(game, table.portrait) : boardBounds([]);
-    // Include the tallest stack (plus a mine lying on it) so it is not cut off at the top.
-    const top = Math.max(20, ...[0, 1, 2].map(i => table.stackTopY(i) + TILE_TOP));
-    rig.frame(b, animate, top);
+    framedArea = frameAll(rig, framingTable(), animate);
+    invalidate();
+  }
+
+  /** Re-frame only when something that must be seen would be out of view (framing.ts). */
+  function keepInView(): void {
+    if (!game) return;
+    const area = keepAreaInView(rig, framingTable(), framedArea);
+    if (!area) return;
+    framedArea = area;
     invalidate();
   }
 
@@ -302,7 +332,9 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     overlay.setGhost(ghost, game);
     fitShadow();
     const size = next?.board.length ?? 0;
-    // Frame the board the first time it appears; afterwards leave the camera where the user put it.
+    // Frame the table the first time a game appears, and again for a board with fewer pieces
+    // (another game, or a replay going back); otherwise the camera moves only when asked
+    // (recenter, keepInView).
     if (next && (!framedOnce || (size < lastBoardSize))) { recenter(framedOnce); framedOnce = true; }
     lastBoardSize = size;
     invalidate();
@@ -391,11 +423,24 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     },
     rotateBy(steps) {
       if (steps === 0) return;
+      touched = true;
       rig.rotateBy(steps);
       invalidate();
     },
     recenter() { recenter(true); },
+    keepInView,
+    setHomeView(seat, seatCount) {
+      const az = seat === null ? 0 : seatAzimuth(seat, seatCount);
+      if (Math.abs(az - homeAz) < 1e-9) return;
+      homeAz = az;
+      // Never turn the view away from where the player has put it.
+      if (touched) return;
+      rig.turnTo(az, framedOnce);
+      if (framedOnce) recenter(true);
+      invalidate();
+    },
     setTopDown(on) {
+      touched = true;
       rig.setTopDown(on);
       invalidate();
     },

@@ -161,8 +161,11 @@ export function replayView(ctrl: AppController): View {
     shownKey = key;
     table.setGame(state);
     if (state.board.length !== boardSize) {
+      // A bigger board moves the camera only if something would be out of view (and never zooms
+      // in); a smaller one (going back) is framed afresh by the table itself.
+      const grew = state.board.length > boardSize;
       boardSize = state.board.length;
-      if (!userCamera) table.recenter();
+      if (grew && !userCamera) table.keepInView();
     }
   }
 
@@ -183,7 +186,8 @@ export function replayView(ctrl: AppController): View {
     const first = insetsKey === '';
     insetsKey = key;
     table.setViewport(insets, { minTilePx: isPhone() ? 40 : 0 });
-    if (first || !userCamera) table.recenter();
+    if (first) table.recenter();
+    else if (!userCamera) table.keepInView();
   }
 
   // ── Drawing ─────────────────────────────────────────────────────────────────

@@ -6,14 +6,16 @@ import * as THREE from 'three';
 import type { BoardPiece, GameState, Material, PieceType, PlayerId } from '../engine/state';
 import { partsOf, type ModelLib, type ModelPart } from './models';
 import type { SceneFx } from './animator';
+import { arrowEnds, beltHeadMap } from './beltArrows';
 import {
   BELT_SPILL, BELT_TUCK, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT,
   POINT_INSET, REVEAL_LIFT, TILE_MODEL, TILE_TOP,
   beltCurve, boardBounds, bufferAnchorWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout,
   curveFrameAt, mineModel, minePileAt, mineSlotWorld, modelToWorld, pieceCells, piecePlacement, pointNormal,
   pointWorld, revealedStack, sampleCurve, sideLayout, stackHeight, axialToWorld, type ModelName,
-  type SideLayout,
+  type Bounds, type SideLayout,
 } from './layout';
+import { sideAnchor } from './framing';
 import {
   cardBackTexture, cardFaceTexture, diceAtlas, diceCell, numeralAtlas, numeralCell,
   NUMERAL_COLS, NUMERAL_ROWS,
@@ -309,6 +311,9 @@ export class TableScene {
       this.known.clear();
       this.appear.clear();
     }
+    // A board with fewer pieces than before is another game or a replay going back: the piles
+    // are laid out afresh round it. During a game the board only grows.
+    if (!game || game.board.length < (this.game?.board.length ?? 0)) this.anchor = null;
     this.game = game;
     this.updateSide();
     this.updateReveal(now, prevKnown && !!game);
@@ -316,9 +321,13 @@ export class TableScene {
 
   /** Narrow screens put the card piles in front of the board instead of beside it. */
   portrait = false;
+  /** The board area the piles are laid out around (framing.ts sideAnchor): only grows, in steps. */
+  anchor: Bounds | null = null;
 
   updateSide(): void {
-    this.side = sideLayout(boardBounds(this.game?.board ?? []), this.game?.mineCount ?? 1, this.portrait);
+    const board = boardBounds(this.game?.board ?? []);
+    this.anchor = this.game ? sideAnchor(this.anchor, board) : null;
+    this.side = sideLayout(this.anchor ?? board, this.game?.mineCount ?? 1, this.portrait, this.game?.players.length ?? 4);
   }
 
   /** True while pieces are still settling. */
@@ -635,7 +644,9 @@ export class TableScene {
       return false;
     }) : all;
     this.updateDropBelts(game, dropping);
-    const key = belts.map(b => `${b.id}/${b.ownerId}`).join('|') + '#' + this.colors.map(c => c.getHexString()).join(',');
+    // A belt turns round when a later piece decides which way its chain runs, so its head is in the key.
+    const heads = game ? this.beltHeads(game) : null;
+    const key = belts.map(b => `${b.id}/${b.ownerId}/${heads?.get(b.id) ?? ''}`).join('|') + '#' + this.colors.map(c => c.getHexString()).join(',');
     if (key === this.beltKey) return;
     this.beltKey = key;
     if (this.beltMesh) {
@@ -644,7 +655,7 @@ export class TableScene {
       this.beltMesh = null;
     }
     if (!game || belts.length === 0) return;
-    this.beltMesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, { board: game.board, belts }, b => this.colorOf(b)), this.beltMaterial);
+    this.beltMesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, game, b => this.colorOf(b), belts, heads ?? undefined), this.beltMaterial);
     this.beltMesh.castShadow = true;
     this.beltMesh.receiveShadow = true;
     this.root.add(this.beltMesh);
@@ -663,13 +674,25 @@ export class TableScene {
       if (!mesh) {
         const belt = game.belts.find(b => b.id === id);
         if (!belt) continue;
-        mesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, { board: game.board, belts: [belt] }, b => this.colorOf(b)), this.beltMaterial);
+        mesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, game, b => this.colorOf(b), [belt], this.beltHeads(game)), this.beltMaterial);
         mesh.castShadow = true;
         this.root.add(mesh);
         this.dropBelts.set(id, mesh);
       }
       mesh.position.y = y;
     }
+  }
+
+  private headsFor: GameState | null = null;
+  private heads: ReadonlyMap<string, number> = new Map();
+
+  /** The head (the end material leaves by) of every belt in `game`, worked out once per state. */
+  private beltHeads(game: GameState): ReadonlyMap<string, number> {
+    if (game !== this.headsFor) {
+      this.headsFor = game;
+      this.heads = beltHeadMap(game);
+    }
+    return this.heads;
   }
 
   dispose(): void {
@@ -722,7 +745,12 @@ export function beltShape(g: THREE.BufferGeometry): BeltShape {
   return shape;
 }
 
-/** One belt to draw: on `piece`, between connection points `from` and `to`, in `color`. */
+/**
+ * One belt to draw: on `piece`, between connection points `from` and `to`, in `color`.
+ * The model's chain links are chevrons whose tips point at its zMin end (read from belt.glb, see
+ * belts.test.ts), and bendBeltItems lays the zMin end at `from`: so `from` is where the arrow
+ * points, the belt's head (use arrowEnds).
+ */
 export interface BeltItem {
   readonly piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>;
   readonly from: number;
@@ -735,11 +763,14 @@ export function bendBelts(
   base: THREE.BufferGeometry,
   game: Pick<GameState, 'belts' | 'board'>,
   colorOf: (owner: PlayerId) => THREE.Color,
+  /** The belts to draw (default all); which way each points is decided by the whole of `game`. */
+  draw: Pick<GameState, 'belts'>['belts'] = game.belts,
+  heads: ReadonlyMap<string, number> = beltHeadMap(game),
 ): THREE.BufferGeometry {
   const items: BeltItem[] = [];
-  for (const b of game.belts) {
+  for (const b of draw) {
     const piece = game.board.find(p => p.id === b.pieceId);
-    if (piece) items.push({ piece, from: b.fromPoint, to: b.toPoint, color: colorOf(b.ownerId) });
+    if (piece) items.push({ piece, ...arrowEnds(b, heads.get(b.id)), color: colorOf(b.ownerId) });
   }
   return bendBeltItems(base, items);
 }

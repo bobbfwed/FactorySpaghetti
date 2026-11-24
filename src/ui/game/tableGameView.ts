@@ -34,6 +34,7 @@ import { errorStrip, flashMarkers, rollChip, skipButton, storageStrip } from './
 import { appliedSince, refusalIsStale, type SentMove } from './refusals';
 import { outcomeOf, outcomeText, update as updateOutcome, type RollOutcome } from './rollOutcome';
 import { planTransition } from '../../table/transition';
+import { tableSeat } from '../../table/seat';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
 import { FxLayer } from './fx';
@@ -323,7 +324,16 @@ export function tableGameView(ctrl: AppController): View {
     if (ck !== colorsKey && table) { colorsKey = ck; table.setPlayerColors(colors); }
     stage.receive(r);
     const s = ctrl.mySeat;
-    if (gameChanged || s !== seat) { seat = s; play.update(g, s as PlayerId | null); }
+    if (gameChanged || s !== seat) {
+      // A seat taken (or left) mid-game: the default view moves to that player's side of the table.
+      if (s !== seat) applyHomeView(g, s);
+      seat = s; play.update(g, s as PlayerId | null);
+    }
+  }
+
+  /** Look from the player's own side of the table (seat.ts); the table keeps a view the player moved. */
+  function applyHomeView(g: GameState, me: number | null): void {
+    table?.setHomeView(tableSeat(g.turnOrder, me), g.turnOrder.length);
   }
 
   /** The stage put a new room on screen (a snap, or the start of its transition). */
@@ -339,8 +349,9 @@ export function tableGameView(ctrl: AppController): View {
     if (table) {
       const grew = g.board.length !== boardSize;
       boardSize = g.board.length;
-      // Until the player moves the camera, keep the whole (growing) board in view.
-      if (grew && !userCamera && prev) table.recenter();
+      // Until the player moves the camera, keep the whole (growing) board in view: the camera
+      // moves only when something would be out of view, and never zooms in (framing.ts).
+      if (grew && !userCamera && prev) table.keepInView();
     }
     noteRollOutcome(prev, info);
     if (prev && info.room.seq !== prev.seq) {
@@ -760,8 +771,11 @@ export function tableGameView(ctrl: AppController): View {
       const first = insetsKey === '';
       insetsKey = key;
       table.setViewport(insets, { minTilePx: phone ? PHONE_MIN_TILE_PX : 0 });
-      // A panel came or went: frame the board again (unless the player has moved the camera).
-      if (first || !userCamera) table.recenter();
+      // First measure (or the screen turned): frame the table. A panel came or went: move only
+      // if the board is now hidden (unless the player has moved the camera), and never zoom in,
+      // so panels coming and going do not pull the view back and forth.
+      if (first) table.recenter();
+      else if (!userCamera) table.keepInView();
     }
   }
 
@@ -979,6 +993,9 @@ export function tableGameView(ctrl: AppController): View {
       if (disposed) { t.dispose(); return; }
       table = t;
       loading.remove();
+      // The player's own side of the table, before the first frame of the game.
+      const home = (shownRoom ?? room)?.game;
+      if (home) applyHomeView(home, ctrl.mySeat);
       colorsKey = ''; targetsKey = ''; ghostKey = ''; insetsKey = '';
       offs.push(t.onPick((hit) => onPick(hit)));
       offs.push(ctrl.onPreview((seat, pv) => {
