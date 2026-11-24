@@ -5,6 +5,11 @@ import { PlayController } from '../controller';
 import { createBotGame, playUntil } from '../../table/botGame';
 import type { GameState, PlayerId } from '../../engine/state';
 import { BELT_COST, MINE_COSTS, cardCost, teleporterCost } from '../../engine/config';
+import type { Material } from '../../engine/config';
+import { keepText } from '../controller';
+import { paymentWithChange } from '../info';
+import { W } from '../words';
+import { atActions, harness } from './helpers';
 
 function bankOf(g: GameState, me: PlayerId): Map<string, number | undefined> {
   const c = new PlayController({ send: (): void => undefined });
@@ -38,5 +43,33 @@ describe('bank prices in the play view', () => {
     c.update(g, me);
     const total = c.view.hand.reduce((s, it) => s + (it.count ?? 0), 0);
     expect(total).toBe(g.players[me]!.hand.length);
+  });
+});
+
+describe('what a purchase with change leaves ("You keep ...")', () => {
+  const inv = (ore: number, plate: number, sphere: number, tesseract: number): Record<Material, number> => ({ ore, plate, sphere, tesseract });
+
+  it('says what is kept only when change comes back, from the engine\'s own payment', () => {
+    expect(paymentWithChange(inv(1, 0, 1, 0), [3])).toEqual({ kept: inv(2, 1, 0, 0), lost: 0 });
+    expect(paymentWithChange(inv(3, 0, 0, 0), [3])).toBeNull();     // paid exactly: no change
+    expect(paymentWithChange(inv(2, 0, 0, 0), [3])).toBeNull();     // cannot pay
+    // Several belts, one purchase each: a Plate pays the first and its change pays the second.
+    expect(paymentWithChange(inv(0, 1, 0, 0), [1, 1])).toEqual({ kept: inv(1, 0, 0, 0), lost: 0 });
+    expect(paymentWithChange(inv(0, 1, 0, 0), [1, 1, 1, 1])).toBeNull(); // 4 belts: a Plate is not enough
+  });
+
+  it('the bank items carry it in their details', () => {
+    const { state, player } = atActions(5, 3);
+    const s = { ...state, mineCount: 2, players: state.players.map(p => (p.id === player ? { ...p, inventory: inv(1, 0, 1, 0) } : p)) };
+    const p = s.players[player]!;
+    expect(keepText(p, [cardCost(2)])).toBe(W.payKeep('1 Plate and 2 Ore', 0));
+    expect(keepText(p, [8])).toBe(''); // all of it, exactly
+    const { c } = harness(s, player);
+    const card = c.view.bank.find(b => b.id === 'bank:buyCard')!;
+    expect(card.detail).toContain('You keep 1 Plate and 2 Ore');
+    // A belt is paid exactly with the Ore: nothing to add.
+    expect(c.view.bank.find(b => b.id === 'bank:buyBelt')!.detail).toBe(W.price(BELT_COST));
+    // A lone Sphere buying a belt: 2 Plates come back.
+    expect(keepText({ ...p, inventory: inv(0, 0, 1, 0) }, [BELT_COST])).toBe(W.payKeep('2 Plates', 0));
   });
 });
