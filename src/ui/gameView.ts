@@ -18,6 +18,7 @@ import { COLORS, icon } from './icons';
 import { connectionBanner, messageStrip } from './common';
 import type { View } from './menuView';
 import { playtestItems } from './playtestMenu';
+import { openGuide } from './guide/open';
 
 const LOG_LINES = 15;
 
@@ -56,6 +57,7 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     tableFailure() === null
       ? h('button', { class: 'menu-item', onclick: () => setPreferredView('table') }, icon('table'), 'Switch to the table view')
       : null,
+    h('button', { class: 'menu-item', attrs: { 'data-guide-item': '1' }, onclick: () => { ui.menuOpen = false; redraw(); openGuide(); } }, icon('book'), 'Game guide'),
     h('button', {
       class: 'menu-item danger',
       onclick: () => {
