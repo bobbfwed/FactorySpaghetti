@@ -11,7 +11,7 @@ import {
   POWER_PLANT_MATERIAL_YIELD,
   POWER_TOKEN_CAP,
 } from '../engine/config';
-import { legalActions } from '../engine/reducer';
+import { applyAction, legalActions } from '../engine/reducer';
 import { findInputCompletion, factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
 
@@ -120,6 +120,36 @@ export function collectable(piece: BoardPiece, player: Player): Material[] {
 }
 
 // ── Exchange ──────────────────────────────────────────────────────────────────
+
+export interface ExchangeOutcome {
+  /** What breaking one down gives, largest material first, before the limit. */
+  gets: [Material, number][];
+  /** Of `gets`, the materials the limit would cut now: how many of each would actually arrive. */
+  cut: [Material, number, number][]; // material, nominal, arriving
+}
+
+/**
+ * What exchanging one `give` would give `me` now, asked of the engine itself: once with an
+ * inventory holding only that one material (what the exchange gives), once with the real
+ * inventory (what arrives under the limit). null when the engine refuses the exchange.
+ */
+export function exchangeOutcome(game: GameState, me: PlayerId, give: Material): ExchangeOutcome | null {
+  const p = game.players[me];
+  if (!p) return null;
+  const a: Action = { type: 'EXCHANGE_MATERIALS', give };
+  const real = applyAction(game, a);
+  const only: Record<Material, number> = { ore: 0, plate: 0, sphere: 0, tesseract: 0, [give]: 1 };
+  const bare = applyAction({ ...game, players: game.players.map((x, i) => (i === me ? { ...x, inventory: only } : x)) }, a);
+  if (!real.ok || !bare.ok) return null;
+  const after = real.state.players[me]!.inventory;
+  const nominal = bare.state.players[me]!.inventory;
+  const gets: [Material, number][] = [...MATERIALS].reverse()
+    .filter(m => m !== give && nominal[m] > 0).map(m => [m, nominal[m]]);
+  const cut: [Material, number, number][] = gets
+    .map(([m, n]): [Material, number, number] => [m, n, after[m] - p.inventory[m]])
+    .filter(([, n, got]) => got < n);
+  return { gets, cut };
+}
 
 /** The engine's break-down table (production.ts EXCHANGE_DOWN), for labels only. */
 export const EXCHANGE_GETS: Readonly<Record<'plate' | 'sphere' | 'tesseract', Partial<Record<Material, number>>>> = {

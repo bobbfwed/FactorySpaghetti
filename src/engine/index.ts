@@ -5,6 +5,7 @@ export { applyAction, legalActions } from './reducer';
 export { revealedStack } from './rules/pieces';
 export { upcomingTurnOrder } from './rules/production';
 export { canonicalAction, sameMove } from './actions';
+export { mineSlotReward, cappedAmount, MINE_RESOURCE_REWARDS, type MineSlotReward } from './rules/mineRewards';
 
 export type {
   GameState,

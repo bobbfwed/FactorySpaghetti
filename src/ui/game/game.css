@@ -814,3 +814,20 @@ button.tg-roll { color: var(--text); text-align: left; cursor: pointer; min-heig
 /* The route key keeps clear of the first button; the docked route panel keeps clear of the edge tabs. */
 .tg-routekey { margin-bottom: 6px; }
 .tg-hud.desk .tg-choices.route { right: 60px; }
+
+/* ---- materials and teleporters you can press ----
+   The Teleporters well is a button like Lay a belt: lit when a teleporter can be placed now. */
+.tg-tpbtn.lit { box-shadow: inset 0 0 0 2px rgba(232, 183, 48, 0.65), inset 0 2px 6px rgba(0, 0, 0, 0.8); color: var(--text); }
+.tg-tpbtn.lit:hover { background: #17171a; }
+.tg-tpbtn .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Plate, Sphere and Tesseract wells: pressing one offers to break it down; lit = possible now. */
+button.tg-mat { width: 100%; text-align: left; }
+.tg-mat.lit { box-shadow: inset 0 0 0 2px rgba(232, 183, 48, 0.65), inset 0 2px 6px rgba(0, 0, 0, 0.8); }
+.tg-mat.lit:hover { background: #17171a; }
+/* "Total Value: 11" under the materials; "= 11" on the phone's materials strip. */
+.tg-total { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 0 4px; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.tg-total .num { font-size: 18px; font-weight: 900; color: var(--text); font-variant-numeric: tabular-nums; }
+.tg-striptotal .num { color: var(--text-2); font-weight: 800; }
+/* A planned belt route's panel never covers the bank: beside it on narrower windows, below it on wide ones. */
+@media (max-width: 1240px) { .tg-hud.desk .tg-choices.route { right: auto; left: 16px; } }
+@media (min-width: 1241px) { .tg-hud.desk .tg-choices.route { max-height: min(46vh, max(150px, calc(100% - var(--bottom-h) - 16px - 290px))); } }

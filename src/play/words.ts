@@ -3,7 +3,7 @@
 // Never put internal names here (phase names, action type names, piece or card ids).
 
 import type { CardType, Material, PieceType } from '../engine/config';
-import { MAX_CARDS_PLAYED_PER_TURN } from '../engine/config';
+import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN } from '../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 
 export { CARD_NAME, MATERIAL_NAME };
@@ -14,6 +14,10 @@ export function pieceName(type: PieceType): string {
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+/** "Ore", "Plates", "Spheres", "Tesseracts" (Ore has no plural). */
+export const materialPlural = (m: Material): string => (m === 'ore' ? MATERIAL_NAME[m] : `${MATERIAL_NAME[m]}s`);
+/** "2 Ore", "1 Plate", "3 Spheres". */
+export const amountOf = (n: number, m: Material): string => `${n} ${n === 1 ? MATERIAL_NAME[m] : materialPlural(m)}`;
 export const units = (n: number): string => plural(n, 'upgrade', 'upgrades');
 const tokens = (n: number): string => plural(n, 'Power Token', 'Power Tokens');
 
@@ -102,6 +106,15 @@ export const W = {
   // Step 4
   meeplePlace: 'Place your meeple: tap one of your glowing buildings or a Mine point. Every turn ends with this step.',
   meepleConfirm: (where: string): string => `Place your meeple on the ${where}?`,
+  /** A Mine point: what it gives ("2 Ore", "3 Control Module upgrades") at the end of the round. */
+  meepleConfirmGain: (where: string, gain: string): string => `Place your meeple on the ${where} to gain ${gain} at the end of the round?`,
+  meepleGainMaterial: (n: number, m: Material): string => amountOf(n, m),
+  meepleGainUpgrades: (n: number): string => plural(n, 'Control Module upgrade', 'Control Module upgrades'),
+  /** The limit (6 of each material) would cut the Mine's reward, as things stand now. */
+  meepleGainCut: (m: Material, have: number, fits: number): string => (fits <= 0
+    ? ` You already hold ${INVENTORY_CAP} ${materialPlural(m)}, so it would be lost unless you spend some first.`
+    : ` You hold ${amountOf(have, m)}, so only ${fits} ${fits === 1 ? 'fits' : 'fit'} under your limit of ${INVENTORY_CAP}.`),
+  meepleSlotDetail: (gain: string): string => `Gain ${gain} at the end of the round`,
   meepleDone: 'Your meeple is placed. End your turn.',
   endTurn: 'End turn',
   noMeepleSpot: 'There is nowhere to place your meeple. End your turn.',
@@ -148,6 +161,7 @@ export const W = {
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
   cantPayExact: (cost: number): string => `Costs exactly ${cost}; exchange materials to make that amount first.`,
   deckEmpty: 'The Leverage deck is empty.',
+  deckFinishFirst: 'Confirm or cancel what you are doing first, then tap the deck to buy a Leverage card.',
   allMinesIn: 'All Mines are already in play.',
   mineDropPending: 'A dropped Mine must be placed first.',
   noTeleporters: 'You have placed all your teleporters.',
@@ -160,6 +174,17 @@ export const W = {
   exchangeLabel: (give: Material, gets: string): string => `Break 1 ${MATERIAL_NAME[give]} into ${gets}`,
   exchangeNone: (give: Material): string => `You have no ${MATERIAL_NAME[give]}.`,
   exchangeOverflow: (mats: string): string => `You are near your limit of 6 ${mats}; the extra is lost.`,
+  /** "Exchange 1 Sphere for 2 Plates and 1 Ore?" */
+  exchangeAsk: (give: Material, gets: readonly (readonly [Material, number])[]): string =>
+    `Exchange 1 ${MATERIAL_NAME[give]} for ${gets.map(([m, n]) => amountOf(n, m)).join(' and ')}?`,
+  /** The limit would cut what comes back: say how much arrives. */
+  exchangeCut: (m: Material, n: number, arriving: number): string => (arriving <= 0
+    ? ` You already hold ${INVENTORY_CAP} ${materialPlural(m)}, so the ${amountOf(n, m)} would be lost.`
+    : ` Only ${arriving} of the ${amountOf(n, m)} ${arriving === 1 ? 'fits' : 'fit'} under your limit of ${INVENTORY_CAP}; the rest is lost.`),
+  exchangeConfirm: 'Exchange',
+  exchangeSelection: (give: Material): string => `Exchange 1 ${MATERIAL_NAME[give]}`,
+  exchangeInvDetail: (give: Material, gets: string): string => `Tap to exchange 1 ${MATERIAL_NAME[give]} for ${gets}`,
+  totalValue: (n: number): string => `Total Value: ${n}`,
 
   // Teleporter
   teleporterPick: 'Tap the buffer of one of your buildings for the teleporter.',
@@ -282,7 +307,9 @@ export const W = {
   rdPick: 'R&D Tax Write-Off: tap the buffer of one of your buildings for a free teleporter.',
   rdConfirm: (buffer: string, building: string): string => `Place a free teleporter on the ${buffer} of this ${building}? Teleporters are permanent.`,
   dronePile: 'Scouting Drone: choose a piece from the stacks',
-  droneItem: (stack: number, pos: number, what: string): string => `Stack ${stack}, piece ${pos}: ${what}`,
+  droneItem: (stack: number, what: string): string => `Stack ${stack}: ${what}`,
+  /** The same piece type is offered more than once from one stack: tell them apart by position. */
+  droneItemAt: (stack: number, pos: number, what: string): string => `Stack ${stack}: ${what} (piece ${pos})`,
   droneInstruction: 'Scouting Drone: choose a piece from the list.',
   piInstruction: (left: number): string => `Production Increase: tap a glowing building to claim or upgrade (${units(left)} left).`,
   piDone: 'Done with Production Increase',
@@ -293,6 +320,7 @@ export const W = {
   resourcePoint: 'Mine resource point',
   upgradePoint: 'Mine upgrade point',
   meepleWhich: 'Which Mine point?',
+  meepleOffTarget: 'Your meeple can go only on a glowing building or Mine point: tap one of them.',
 
   // Why-not hints
   notYourBuilding: 'That building is not yours.',

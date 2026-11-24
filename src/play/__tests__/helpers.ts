@@ -125,7 +125,7 @@ export function isLit(v: PlayView, t: Target): boolean {
 
 export function allItems(v: PlayView): { id: string; enabled: boolean; label: string; reason?: string; detail?: string }[] {
   return [
-    ...v.bank, ...v.hand, ...(v.menu?.items ?? []), ...(v.choices?.items ?? []),
+    ...v.bank, ...v.inventory, ...v.hand, ...(v.menu?.items ?? []), ...(v.choices?.items ?? []),
     ...v.prompts.flatMap(p => p.options),
     ...v.tray.filter(t => t.state === 'lit').map(t => ({ id: `module:${t.module}`, enabled: true, label: `${t.module}` })),
   ];

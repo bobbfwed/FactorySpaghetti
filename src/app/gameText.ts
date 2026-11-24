@@ -168,7 +168,8 @@ function cardDetail(game: GameState, a: Extract<Action, { type: 'PLAY_CARD' }>, 
     case 'scoutingDrone': {
       const st = a.stackIndex ?? 0;
       const drawn = game.stacks[st]?.pieces[a.pieceIndex ?? 0];
-      return `Stack ${st + 1}, piece ${(a.pieceIndex ?? 0) + 1}${drawn ? ` (${BUILDING_NAME[drawn.type]})` : ''} ${a.coord ? whereWords(game, a.coord) : 'somewhere'}${turned(a.rotation)}`;
+      // Named by stack and piece type (the piece's position in the stack means nothing to a player).
+      return `${drawn ? `${BUILDING_NAME[drawn.type]} from stack ${st + 1}` : `A piece from stack ${st + 1}`} ${a.coord ? whereWords(game, a.coord) : 'somewhere'}${turned(a.rotation)}`;
     }
     case 'shortSale': return `Claim the ${piece(a.pieceId)} with module ${a.controlModule ?? '?'}`;
     case 'sinkHole': return `Remove the ${piece(a.pieceId)}`;

@@ -4,8 +4,8 @@
 import type { AppController } from '../../app/controller';
 import type { CardType, Material } from '../../engine/config';
 import { CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TESSERACTS_TO_WIN } from '../../engine/config';
-import type { TrayEntry } from '../../play';
-import { CARD_NAME, CARD_TEXT, MATERIAL_NAME } from '../../play/words';
+import type { Item, TrayEntry } from '../../play';
+import { CARD_NAME, CARD_TEXT, MATERIAL_NAME, W } from '../../play/words';
 import type { SeatColor } from '../../session/room';
 import type { Child } from '../dom';
 import { h } from '../dom';
@@ -75,16 +75,34 @@ export function cardFace(card: CardType, opts: { count?: number; big?: boolean; 
     h('div', { class: 'foot', text: foot }));
 }
 
-/** A material well: icon, name, count, and a "full" mark at the cap. */
-export function materialWell(m: Material, n: number, cls = 'tg-mat'): HTMLElement {
+/**
+ * A material well: icon, name, count, and a "full" mark at the cap. With `press` (Plate, Sphere,
+ * Tesseract) it is a button that offers to break the material down: lit when the exchange is
+ * possible now; otherwise pressing it says why.
+ */
+export function materialWell(m: Material, n: number, cls = 'tg-mat', press?: { item: Item; choose: (id: string) => void }): HTMLElement {
   const full = n >= INVENTORY_CAP;
-  return h('div', {
-    class: `${cls} well${n === 0 ? ' zero' : ''}${full ? ' full' : ''}`,
-    attrs: { 'aria-label': `${MATERIAL_NAME[m]}: ${n}${full ? `, the limit of ${INVENTORY_CAP}` : ''}` },
-  },
-  icon(MATERIAL_ICON[m]), h('span', { class: 'nm', text: MATERIAL_NAME[m] }),
-  full ? h('span', { class: 'cap', text: `max ${INVENTORY_CAP}` }) : null,
-  h('span', { class: 'num', text: String(n) }));
+  const label = `${MATERIAL_NAME[m]}: ${n}${full ? `, the limit of ${INVENTORY_CAP}` : ''}`;
+  const kids = [
+    icon(MATERIAL_ICON[m]), h('span', { class: 'nm', text: MATERIAL_NAME[m] }),
+    full ? h('span', { class: 'cap', text: `max ${INVENTORY_CAP}` }) : null,
+    h('span', { class: 'num', text: String(n) }),
+  ];
+  const base = `${cls} well${n === 0 ? ' zero' : ''}${full ? ' full' : ''}`;
+  if (!press) return h('div', { class: base, attrs: { 'aria-label': label } }, ...kids);
+  const it = press.item;
+  const say = it.enabled ? it.detail ?? it.label : it.reason ?? it.label;
+  return h('button', {
+    class: `${base} tg-matbtn${it.enabled ? ' lit' : ''}`,
+    title: say,
+    attrs: { 'aria-label': `${label}. ${say}`, 'aria-disabled': String(!it.enabled), 'data-item': it.id },
+    onclick: () => press.choose(it.id),
+  }, ...kids);
+}
+
+/** "Total Value: 11": what all of a player's materials are worth together. */
+export function totalValue(n: number, cls = 'tg-total'): HTMLElement {
+  return h('div', { class: cls, attrs: { 'aria-label': W.totalValue(n) } }, h('span', { class: 'k', text: 'Total Value:' }), h('span', { class: 'num', text: String(n) }));
 }
 
 /** Text countdown kept current by the screen's one-second ticker. */

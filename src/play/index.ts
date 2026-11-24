@@ -4,6 +4,7 @@
 //
 // Item ids accepted by choose():
 //   bank:placeBelt | bank:removeBelt | bank:buyBelt | bank:undoBelts | bank:buyCard | bank:buyMine | bank:teleporter | bank:exchange
+//   inv:plate | inv:sphere | inv:tesseract   a material in view.inventory (offers to break it down)
 //   route:own | route:buy | route:cancel | route:continue   a planned belt route (view.route)
 //   card:<cardType>                     a card in view.hand
 //   module:<n>                          a lit Control Module in view.tray
