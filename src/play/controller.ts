@@ -13,7 +13,7 @@ import type {
 import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
 import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
-import { tryPayExact } from '../engine/rules/flow';
+import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
 import { revealedStack as revealedStackOf } from '../engine/rules/pieces';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
@@ -21,11 +21,11 @@ import { placement, planningState as planningStateOf, planRoute, reachableEnds, 
 import type { Ghost, Target } from '../table/types';
 import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
 import {
-  EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, inventoryValue, isBuilding,
-  legalFor, nextMinePrice, pieceById, runBlock, runPreview,
+  EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, exchangeOutcome, inventoryValue, isBuilding,
+  legalFor, nextMinePrice, pieceById, runBlock, runPreview, teleporterSpotFree,
 } from './info';
 import {
-  CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, materialList, pieceName, playerName, selectionLabel,
+  CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, amountOf, materialList, pieceName, playerName, selectionLabel,
 } from './words';
 
 // ── Modes (what is "picked up") ───────────────────────────────────────────────
@@ -57,6 +57,8 @@ type Mode =
   | { k: 'removeBelt'; beltId: string | null }
   | { k: 'teleporter'; pick: { pieceId: string; buffer: Buf } | null; whichOn: string | null }
   | { k: 'exchange' }
+  /** One material pressed in my inventory: break it down, awaiting confirmation. */
+  | { k: 'exchangeOne'; give: Material }
   | { k: 'card'; card: CardType; a: string | null; b: string | null; module: number | null; buffer: Buf | null; whichOn: string | null }
   | { k: 'drone' }
   | { k: 'meeple'; pieceId: string; slot: 0 | 1 | null }
@@ -64,6 +66,9 @@ type Mode =
   | { k: 'pi' };
 
 const IDLE: Mode = { k: 'idle' };
+
+/** Actions-step modes in which a tap on the Leverage deck buys a card (nothing waits for a particular pick). */
+const DECK_MODES: ReadonlySet<Mode['k']> = new Set<Mode['k']>(['idle', 'menu', 'belt', 'route', 'removeBelt', 'exchange', 'pi']);
 
 /** Rotation order for the rotate button: single tiles turn 0→5; a mine's second hex walks clockwise. */
 const TILE_ROT_ORDER = [0, 1, 2, 3, 4, 5] as const;
@@ -150,7 +155,7 @@ function emptyView(): PlayView {
   return {
     step: 'waiting', stepIndex: null, myTurn: false, activePlayer: null, instruction: '',
     primary: null, targets: [], ghost: null, confirmBar: null, selection: null, menu: null,
-    tray: [], bank: [], hand: [], prompts: [], choices: null, route: null, meeplePick: null, hint: null,
+    tray: [], bank: [], inventory: [], totalValue: null, hand: [], prompts: [], choices: null, route: null, meeplePick: null, hint: null,
   };
 }
 
@@ -229,8 +234,24 @@ export class PlayController {
         ? this.current.taps.get(targetKey({ kind: 'piece', pieceId: target.pieceId }))
         : undefined);
     if (fn) { this.hintText = null; fn(); this.render(false); return; }
+    // Step 4: a tap anywhere but a glowing spot puts back the spot chosen so far, so Confirm is
+    // only ever offered for the spot the player pressed last.
+    if (this.mode.k === 'meeple' || this.mode.k === 'meepleSlot') {
+      this.mode = IDLE;
+      this.hintText = W.meepleOffTarget;
+      this.render(false);
+      return;
+    }
     this.hintText = this.whyNot(target);
     this.render(false);
+  }
+
+  /**
+   * A tap that hit nothing on the table (past the table's edge): closes a building menu and puts
+   * back a meeple spot awaiting confirmation; anything else stays as it is.
+   */
+  tapNothing(): void {
+    if (this.current.view.menu || this.mode.k === 'meeple' || this.mode.k === 'meepleSlot') this.cancel();
   }
 
   choose(id: string): void {
@@ -378,6 +399,7 @@ export class PlayController {
       v.step = 'over';
       v.stepIndex = null;
       v.tray = baseTray(player);
+      v.totalValue = inventoryValue(player);
       v.instruction = g.winner !== null ? W.gameOverWinner(this.nameOf(g.winner))
         : g.tiedWinners.length ? W.gameOverTie(g.tiedWinners.map(id => this.nameOf(id)).join(', '))
           : W.gameOverNone;
@@ -388,8 +410,10 @@ export class PlayController {
     const myTurn = active === me;
     v.myTurn = myTurn;
     v.tray = baseTray(player);
+    v.totalValue = inventoryValue(player);
     const myPending = g.pendingFactoryOps.filter(e => e.ownerId === me);
     v.bank = this.bankItems(b, g, player, legal, myTurn, myPending.length > 0);
+    v.inventory = this.inventoryItems(b, g, player, legal, myTurn, myPending.length > 0);
     v.hand = this.handItems(b, g, player, legal, myTurn, myPending.length > 0);
     v.prompts = this.promptsFor(b, g, me, player, legal);
 
@@ -668,6 +692,23 @@ export class PlayController {
     if (end) b.onPrimary = (): void => this.send(end);
 
     this.actionsIdleTargets(b, legal);
+    if (!this.buildActionsMode(b, g, me, player, legal)) return false;
+    // The Leverage deck answers a tap while nothing waits for a particular pick: idle, and while a
+    // tool is in use (laying or removing belts, a planned route, Production Increase, a menu).
+    const buy = legal.find(a => a.type === 'BUY_CARD');
+    if (buy && DECK_MODES.has(this.mode.k)) b.lit({ kind: 'deck' }, () => this.send(buy, this.modeAfterBuy()));
+    return true;
+  }
+
+  /** Buying a card keeps a tool the player is using (Lay a belt, Remove a belt, a planned route). */
+  private modeAfterBuy(): Mode {
+    const m = this.mode;
+    return m.k === 'belt' || m.k === 'route' || m.k === 'removeBelt' || m.k === 'pi' ? m : IDLE;
+  }
+
+  /** The current mode's part of the Actions step; false if the mode is no longer possible. */
+  private buildActionsMode(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
+    const v = b.view;
     const m = this.mode;
     switch (m.k) {
       case 'idle': return true;
@@ -713,13 +754,16 @@ export class PlayController {
         v.confirmBar = { confirm: false, rotate: false, cancel: true };
         return true;
       }
+      case 'exchangeOne': return this.buildExchangeOne(b, g, me, legal, m);
       case 'card': return this.buildCard(b, g, player, legal, m);
       case 'drone': {
         const plays = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone');
         if (plays.length === 0) return false;
         b.clearTargets();
+        // One choice per piece the list offers (whatever its position in the stack), named by stack
+        // and piece type; only when one stack offers the same type twice does the position show.
         const seen = new Set<string>();
-        const items: Item[] = [];
+        const offers: { si: 0 | 1 | 2; pi: number; type: PieceType }[] = [];
         for (const a of plays) {
           const si = a.stackIndex, pi = a.pieceIndex;
           if (si === undefined || pi === undefined) continue;
@@ -727,10 +771,15 @@ export class PlayController {
           if (seen.has(k)) continue;
           seen.add(k);
           const piece = g.stacks[si].pieces[pi];
-          if (!piece) continue;
-          items.push(b.item({ id: `drone:${si}:${pi}`, label: W.droneItem(si + 1, pi + 1, pieceName(piece.type)), enabled: true },
-            () => this.setMode({ k: 'place', src: { kind: 'drone', stack: si, index: pi }, coord: null, rotation: 0, auto: false })));
+          if (piece) offers.push({ si, pi, type: piece.type });
         }
+        offers.sort((x, y) => x.si - y.si || x.pi - y.pi);
+        const items: Item[] = offers.map(({ si, pi, type }) => {
+          const twin = offers.some(o => o.si === si && o.type === type && o.pi !== pi);
+          const label = twin ? W.droneItemAt(si + 1, pi + 1, pieceName(type)) : W.droneItem(si + 1, pieceName(type));
+          return b.item({ id: `drone:${si}:${pi}`, label, enabled: true },
+            () => this.setMode({ k: 'place', src: { kind: 'drone', stack: si, index: pi }, coord: null, rotation: 0, auto: false }));
+        });
         v.instruction = W.droneInstruction;
         v.choices = { title: W.dronePile, items };
         v.selection = { kind: 'card', label: selectionLabel.card(CARD_NAME.scoutingDrone) };
@@ -774,9 +823,8 @@ export class PlayController {
     }
     for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
     // Belt points and placed belts are not lit here: laying and removing belts are their own modes
-    // (Lay a belt, Remove a belt), so the board stays calm until the player picks one.
-    const buy = legal.find(a => a.type === 'BUY_CARD');
-    if (buy) b.lit({ kind: 'deck' }, () => this.send(buy));
+    // (Lay a belt, Remove a belt), so the board stays calm until the player picks one. The deck is
+    // lit by buildActions (see DECK_MODES).
   }
 
   // ── Building menu ───────────────────────────────────────────────────────────
@@ -1150,6 +1198,20 @@ export class PlayController {
     });
   }
 
+  /** One material pressed in my inventory: what it breaks down into (and what the limit cuts), then confirm. */
+  private buildExchangeOne(b: Builder, g: GameState, me: PlayerId, legal: readonly Action[], m: Extract<Mode, { k: 'exchangeOne' }>): boolean {
+    const a = ofType(legal, 'EXCHANGE_MATERIALS').find(x => x.give === m.give);
+    const out = a ? exchangeOutcome(g, me, m.give) : null;
+    if (!a || !out) return false;
+    const v = b.view;
+    b.clearTargets();
+    v.instruction = W.exchangeAsk(m.give, out.gets) + out.cut.map(([mat, n, got]) => W.exchangeCut(mat, n, got)).join('');
+    v.selection = { kind: 'exchange', label: W.exchangeSelection(m.give) };
+    v.confirmBar = { confirm: true, rotate: false, cancel: true, label: W.exchangeConfirm };
+    b.onConfirm = (): void => this.send(a);
+    return true;
+  }
+
   // ── Leverage cards ──────────────────────────────────────────────────────────
 
   private buildCard(b: Builder, g: GameState, player: Player, legal: readonly Action[], m: Extract<Mode, { k: 'card' }>): boolean {
@@ -1304,8 +1366,11 @@ export class PlayController {
       v.instruction = W.meepleWhich;
       v.choices = {
         title: W.meepleWhich,
-        items: slots.map(a => b.item({ id: `slot:${a.slotIndex}`, label: a.slotIndex === 1 ? W.upgradePoint : W.resourcePoint, enabled: true },
-          () => this.setMode({ k: 'meeple', pieceId: m.pieceId, slot: a.slotIndex! }))),
+        items: slots.map(a => {
+          const gain = this.mineGain(g, m.pieceId, a.slotIndex!);
+          return b.item({ id: `slot:${a.slotIndex}`, label: a.slotIndex === 1 ? W.upgradePoint : W.resourcePoint, ...(gain ? { detail: W.meepleSlotDetail(gain.what) } : {}), enabled: true },
+            () => this.setMode({ k: 'meeple', pieceId: m.pieceId, slot: a.slotIndex! }));
+        }),
       };
       return true;
     }
@@ -1314,12 +1379,29 @@ export class PlayController {
     const piece = pieceById(g, m.pieceId);
     if (!a || !piece) return false;
     const where = piece.type === 'mine' ? (m.slot === 1 ? W.upgradePoint : W.resourcePoint) : pieceName(piece.type);
-    v.instruction = W.meepleConfirm(where);
+    const gain = piece.type === 'mine' && m.slot !== null ? this.mineGain(g, piece.id, m.slot) : null;
+    v.instruction = gain ? W.meepleConfirmGain(where, gain.what) + gain.cut : W.meepleConfirm(where);
     v.meeplePick = { pieceId: m.pieceId, slot: m.slot };
     v.confirmBar = { confirm: true, rotate: false, cancel: true };
     // Placing the meeple is the last thing a turn needs: the turn then ends by itself.
     b.onConfirm = (): void => { this.mode = IDLE; this.startQueue([a, { type: 'END_TURN' }]); };
     return true;
+  }
+
+  /**
+   * What my meeple on this Mine point would gain at the end of the round, as things stand (the
+   * engine's own reward table), and a note when the limit of 6 would cut it.
+   */
+  private mineGain(g: GameState, mineId: string, slot: number): { what: string; cut: string } | null {
+    const r = mineSlotReward(g, mineId, slot);
+    const player = this.me !== null ? g.players[this.me] : undefined;
+    if (!r || !player) return null;
+    if (r.kind === 'credits') return { what: W.meepleGainUpgrades(r.amount), cut: '' };
+    const fits = cappedAmount(player.inventory, r.material, r.amount);
+    return {
+      what: W.meepleGainMaterial(r.amount, r.material),
+      cut: fits < r.amount ? W.meepleGainCut(r.material, player.inventory[r.material], fits) : '',
+    };
   }
 
   // ── Round end ───────────────────────────────────────────────────────────────
@@ -1354,6 +1436,7 @@ export class PlayController {
         v.confirmBar = { confirm: false, rotate: false, cancel: true };
         return true;
       }
+      case 'exchangeOne': return this.buildExchangeOne(b, g, me, legal, m);
       default: return false;
     }
   }
@@ -1388,15 +1471,14 @@ export class PlayController {
       () => W.noBeltsThisTurn, () => this.send({ type: 'UNDO_BELTS' }));
     const cc = cardCost(g.mineCount);
     add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length), price: cc }, has('BUY_CARD'),
-      () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }));
+      () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }, this.modeAfterBuy()));
     const mp = nextMinePrice(g, MINE_COSTS);
     add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp), ...(mp === null ? {} : { price: mp }) }, has('BUY_MINE'),
       () => (mp === null ? W.allMinesIn : g.pendingMineIds.length > 0 ? W.mineDropPending : W.cantAfford(mp, worth)),
       () => this.setMode({ k: 'place', src: { kind: 'buyMine' }, coord: null, rotation: 0, auto: false }));
     const tpPrice = teleporterCost(g.globalTeleporterCount);
     add({ id: 'bank:teleporter', label: W.bankTeleporter, detail: W.priceExact(tpPrice), price: tpPrice }, has('PLACE_TELEPORTER'),
-      () => (player.teleportersRemaining <= 0 ? W.noTeleporters
-        : tryPayExact(player.inventory, tpPrice) === null ? W.cantPayExact(tpPrice) : W.noFreeBuffer),
+      () => this.teleporterReason(g, player, tpPrice, worth),
       () => this.setMode({ k: 'teleporter', pick: null, whichOn: null }));
     const exGate = this.gate(g, myTurn, pending, true);
     const exOk = has('EXCHANGE_MATERIALS');
@@ -1405,6 +1487,34 @@ export class PlayController {
       : { id: 'bank:exchange', label: W.bankExchange, detail: W.bankExchangeDetail, enabled: false, reason: exGate ?? W.nothingToExchange },
     exOk ? (): void => this.setMode({ k: 'exchange' }) : undefined));
     return items;
+  }
+
+  /**
+   * Why no teleporter can be placed now (in my Actions step), asked of the engine: none left, or
+   * the price (the engine lists teleporters once the same state with plenty of materials does),
+   * or no buffer of mine is free.
+   */
+  private teleporterReason(g: GameState, player: Player, price: number, worth: number): string {
+    if (player.teleportersRemaining <= 0) return W.noTeleporters;
+    if (!teleporterSpotFree(g, player.id)) return W.noFreeBuffer;
+    // The materials are the problem: too little value, or (with exact payment) the wrong change.
+    return worth < price ? W.cantAfford(price, worth) : W.cantPayExact(price);
+  }
+
+  /** Plate, Sphere, Tesseract in my materials: pressing one offers to break it down, when the engine allows it. */
+  private inventoryItems(b: Builder, g: GameState, player: Player, legal: readonly Action[], myTurn: boolean, pending: boolean): Item[] {
+    const gate = this.gate(g, myTurn, pending, true);
+    return (['plate', 'sphere', 'tesseract'] as const).map(give => {
+      const a = ofType(legal, 'EXCHANGE_MATERIALS').find(x => x.give === give);
+      const gets = (Object.entries(EXCHANGE_GETS[give]) as [Material, number][]).map(([m, n]) => amountOf(n, m)).join(' and ');
+      const it: Item = a
+        ? { id: `inv:${give}`, label: MATERIAL_NAME[give], detail: W.exchangeInvDetail(give, gets), enabled: true }
+        : {
+          id: `inv:${give}`, label: MATERIAL_NAME[give], enabled: false,
+          reason: player.inventory[give] <= 0 ? W.exchangeNone(give) : gate ?? W.nothingHere,
+        };
+      return b.item(it, a ? (): void => this.setMode({ k: 'exchangeOne', give }) : undefined);
+    });
   }
 
   private handItems(b: Builder, g: GameState, player: Player, legal: readonly Action[], myTurn: boolean, pending: boolean): PlayView['hand'] {
@@ -1479,6 +1589,7 @@ export class PlayController {
     switch (t.kind) {
       case 'cell':
         if (g.phase === 'placePiece' && legalFor(g, me).some(a => a.type === 'DRAW_PIECE')) return W.drawFirst;
+        if (g.phase === 'placeMeeple' && legalFor(g, me).some(a => a.type === 'PLACE_MEEPLE')) return W.meepleOffTarget;
         return this.mode.k === 'place' || g.phase === 'placePiece' ? W.notAdjacent : W.nothingHere;
       case 'stack': {
         const s = g.stacks[t.index as 0 | 1 | 2];
@@ -1505,7 +1616,9 @@ export class PlayController {
         return belt && belt.ownerId !== me ? W.notYourBelt : W.nothingHere;
       }
       case 'point': return this.whyNotPoint(g, me, t.pieceId, t.point);
-      case 'deck': return W.nothingHere;
+      // The deck: the same reason the bank's Leverage card gives (empty deck, price, not now).
+      case 'deck': return this.current.reasons.get('bank:buyCard')
+        ?? (legalFor(g, me).some(a => a.type === 'BUY_CARD') ? W.deckFinishFirst : W.nothingHere);
     }
   }
 }

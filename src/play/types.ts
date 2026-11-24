@@ -19,7 +19,7 @@ export interface Item {
 
 /** What is currently "picked up". */
 export interface Selection {
-  kind: 'tile' | 'mine' | 'overstock' | 'drone' | 'building' | 'belt' | 'card' | 'teleporter' | 'meeple' | 'module';
+  kind: 'tile' | 'mine' | 'overstock' | 'drone' | 'building' | 'belt' | 'card' | 'teleporter' | 'meeple' | 'module' | 'exchange';
   label: string;
 }
 
@@ -62,6 +62,13 @@ export interface PlayView {
   tray: TrayEntry[];
   /** Belt, Leverage card, Mine, teleporter, exchange: price, enabled, reason when not. */
   bank: Item[];
+  /**
+   * Plate, Sphere and Tesseract in my materials (ids `inv:<material>`): pressing one offers to
+   * break it down into smaller materials; disabled ones carry the reason. Empty when not seated.
+   */
+  inventory: Item[];
+  /** The total value of my materials (each material at its value), null when not seated. */
+  totalValue: number | null;
   hand: (Item & { card: CardType; text: string })[];
   /** Operate-or-skip decisions I owe, even on other players' turns. */
   prompts: Prompt[];

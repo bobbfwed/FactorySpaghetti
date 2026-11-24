@@ -471,6 +471,7 @@ export function tableGameView(ctrl: AppController): View {
       targets: [], ghost: null, confirmBar: null, selection: null, menu: null, choices: null, prompts: [], hint: null, route: null, meeplePick: null,
       tray: v.tray.map(t => (t.state === 'lit' ? { module: t.module, state: 'inTray' as const } : t)),
       bank: v.bank.map(({ reason: _r, ...b }) => ({ ...b, enabled: false })),
+      inventory: v.inventory.map(({ reason: _r, ...b }) => ({ ...b, enabled: false })),
       hand: v.hand.map(({ reason: _r, ...c }) => ({ ...c, enabled: false })),
     };
   }
@@ -914,15 +915,17 @@ export function tableGameView(ctrl: AppController): View {
     }
     if (!hit) {
       if (phone && ui.sheetOpen) { ui.sheetOpen = false; ui.sheetUserClosed = true; autoOpened = false; schedule(); return; }
-      if (play.view.menu) play.cancel();
+      // Past the table's edge: closes a building menu, puts back a meeple spot awaiting confirmation.
+      play.tapNothing();
       return;
     }
-    lastTap = hit;
     // The explanation of a tap on something that is not lit appears next to what was tapped.
     const p = table?.screenPosition(hit) ?? null;
     tapToastAt = p ? { x: p.x, y: p.y, t: performance.now() } : null;
     play.tap(hit);
-    if (play.view.hint) { sound.play('refuse'); haptic('refuse'); }
+    // The confirm bar stands by the last tap that chose something: a refused tap does not move it
+    // (it would look like a Confirm for the empty spot just tapped).
+    if (play.view.hint) { sound.play('refuse'); haptic('refuse'); } else lastTap = hit;
   }
 
   function onKey(e: KeyboardEvent): void {

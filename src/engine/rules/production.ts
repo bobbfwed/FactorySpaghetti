@@ -12,6 +12,7 @@ import {
 } from '../config';
 import { resolveDirectAdjacency, fillInputsFromAdjacentMines } from './flow';
 import { factoryProduct, canLoadMaterial } from './recipes';
+import { mineSlotReward } from './mineRewards';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -427,21 +428,15 @@ function collectMeepleBenefits(state: GameState): GameState {
     const piece = state.board.find(p => p.id === player.meepleOnPieceId);
     if (!piece) return player;
 
-    if (piece.type === 'mine' && player.meepleSlotIndex === 0) {
-      // 1st mine → 2 ore; 2nd mine → 1 plate; 3rd mine → 1 sphere.
-      const mines = state.board.filter(p => p.type === 'mine');
-      const mineIdx = mines.findIndex(m => m.id === piece.id);
-      if (mineIdx === 0) {
-        return { ...player, inventory: { ...player.inventory, ore: Math.min(player.inventory.ore + 2, INVENTORY_CAP) } };
-      } else if (mineIdx === 1) {
-        return { ...player, inventory: { ...player.inventory, plate: Math.min(player.inventory.plate + 1, INVENTORY_CAP) } };
-      } else {
-        return { ...player, inventory: { ...player.inventory, sphere: Math.min(player.inventory.sphere + 1, INVENTORY_CAP) } };
+    if (piece.type === 'mine' && player.meepleSlotIndex !== null) {
+      // Resource point: 1st mine → 2 ore, 2nd → 1 plate, 3rd → 1 sphere; upgrade point: mines + 1
+      // credits (mineRewards.ts).
+      const r = mineSlotReward(state, piece.id, player.meepleSlotIndex);
+      if (r?.kind === 'material') {
+        const inv = player.inventory;
+        return { ...player, inventory: { ...inv, [r.material]: Math.min(inv[r.material] + r.amount, INVENTORY_CAP) } };
       }
-    }
-
-    if (piece.type === 'mine' && player.meepleSlotIndex === 1) {
-      return { ...player, freeActionCredits: player.freeActionCredits + state.mineCount + 1 };
+      if (r?.kind === 'credits') return { ...player, freeActionCredits: player.freeActionCredits + r.amount };
     }
 
     // Building output is NOT auto-collected. With a meeple on the building, the

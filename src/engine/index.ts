@@ -6,6 +6,7 @@ export { revealedStack } from './rules/pieces';
 export { upcomingTurnOrder } from './rules/production';
 export { canonicalAction, sameMove } from './actions';
 export { beltDirections, type BeltDirection } from './rules/beltDirection';
+export { mineSlotReward, cappedAmount, MINE_RESOURCE_REWARDS, type MineSlotReward } from './rules/mineRewards';
 
 export type {
   GameState,

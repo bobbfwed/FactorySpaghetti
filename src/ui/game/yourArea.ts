@@ -14,7 +14,7 @@ import { icon } from '../icons';
 import { bankRows } from './bank';
 import type { Ctx, SheetTab } from './context';
 import { seatColor, seatHex, seatName } from './context';
-import { MATERIAL_ICON, MATERIAL_LIST, cardFace, count, materialWell, moduleTray, pips, sectionHead } from './pieces';
+import { MATERIAL_ICON, MATERIAL_LIST, cardFace, count, materialWell, moduleTray, pips, sectionHead, totalValue } from './pieces';
 import { promptList } from './prompts';
 import { storageStrip } from './feedback';
 import { BONUS_NAME } from './rules';
@@ -72,16 +72,40 @@ function removeBeltButton(ctx: Ctx): HTMLElement {
   }, h('span', { class: 'tx', text: 'Remove' }));
 }
 
+/**
+ * Teleporters: like Lay a belt, a button that is lit when a teleporter can be placed now (the bank's
+ * "Place a teleporter"); pressed when it cannot, it says why.
+ */
+function teleporterButton(ctx: Ctx, cls: string): HTMLElement {
+  const p = ctx.game.players[ctx.me!]!;
+  const it = ctx.view.bank.find(b => b.id === 'bank:teleporter');
+  const color = seatColor(ctx.room, ctx.me);
+  const say = it ? (it.enabled ? `${it.label}: tap, then tap the buffer of one of your buildings` : it.reason ?? it.label) : 'Teleporters';
+  return h('button', {
+    class: `${cls} well tg-tpbtn${it?.enabled ? ' lit' : ''}`,
+    title: say,
+    attrs: { 'aria-label': `Teleporters left: ${p.teleportersRemaining}. ${it?.enabled ? 'Tap to place a teleporter' : it?.reason ?? ''}`, 'aria-disabled': String(!it?.enabled), 'data-item': 'bank:teleporter' },
+    onclick: () => ctx.play.choose('bank:teleporter'),
+  }, icon('teleporter', color), h('span', { class: 'nm', text: it?.enabled ? 'Place a teleporter' : 'Teleporters' }), h('span', { class: 'num', text: String(p.teleportersRemaining) }));
+}
+
 function components(ctx: Ctx, cls: string): Child[] {
   const p = ctx.game.players[ctx.me!]!;
-  const color = seatColor(ctx.room, ctx.me);
   return [
     h('div', { class: `${cls} well`, attrs: { 'aria-label': `Power Tokens: ${p.powerTokens} of ${POWER_TOKEN_CAP}` } },
       icon('power'), h('span', { class: 'nm', text: 'Power Tokens' }), h('span', { class: 'num' }, String(p.powerTokens), h('small', { text: `/${POWER_TOKEN_CAP}` }))),
     h('div', { class: 'tg-beltrow' }, beltButton(ctx, cls), removeBeltButton(ctx)),
-    h('div', { class: `${cls} well`, attrs: { 'aria-label': `Teleporters left: ${p.teleportersRemaining}` } },
-      icon('teleporter', color), h('span', { class: 'nm', text: 'Teleporters' }), h('span', { class: 'num', text: String(p.teleportersRemaining) })),
+    teleporterButton(ctx, cls),
   ];
+}
+
+/** My materials: Plate, Sphere and Tesseract are buttons that offer to break one down. */
+function materialWells(ctx: Ctx, cls?: string): HTMLElement[] {
+  const p = ctx.game.players[ctx.me!]!;
+  return MATERIAL_LIST.map(m => {
+    const item = ctx.view.inventory.find(i => i.id === `inv:${m}`);
+    return materialWell(m, p.inventory[m], cls, item ? { item, choose: id => ctx.play.choose(id) } : undefined);
+  });
 }
 
 function handCards(ctx: Ctx, fan: boolean): HTMLElement {
@@ -131,7 +155,7 @@ export function yourPanel(ctx: Ctx): HTMLElement | null {
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec comps' }, components(ctx, 'tg-comp')),
     h('div', { class: 'vr' }),
-    h('div', { class: 'tg-sec mats' }, h('div', { class: 'tg-mats' }, MATERIAL_LIST.map(m => materialWell(m, p.inventory[m])))),
+    h('div', { class: 'tg-sec mats' }, h('div', { class: 'tg-mats' }, materialWells(ctx)), totalValue(ctx.view.totalValue ?? 0)),
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec handsec' }, h('span', { class: 'label', text: `Hand · ${p.hand.length}` }), handCards(ctx, true),
       // Shown when the cards do not fit here even as title strips (handFit.ts).
@@ -165,8 +189,11 @@ function autoplayNote(ctx: Ctx): Child {
 function strip(ctx: Ctx): HTMLElement {
   const p = ctx.game.players[ctx.me!]!;
   const color = seatColor(ctx.room, ctx.me);
+  const worth = ctx.view.totalValue ?? 0;
   return h('div', { class: 'tg-strip well', attrs: { 'aria-label': 'Your materials' } },
     MATERIAL_LIST.map(m => count(MATERIAL_ICON[m], p.inventory[m], MATERIAL_NAME[m], undefined, p.inventory[m] === 0 ? 'zero' : '')),
+    // The total value, short: "= 11" right after the four materials (the Tray tab spells it out).
+    h('span', { class: 'tg-count tg-striptotal', title: W.totalValue(worth), attrs: { 'aria-label': W.totalValue(worth) } }, h('span', { class: 'num', text: `= ${worth}` })),
     h('span', { class: 'sep' }),
     count('power', p.powerTokens, 'Power Tokens'),
     count('card', p.hand.length, 'Leverage cards'),
@@ -182,13 +209,12 @@ function tabContent(ctx: Ctx): Child {
   switch (ctx.ui.sheetTab) {
     case 'tray': {
       if (ctx.me === null) return h('p', { class: 'muted', text: 'You are watching this game.' });
-      const p = g.players[ctx.me]!;
       const color = seatColor(ctx.room, ctx.me);
       return h('div', { class: 'tg-traytab' },
         h('div', { class: 'tg-trayrow' },
           h('div', null, sectionHead('Control Modules'), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'phone', ctx.view.instruction)),
           h('div', { class: 'side' }, sectionHead('Components'), components(ctx, 'tg-comp'),
-            h('div', { class: 'tg-mats' }, MATERIAL_LIST.map(m => materialWell(m, p.inventory[m], 'tg-mat small'))))),
+            h('div', { class: 'tg-mats' }, materialWells(ctx, 'tg-mat small')), totalValue(ctx.view.totalValue ?? 0))),
         h('div', { class: 'tg-kvs' },
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Tesseracts' }), h('span', { class: 'v' }, pips(tesseractCount(g, ctx.me as PlayerId)))),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
