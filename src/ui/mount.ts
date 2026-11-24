@@ -15,6 +15,7 @@ import { replayView } from './replayView';
 import { reportDialogView } from './reportDialog';
 import { closeConfirm, refreshConfirm } from './confirmDialog';
 import { onViewChange, preferredView } from './viewPref';
+import { setGuideHost } from './guide/open';
 
 type ViewKey = Exclude<Screen, 'game'> | 'game-table' | 'game-text';
 
@@ -22,7 +23,10 @@ export function mountApp(root: HTMLElement, ctrl: AppController, version: string
   const screenHost = h('div', { class: 'screen-host' });
   const toast = h('div', { class: 'toast', attrs: { role: 'status', 'aria-live': 'polite' }, hidden: true });
   const overlay = h('div', { class: 'overlay-host' });
-  root.replaceChildren(screenHost, toast, overlay);
+  // The game guide gets its own host, which no redraw touches, so it stays open across screens.
+  const guide = h('div', { class: 'guide-host' });
+  setGuideHost(guide);
+  root.replaceChildren(screenHost, toast, overlay, guide);
 
   let key: ViewKey | null = null;
   let view: View | null = null;

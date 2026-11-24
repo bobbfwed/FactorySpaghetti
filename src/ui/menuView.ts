@@ -8,6 +8,7 @@ import { h } from './dom';
 import { icon, mark } from './icons';
 import { askConfirm } from './confirmDialog';
 import { versionTag } from './version';
+import { openGuide } from './guide/open';
 
 export interface View {
   el: HTMLElement;
@@ -68,6 +69,8 @@ export function menuView(ctrl: AppController, version: string): View {
 
   const soloBtn = h('button', { class: 'btn btn-dark big', onclick: () => { void ctrl.solo(); } },
     icon('bot'), 'Play solo vs bots', h('span', { class: 'sub', text: 'no network' }));
+  const guideBtn = h('button', { class: 'btn btn-dark big guide-btn', attrs: { 'data-guide': '1' }, onclick: () => openGuide() },
+    icon('book'), 'Game guide', h('span', { class: 'sub', text: 'how to play' }));
 
   // ── Saved games ──
   const savesBox = h('div', { class: 'saves' });
@@ -145,6 +148,7 @@ export function menuView(ctrl: AppController, version: string): View {
       hostBtn,
       h('div', { class: 'join' }, codeWrap, joinBtn),
       soloBtn,
+      guideBtn,
       savesBox,
       loadBtn,
       loadPanel,

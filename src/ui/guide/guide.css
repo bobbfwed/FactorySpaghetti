@@ -1,0 +1,152 @@
+/* The game guide overlay. Phone first: one readable column at 360 px, every control at least
+   44 px, tables scrolling inside their own box. On wide screens the topic list sits beside the
+   page. Colours and buttons follow app.css (matte black trays, off-white text, gold accents). */
+
+html.guide-open, html.guide-open body { overflow: hidden; }
+
+.guide {
+  position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column;
+  background: #0e0b09; color: var(--text);
+  font-size: 16px; line-height: 1.55;
+}
+
+/* ---- header ---- */
+.g-head {
+  flex: none; display: flex; align-items: center; gap: 8px;
+  padding: calc(6px + env(safe-area-inset-top, 0px)) calc(8px + env(safe-area-inset-right, 0px)) 6px calc(8px + env(safe-area-inset-left, 0px));
+  background: var(--print), var(--panel);
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.06), 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.g-hbtn {
+  min-width: 44px; height: 44px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+  color: var(--text); padding: 0 10px; font-weight: 700; font-size: 15px;
+}
+.g-hbtn:hover { background: #232327; }
+.g-hbtn .ic { width: 20px; height: 20px; }
+.g-back .ic { transform: rotate(90deg); }
+.g-htitle {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-weight: 800; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-2);
+}
+.g-htitle .ic { color: var(--gold); width: 18px; height: 18px; }
+
+/* ---- body and layout ---- */
+.g-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.g-layout { max-width: 1120px; margin: 0 auto; }
+.g-sidewrap { display: none; }
+.g-main { min-width: 0; }
+.g-page {
+  max-width: 720px; margin: 0 auto;
+  padding: 18px calc(16px + env(safe-area-inset-right, 0px)) calc(40px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+}
+
+@media (min-width: 960px) {
+  .g-layout { display: grid; grid-template-columns: 270px minmax(0, 1fr); gap: 8px; padding: 0 16px; }
+  .g-sidewrap { display: block; position: sticky; top: 0; align-self: start; max-height: calc(100vh - 60px); overflow-y: auto; padding: 18px 0 24px; }
+  .g-page { padding-top: 26px; }
+}
+
+/* ---- text ---- */
+.g-page p { margin: 0 0 14px; }
+.g-page b { color: #fff; font-weight: 750; }
+.g-title { margin: 0 0 16px; font-weight: 900; font-size: 28px; line-height: 1.1; letter-spacing: 0.01em; text-transform: uppercase; }
+.g-title:focus { outline: none; }
+.g-crumb { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); font-weight: 800; margin-bottom: 6px; }
+.g-lead { color: var(--text-2); }
+.g-h {
+  margin: 28px 0 10px; font-size: 19px; line-height: 1.25; font-weight: 800; color: var(--text);
+  letter-spacing: 0; text-transform: none; scroll-margin-top: 12px;
+}
+.g-steps, .g-list { margin: 0 0 14px; padding-left: 26px; }
+.g-steps li, .g-list li { margin: 0 0 8px; padding-left: 2px; }
+.g-steps li::marker { color: var(--gold); font-weight: 800; }
+.g-list li::marker { color: var(--text-3); }
+
+/* Inline links are buttons, drawn as links; their touch area is padded without moving the text. */
+.g-link {
+  display: inline; color: var(--gold); text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px;
+  font: inherit; font-weight: 650; padding: 10px 0; margin: -10px 0; text-align: left; cursor: pointer;
+}
+.g-link:hover { color: var(--gold-hi); }
+
+/* ---- tables ---- */
+.g-tablewrap { overflow-x: auto; margin: 0 0 16px; border-radius: 10px; background: #0c0c0e; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.g-tablewrap:focus-visible { outline: 2px solid var(--gold); }
+.g-table { border-collapse: collapse; width: 100%; font-size: 14.5px; line-height: 1.45; }
+.g-table caption { caption-side: top; text-align: left; padding: 10px 12px 2px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
+.g-table th, .g-table td { padding: 9px 12px; text-align: left; vertical-align: top; border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.g-table thead th { border-top: 0; color: var(--text-3); font-size: 12px; letter-spacing: 0.04em; font-weight: 800; white-space: nowrap; }
+.g-table tbody th { font-weight: 700; color: var(--text); min-width: 7em; }
+.g-table td { color: #ddd8ce; min-width: 4.5em; }
+
+/* ---- notes, icons, changes ---- */
+.g-note { margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08); }
+.g-note p { margin: 0; }
+.g-note.tip { background: rgba(232, 183, 48, 0.08); box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.3); }
+.g-note.example { background: rgba(111, 227, 154, 0.06); box-shadow: inset 0 0 0 1px rgba(111, 227, 154, 0.25); }
+.g-note.warn { background: rgba(232, 165, 58, 0.1); box-shadow: inset 0 0 0 1px rgba(232, 165, 58, 0.4); color: #f6deb2; }
+.g-notelabel { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 800; color: var(--text-3); margin-bottom: 4px; }
+
+.g-icons { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0 0 14px; }
+.g-icons li { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px; border-radius: 10px; background: #1a1a1d; font-weight: 700; font-size: 14.5px; }
+.g-icons .ic { width: 22px; height: 22px; }
+
+.g-change { margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; background: var(--print), var(--panel); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.g-changetitle { font-weight: 800; margin-bottom: 8px; }
+.g-before, .g-now { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; font-size: 15px; }
+.g-before { color: var(--text-2); margin-bottom: 8px; }
+.g-lab { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 800; color: var(--text-3); }
+.g-now .g-lab { color: var(--gold); }
+
+/* ---- details ---- */
+.g-details { margin: 0 0 16px; border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.28); }
+.g-details > summary {
+  min-height: 44px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; cursor: pointer; list-style: none;
+  font-weight: 750; color: var(--gold); border-radius: 12px;
+}
+.g-details > summary::-webkit-details-marker { display: none; }
+.g-details > summary::before { content: "+"; display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; font-weight: 900; line-height: 1; }
+.g-details[open] > summary::before { content: "−"; }
+.g-details > summary:hover { background: rgba(232, 183, 48, 0.06); }
+.g-detailsbody { padding: 2px 14px 4px; font-size: 15px; }
+.g-detailsbody .g-tablewrap { background: #0a0a0b; }
+
+/* ---- related, pager ---- */
+.g-see { margin: 26px 0 0; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.g-see ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.g-see .g-link { padding: 12px 0; margin: 0; display: inline-block; }
+.g-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+.g-pager .btn { min-height: 60px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 8px 14px; text-align: left; }
+.g-pager .g-next { align-items: flex-end; text-align: right; grid-column: 2; }
+.g-dir { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
+.g-pt { font-size: 14.5px; line-height: 1.25; }
+.g-tocback { margin-top: 12px; display: flex; justify-content: center; }
+.g-tocback .btn { width: 100%; max-width: 360px; }
+
+/* ---- table of contents ---- */
+.g-sec { margin: 22px 0 0; }
+.g-sectitle { margin: 0 0 8px; }
+.g-toc { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.g-tocitem {
+  width: 100%; min-height: 56px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  padding: 10px 14px; border-radius: 12px; text-align: left;
+  background: var(--print), var(--panel-2); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+.g-tocitem:hover { box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.45); }
+.g-toct { font-weight: 800; font-size: 16px; color: var(--text); }
+.g-tocs { font-size: 14px; color: var(--text-2); line-height: 1.4; }
+@media (min-width: 640px) { .g-toc { grid-template-columns: 1fr 1fr; } }
+
+/* ---- side list (wide screens) ---- */
+.g-side { display: flex; flex-direction: column; gap: 2px; }
+.g-sidesec { margin-top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.g-sidetitle { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; padding: 0 10px 4px; }
+.g-sideitem { min-height: 44px; text-align: left; padding: 6px 10px; border-radius: 8px; font-size: 14.5px; color: var(--text-2); line-height: 1.3; }
+.g-sideitem:hover { background: #1d1d20; color: var(--text); }
+.g-sideitem.on { background: rgba(232, 183, 48, 0.12); color: var(--gold); font-weight: 700; }
+.g-sidehome { font-weight: 800; color: var(--text); }
+
+@media (max-width: 400px) {
+  .g-title { font-size: 24px; }
+  .g-pager .btn { padding: 8px 10px; }
+}

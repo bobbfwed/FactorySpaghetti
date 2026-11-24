@@ -9,6 +9,7 @@ import { feelItems } from './feelMenu';
 import { playtestItems } from '../playtestMenu';
 import { askLeave } from '../common';
 import { versionTag } from '../version';
+import { guideRoundButton, openGuide } from '../guide/open';
 
 export function menuButton(ctx: Ctx): HTMLElement {
   return h('button', {
@@ -39,6 +40,7 @@ export function gameMenu(ctx: Ctx): HTMLElement | null {
       : null,
     seat?.autopilot ? actionButton([icon('bot'), 'Take my seat back'], 'item', async () => { await c.takeSeatBack(); close(); }) : null,
     h('button', { class: 'item', attrs: { 'data-textview': '1' }, onclick: () => { close(); setPreferredView('text'); } }, icon('list'), 'Switch to the text view'),
+    h('button', { class: 'item', attrs: { 'data-guide-item': '1' }, onclick: () => { close(); openGuide(); } }, icon('book'), 'Game guide'),
     h('hr'),
     ...feelItems(ctx),
     h('hr'),
@@ -64,5 +66,6 @@ export function cameraButtons(ctx: Ctx): HTMLElement {
       class: `round${ctx.ui.topDown ? ' on' : ''}`, title: 'Top-down view',
       attrs: { 'aria-label': 'Top-down view', 'aria-pressed': String(ctx.ui.topDown) },
       onclick: () => { ctx.ui.topDown = !ctx.ui.topDown; ctx.camera.topDown(ctx.ui.topDown); ctx.redraw(); },
-    }, icon('topdown')));
+    }, icon('topdown')),
+    guideRoundButton());
 }
