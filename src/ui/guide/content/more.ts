@@ -5,6 +5,7 @@ import {
   bonusesEnabled,
 } from '../../../engine/config';
 import { defaultSettings } from '../../../session/room';
+import { BOT_TYPES } from '../../../bots/registry';
 import type { Topic } from '../types';
 import { minePointRows } from './turn';
 import { MATERIALS, MATERIAL_NAME, ORDINAL, cardPriceWords, listWords, mineCredits, minePriceWords, perMineWords } from './facts';
@@ -40,7 +41,7 @@ export const mines: Topic = {
     { k: 'table', head: ['Point', 'Gives'], rows: minePointRows() },
     {
       k: 'details', blocks: [
-        { k: 'p', t: 'A Mine covers two spaces side by side; at least one of them must touch the board. Choose its direction with the turn button before you confirm.' },
+        { k: 'p', t: 'A Mine covers two spaces side by side: its larger half, with ore exits all round, and its smaller half. The **larger half must touch the board**; the smaller half may point any way that is free. Only the spaces where that works glow. Choose its direction with the turn button before you confirm.' },
         { k: 'p', t: 'Where Ore comes out: see [[belts#points|Which holes take a belt]].' },
         { k: 'p', t: 'You cannot buy a Mine while a dropped Mine is still waiting to be placed.' },
         { k: 'p', t: 'Mines can never be removed.' },
@@ -139,7 +140,9 @@ export const online: Topic = {
     { k: 'p', t: 'The host sets these in the lobby, and can switch the first two off. Steps 1 to 4 of your own turn have no timer.' },
     { k: 'note', tone: 'warn', t: 'Timers keep counting while this guide is open, and the game carries on underneath it. If the game is waiting for you, close the guide to answer.' },
     { k: 'h', t: 'Bots', id: 'bots' },
-    { k: 'p', t: 'Bots follow the same rules and choose from the same legal moves as you. In the lobby the host chooses which kind of bot plays each bot seat. **Bot speed** (Instant, Fast or Normal) sets how quickly they move; on Normal you see each of their moves on the table.' },
+    { k: 'p', t: 'Bots follow the same rules and choose from the same legal moves as you. In the lobby (and on the solo **Game set-up** screen) the host chooses which kind of bot plays each bot seat, from the drop-down on the seat:' },
+    { k: 'list', items: BOT_TYPES.map(b => `**${b.label}**`) },
+    { k: 'p', t: 'A bot seat is named after its kind, numbered when there are several of a kind. **Bot speed** (Instant, Fast or Normal) sets how quickly bots move; on Normal you see each of their moves on the table.' },
     { k: 'h', t: 'Replays and rules problems', id: 'replays' },
     { k: 'p', t: 'The game menu can **Save replay** and **Watch this game again**; **Watch a replay** on the start menu opens a saved replay. If you think the game applied a rule wrongly, **Report a rules problem** writes a file with the game and your note. It sends nothing anywhere; pass the file to the game\'s designer.' },
     { k: 'h', t: 'Installing', id: 'install' },

@@ -29,6 +29,11 @@ html.guide-open, html.guide-open body { overflow: hidden; }
   font-weight: 800; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-2);
 }
 .g-htitle .ic { color: var(--gold); width: 18px; height: 18px; }
+.g-hbtn[hidden] { display: none; }
+/* Narrow phones: the Contents button keeps its icon and label; the header title gives way. */
+@media (max-width: 400px) { .g-head:has(.g-contentsbtn:not([hidden])) .g-htitletext { display: none; } }
+/* Wide screens list every topic beside the page, Contents first. */
+@media (min-width: 960px) { .g-contentsbtn { display: none; } }
 
 /* ---- body and layout ---- */
 .g-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }

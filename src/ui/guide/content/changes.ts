@@ -2,7 +2,7 @@
 // To add a release: put a new entry at the TOP of RELEASES (the test checks the order).
 
 import {
-  CARD_COUNTS, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
+  CARD_COUNTS, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import type { Block, PrintedGroup, Release, Topic } from '../types';
 import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, piecePoints, stackSize } from './facts';
@@ -68,7 +68,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: 'Paying with change keeps your best materials',
         before: 'Change came back all in Ore, and teleporters had to be paid with the exact amount.',
-        now: 'The game pays so that you keep the most valuable materials possible, breaking down only what it must: a Sphere and an Ore paying 3 leave a Plate and 2 Ore. Teleporters are paid with change like everything else.',
+        now: `The game pays so that you keep the most valuable materials possible, breaking down only what it must: a Sphere and an Ore paying 3 leave a Plate and 2 Ore. Change that does not fit under your limit of ${INVENTORY_CAP} is lost, and the game picks the payment that loses the least. Anything your materials are worth in total can be bought, teleporters included.`,
         see: 'bank#paying',
       },
       {
@@ -77,17 +77,42 @@ export const RELEASES: readonly Release[] = [
         now: 'You can also exchange in your round-end turn.',
         see: 'bank#exchange',
       },
+      {
+        title: 'A Mine\'s larger half must touch the board',
+        before: 'The rules let a Mine touch the board with its smaller half only, although the game never offered such a place.',
+        now: 'A Mine is placed with its larger half, the one with ore exits all round, touching the board. The smaller half may point any way that is free.',
+        see: 'mines',
+      },
+      {
+        title: 'Your meeple must be placed',
+        before: 'The rules let a turn end without placing the meeple, although the game always asked you to place it.',
+        now: 'If your meeple has anywhere to go, your turn cannot end until it is placed, and it is placed once per turn.',
+        see: 'step-meeple',
+      },
+      {
+        title: 'Every claim is paid for',
+        before: 'The rules did not stop a claim paid by nothing in the actions step, although the game never offered one.',
+        now: 'A claim is paid with Mine credits or with Production Increase. Only your first claims before the first turn, and Short Sale, are free.',
+        see: 'claiming',
+      },
+      {
+        title: 'Changing Priorities moves to another building',
+        before: 'Moving a Control Module onto the building it came from removed the claim and lost the module (the game never offered it).',
+        now: 'The Control Module must move to a different building.',
+        see: 'cards#changingPriorities',
+      },
     ],
     interface: [
       'This game guide, from the start menu and from the game.',
       'Press a Plate, Sphere or Tesseract in your materials to exchange it down.',
       'Your materials show their Total Value.',
+      'A purchase that gives change says what you will keep.',
       'The Teleporters tile lights up when you can place one, and says why when you cannot.',
       'Placing your meeple on a Mine point tells you what it will give you.',
       'Belts on the table point the way material flows.',
-      'Each player first sees the table from their own side; the turn button turns it 60° at a time.',
-      'The host chooses the kind of bot for each bot seat.',
-      'The start menu shows the version.',
+      'Each player first sees the table from their own side; the turn button turns it 60° at a time, keeping the board in view.',
+      'The host chooses the kind of bot for each bot seat, and the seat is named after its kind.',
+      'The start menu and the game menu show the version.',
     ],
   },
   {

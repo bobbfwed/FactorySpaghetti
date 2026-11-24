@@ -1,10 +1,11 @@
 // The few numbers the guide states that are not in the engine's config — what exchanging down
-// gives, and what a Mine's meeple points give — checked against the engine itself.
+// gives, what a Mine's meeple points give, and how paying with change comes out — checked against the engine.
 
 import { describe, it, expect } from 'vitest';
-import { applyAction, createGame } from '../../../engine';
+import { applyAction, createGame, payMaterials } from '../../../engine';
 import type { BoardPiece, GameState, Material, PlayerId } from '../../../engine';
 import { MATERIALS, MINE_RESOURCE_REWARD, exchangeDown, mineCredits } from '../content/facts';
+import { BELT_COST, INVENTORY_CAP, cardCost, teleporterCost } from '../../../engine/config';
 
 const EMPTY: Record<Material, number> = { ore: 0, plate: 0, sphere: 0, tesseract: 0 };
 
@@ -66,5 +67,14 @@ describe('numbers the guide states, checked against the engine', () => {
         expect(s.players[0]!.freeUpgradesRemaining).toBe(mines);
       }
     }
+  });
+
+  it('the payment examples in the guide are what the engine charges', () => {
+    // A Sphere and an Ore paying for a Leverage card with two Mines: a Plate and 2 Ore are kept.
+    expect(payMaterials({ ...EMPTY, sphere: 1, ore: 1 }, cardCost(2))).toEqual({ ...EMPTY, plate: 1, ore: 2 });
+    // 6 Plates and a Sphere buying a belt: a Plate is handed in, 2 Ore come back, the Sphere is kept.
+    expect(payMaterials({ ...EMPTY, plate: INVENTORY_CAP, sphere: 1 }, BELT_COST)).toEqual({ ...EMPTY, plate: INVENTORY_CAP - 1, sphere: 1, ore: 2 });
+    // A lone Sphere pays for the third teleporter.
+    expect(payMaterials({ ...EMPTY, sphere: 1 }, teleporterCost(2))).not.toBeNull();
   });
 });

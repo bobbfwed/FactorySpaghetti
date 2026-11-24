@@ -61,3 +61,12 @@ export function reduce(s: GuideState, e: GuideEvent): GuideState {
     }
   }
 }
+
+/**
+ * Whether the header offers a direct way to the table of contents: on every topic page (on a
+ * phone the side list is hidden, and the "All topics" button sits at the end of the page).
+ */
+export function offersContents(s: GuideState): boolean {
+  const cur = currentPage(s);
+  return s.open && cur !== null && cur.topic !== null;
+}

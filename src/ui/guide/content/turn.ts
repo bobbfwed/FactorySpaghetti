@@ -1,8 +1,8 @@
 // Your turn: the overview, the four steps, and the end of a round.
 
 import {
-  BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COUNT, PRODUCTION_INCREASE_BUDGET,
-  ROUND_END_TIMEOUT_MS,
+  BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COUNT, PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
+  PRODUCTION_INCREASE_BUDGET, ROUND_END_TIMEOUT_MS,
 } from '../../../engine/config';
 import type { Block, Topic } from '../types';
 import {
@@ -39,7 +39,7 @@ export const turn: Topic = {
         '**Place meeple** on one of your buildings or on a Mine point. Confirming it ends your turn. [[step-meeple|More…]]',
       ],
     },
-    { k: 'p', t: `You may play up to **${MAX_CARDS_PLAYED_PER_TURN} Leverage cards** per turn, during your actions step. There is no limit on buying them.` },
+    { k: 'p', t: `You may play up to **${MAX_CARDS_PLAYED_PER_TURN} Leverage cards** per turn, during your actions step${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? '; a card played as soon as it is drawn counts as one of them' : ''}. There is no limit on buying them. See [[cards|Leverage cards]].` },
     { k: 'p', t: 'When everyone has had a turn, the round ends and each player takes a short **round-end turn**: free upgrades, Mine rewards, and the building their meeple stands on. See [[round-end|The end of a round]].' },
     { k: 'p', t: 'Each round starts one player further on: the player who went first moves to the end of the order.' },
     { k: 'note', tone: 'tip', t: 'Other players\' rolls can activate your buildings too. If one of your factories is activated, the game asks whether to run it, even when it is not your turn. See [[production|Production]].' },
@@ -61,7 +61,7 @@ export const stepPlace: Topic = {
     {
       k: 'details', blocks: [
         { k: 'p', t: 'Choosing a stack is final, even though you only see the piece afterwards.' },
-        { k: 'p', t: 'A dropped Mine is placed at the start of the next turn, by the player whose turn it is, in place of their piece. A Mine needs two free spaces side by side, and at least one of them must touch the board.' },
+        { k: 'p', t: 'A dropped Mine is placed at the start of the next turn, by the player whose turn it is, in place of their piece. A Mine needs two free spaces side by side, and its larger half (the one with ore exits all round) must touch the board; the smaller half may point any way that is free. See [[mines|Mines]].' },
         { k: 'p', t: 'Pieces can also come from Leverage cards: Overstock Supplies takes the top pieces of the lowest-numbered open stack, and Scouting Drone lets you pick a piece from any open stack. These come on top of your normal piece for the turn.' },
       ],
     },
@@ -121,13 +121,13 @@ export const stepActions: Topic = {
         ['Buy a belt', 'Bank: **Belt**', String(BELT_COST)],
         ['Remove a belt', 'Press **Remove**, then tap one of your belts', 'Free; it goes back to your supply'],
         ['Buy a Leverage card', 'Bank: **Leverage card**', `Number of Mines + 1 (${cardPriceWords()})`],
-        ['Play a Leverage card', 'Tap it in your hand. [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn`],
-        ['Buy a Mine', 'Bank: **Mine**, then place it like a piece. [[mines|Mines]]', minePriceWords()],
-        ['Place a teleporter', 'Press **Teleporters**, then tap a buffer of your building. [[teleporters|Teleporters]]', 'Teleporters on the board + 1'],
-        ['Exchange materials', 'Press a Plate, Sphere or Tesseract, or the bank\'s **Exchange**. [[bank#exchange|Exchanging]]', 'Free'],
+        ['Play a Leverage card', 'Tap it in your hand, then **Play**. [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ', cards played as soon as they are drawn included' : ''}`],
+        ['Buy a Mine', 'Bank: **Mine**, then place it like a piece, its larger half touching the board. [[mines|Mines]]', minePriceWords()],
+        ['Place a teleporter', 'Press the **Teleporters** tile (it reads **Place a teleporter** when you can), then tap the input or output of one of your buildings. [[teleporters|Teleporters]]', 'Teleporters on the board + 1'],
+        ['Exchange materials', 'Press a Plate, Sphere or Tesseract, or the bank\'s **Exchange**, then **Exchange** to confirm. [[bank#exchange|Exchanging]]', 'Free'],
       ],
     },
-    { k: 'p', t: 'Prices are paid in material value, and the game gives change. See [[bank|The bank]].' },
+    { k: 'p', t: 'You can buy anything your materials are worth in total: the game pays for you and gives change, keeping your most valuable materials. See [[bank#paying|Paying with change]].' },
     { k: 'h', t: 'Factory decisions come first' },
     { k: 'p', t: 'If your roll activated one of your own factories, decide **Run it** or **Skip** before anything else. Factories of other players are decided by their owners on their own devices: you can carry on meanwhile, but **Done with actions** waits until they have answered.' },
     { k: 'h', t: 'Finishing' },
@@ -149,20 +149,21 @@ export const stepMeeple: Topic = {
   title: 'Step 4: Place your meeple',
   summary: 'On one of your buildings, or on a Mine\'s resource or upgrade point.',
   blocks: [
-    { k: 'p', t: 'Every turn ends with placing your meeple. It stays there until the end of the round. Tap a glowing spot and confirm; confirming ends your turn.' },
+    { k: 'p', t: 'Every turn ends with placing your meeple. If it has anywhere to go, it **must** be placed: your turn cannot end without it. It stays there until the end of the round. Tap a glowing spot and confirm; confirming ends your turn.' },
     {
       k: 'table', head: ['Where', 'What it gives you at the end of the round'], rows: [
         ['One of your buildings', 'In your round-end turn you may load its input from your materials, run it once (even if its number was not rolled), and collect its output. See [[round-end|The end of a round]].'],
         ...minePointRows(),
       ],
     },
-    { k: 'p', t: 'Each Mine point holds one meeple. When you choose a Mine point, the game tells you what it will give you.' },
+    { k: 'p', t: `Each Mine point holds one meeple. When you choose a Mine point, the game says what it will give you, for example "Place your meeple on the Mine resource point to gain ${amount(MINE_RESOURCE_REWARD[0]!.n, MINE_RESOURCE_REWARD[0]!.material)} at the end of the round?", and warns you if your limit of ${INVENTORY_CAP} would cut the reward.` },
     {
       k: 'details', blocks: [
         { k: 'p', t: 'A resource point\'s reward depends on which Mine it is — the order in which the Mines came into play — not on how many Mines there are.' },
         { k: 'p', t: 'An upgrade point gives the same on every Mine: the number of Mines on the board at the end of the round, plus 1.' },
         { k: 'p', t: `Rewards above your limit of ${INVENTORY_CAP} of a material are lost.` },
-        { k: 'p', t: 'If there is nowhere for your meeple (every Mine point taken and no building of yours on the board), you end your turn without placing it.' },
+        { k: 'p', t: 'Only if there is nowhere for your meeple (every Mine point taken and no building of yours on the board) do you end your turn without placing it: the button then reads **No place for your meeple: end turn**.' },
+        { k: 'p', t: 'Your meeple is placed once per turn. Tapping somewhere that is not a glowing spot puts your choice back; only a glowing spot can be confirmed.' },
       ],
     },
   ],

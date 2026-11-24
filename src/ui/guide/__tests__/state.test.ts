@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { GuideEvent, GuideState } from '../state';
-import { CLOSED, currentPage, reduce } from '../state';
+import { CLOSED, currentPage, offersContents, reduce } from '../state';
 
 const run = (events: GuideEvent[], from: GuideState = CLOSED): GuideState => events.reduce(reduce, from);
 const topics = (s: GuideState): (string | null)[] => s.stack.map(p => p.topic);
@@ -64,5 +64,23 @@ describe('guide navigation', () => {
   it('ignores Back and scrolling while closed', () => {
     expect(reduce(CLOSED, { type: 'back' })).toBe(CLOSED);
     expect(reduce(CLOSED, { type: 'scroll', y: 5 })).toBe(CLOSED);
+  });
+});
+
+describe('the header\'s Contents button', () => {
+  it('is offered on every topic page, not on the contents itself', () => {
+    expect(offersContents(CLOSED)).toBe(false);
+    let s = run([{ type: 'open' }]);
+    expect(offersContents(s)).toBe(false);
+    s = reduce(s, { type: 'go', topic: 'belts' });
+    expect(offersContents(s)).toBe(true);
+    s = reduce(s, { type: 'go', topic: 'cards', anchor: 'sinkHole' });
+    expect(offersContents(s)).toBe(true);
+    // Pressing it goes to the contents (Back then returns to the topic).
+    s = reduce(s, { type: 'go', topic: null });
+    expect(offersContents(s)).toBe(false);
+    expect(topics(reduce(s, { type: 'back' }))).toEqual([null, 'belts', 'cards']);
+    // Opened straight at a topic (from a link in the game), too.
+    expect(offersContents(run([{ type: 'open', topic: 'bank', anchor: 'exchange' }]))).toBe(true);
   });
 });

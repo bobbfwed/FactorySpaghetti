@@ -105,22 +105,22 @@ export const screen: Topic = {
       k: 'list', items: [
         '**The turn bar** shows whose turn it is, the four steps of a turn with the current one marked, the round number, and any countdown.',
         '**Other players**: a chip for each opponent with their materials, Power Tokens, cards and belts. Tap one for everything about that player.',
-        '**Camera buttons** (top right): turn the table 60°, re-centre it, switch to a view from straight above, and open this game guide.',
-        '**The game menu** (the ☰ button): copy the save link, download the save file, share it, save a replay, report a rules problem, let a bot play your seat (**Autoplay my seat**), switch to the text view, animation, sound and vibration settings, and **Leave game**.',
+        '**The round buttons** at the top right: **Turn the table 60°**, **Re-centre**, **Top-down view** (a view from straight above), and the book, which opens this **Game guide**. Turning the table keeps the board in the part of the screen your panels leave free.',
+        '**The game menu** (the ☰ button): **Copy save link**, **Download save file**, **Share save…**, **Save replay**, **Watch this game again**, **Report a rules problem**, **Autoplay my seat** (a bot plays for you), **Switch to the text view**, **Game guide**, the animation, sound and vibration settings, and **Leave game**. The version of the game is shown at its foot.',
       ],
     },
     { k: 'h', t: 'Your area' },
-    { k: 'p', t: 'Your area holds your Control Module tray, your materials with their **Total Value**, your Power Tokens, belts, teleporters and the Leverage cards in your hand. On a phone it is the sheet at the bottom of the screen: pull it up for the tabs **Tray**, **Cards**, **Log** and **Rules**.' },
+    { k: 'p', t: 'Your area holds your Control Module tray, your meeple, your Power Tokens, belts, teleporters, your materials with their **Total Value** (for example "Total Value: 11"), and the Leverage cards in your hand. On a phone it is the sheet at the bottom of the screen; pulled down, it shows your materials with their total after an equals sign ("= 11"). Pull it up for the tabs **Tray**, **Cards**, **Log** and **Rules**.' },
     {
       k: 'list', items: [
-        '**Lay a belt** starts laying belts; **Remove** takes one of your belts back. See [[belts|Belts]].',
-        '**Teleporters** places a teleporter. It glows when you can; when you cannot, pressing it tells you why. See [[teleporters|Teleporters]].',
-        'Pressing a **Plate**, **Sphere** or **Tesseract** in your materials offers to exchange it for smaller materials. See [[bank#exchange|Exchanging]].',
+        'The **Belts** tile reads **Lay a belt** and glows when you can lay belts: press it to start. **Remove** beside it takes one of your belts back. See [[belts|Belts]].',
+        'The **Teleporters** tile reads **Place a teleporter** and glows when you can place one. When you cannot, pressing it tells you why: none left, too little material value, or no free input or output on your buildings. See [[teleporters|Teleporters]].',
+        'Pressing a **Plate**, **Sphere** or **Tesseract** in your materials offers to exchange it for smaller materials: the game asks, for example, "Exchange 1 Sphere for 2 Plates and 1 Ore?", and **Exchange** confirms. See [[bank#exchange|Exchanging]].',
         'Your **Leverage cards**: tap one to read it and play it.',
       ],
     },
     { k: 'h', t: 'The bank' },
-    { k: 'p', t: 'The bank sells belts, Leverage cards, Mines and teleporters, and exchanges materials. Prices are in material value. On a desktop the bank sits at the top right; on a phone it is in the **Tray** tab. A greyed item tells you why when you tap it. See [[bank|The bank]].' },
+    { k: 'p', t: 'The bank sells a **Belt**, a **Leverage card**, a **Mine** and a **Teleporter**, each with its price in material value, and has **Exchange** for breaking materials down. On a desktop the bank sits at the top right; on a phone it is in the **Tray** tab. A greyed item tells you why when you tap it. See [[bank|The bank]].' },
     { k: 'h', t: 'The reference tabs' },
     { k: 'p', t: 'On a desktop, the tabs on the right edge open the **Log** (everything that has happened), the **Rules** reference (one page with the current prices), and **Bonuses** (who holds each bonus card). On a phone they are in the sheet.' },
     { k: 'h', t: 'Using the table' },
@@ -141,7 +141,7 @@ export const starting: Topic = {
   title: 'Starting a game',
   summary: 'Hosting, joining with a room code, playing against bots, and the setup the game does for you.',
   blocks: [
-    { k: 'p', t: 'Type your name on the start menu first. It is how the others see you, and how you get your seat back when a saved game is resumed.' },
+    { k: 'p', t: 'Type your name on the start menu first (**Your name**). It is how the others see you, and how you get your seat back when a saved game is resumed. The version of the game is shown under the title: a large number such as **0.1** with a smaller one such as **.02** after it.' },
     { k: 'h', t: 'Three ways to play' },
     {
       k: 'list', items: [
@@ -150,15 +150,18 @@ export const starting: Topic = {
         '**Play solo vs bots**: a game on this device only, against bots. It needs no network; once the app is installed it also works offline.',
       ],
     },
+    { k: 'p', t: 'The start menu also lists your saved games (**Resume**), and has **Game guide**, **Load a save (link or file)** and **Watch a replay**.' },
     { k: 'h', t: 'The lobby' },
     {
       k: 'list', items: [
-        'The host chooses the number of players (2, 3 or 4), fills empty seats with bots (**Add bot**), and chooses which kind of bot plays each bot seat.',
+        'The host chooses the number of players (2, 3 or 4) and fills empty seats with bots (**Add bot**). Each bot seat has a drop-down for the kind of bot that plays it; everyone sees the kind on the seat. See [[online#bots|Bots]].',
+        'A bot seat is named after its kind ("Smart Bot", "Smart Bot 2"), and is renamed when the host changes its kind. A player\'s seat handed to a bot keeps the player\'s name.',
         'Everyone picks a colour.',
         'Players press **Ready**; the host presses **Start** once everyone is ready.',
         'The host also sets the bot speed and the timers. See [[online#timers|Timers]].',
       ],
     },
+    { k: 'p', t: 'A solo game opens on its **Game set-up** screen instead: the number of players, the bot speed, your colour, and the kind of bot for each opponent, then **Start**.' },
     { k: 'h', t: 'What the game sets up for you', id: 'setup' },
     {
       k: 'steps', items: [

@@ -90,7 +90,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
       p('Play it from your hand, tap the building to take the module from, then the building to move it to, choose the module, and confirm.'),
     ],
     details: [
-      p('The module must not be below the number of Mines.'),
+      p('The module must not be below the number of Mines, and it must go to a different building.'),
       p('If this takes away your last claim on a building, your teleporters on it come back to you. See [[teleporters|Teleporters]].'),
       p('In this version the receiving building can be any Factory or Power Plant: one of yours, an unclaimed one (which you claim this way), or even one another player has claimed (you then share it).'),
     ],
@@ -156,7 +156,7 @@ export const cards: Topic = {
   summary: `Buying and playing them, and what each of the ${CARD_TYPES.length} cards does.`,
   blocks: [
     { k: 'p', t: `Buy Leverage cards from the bank in your actions step, for the number of Mines + 1 (${cardPriceWords()}). You get the top card of the deck without seeing it first. Buy as many as you can pay for.` },
-    { k: 'p', t: `Play cards from your hand in your actions step: tap a card to read it, choose what it acts on if it asks, and confirm. You can play **${MAX_CARDS_PLAYED_PER_TURN} cards per turn**.` },
+    { k: 'p', t: `Play cards from your hand in your actions step: tap a card to read it and press **Play**, then choose what it acts on if it asks, and confirm. You can play **${MAX_CARDS_PLAYED_PER_TURN} cards per turn**; your area shows how many you have played this turn ("Leverage cards played 1 / ${MAX_CARDS_PLAYED_PER_TURN}").` },
     { k: 'p', t: `${listWords(onDraw.map(c => `**${CARD_NAME[c]}**`))} are **played as soon as they are drawn** and never go to your hand. Each uses up one of your ${MAX_CARDS_PLAYED_PER_TURN} plays for the turn if you have one left; if you have already played ${MAX_CARDS_PLAYED_PER_TURN}, it still takes effect. Buying is never blocked.` },
     { k: 'p', t: `Played cards go to the discard pile. The deck holds ${deckSize()} cards; once it is empty, no more can be bought.` },
     {

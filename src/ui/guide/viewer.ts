@@ -14,7 +14,7 @@ import { GUIDE } from './content';
 import { splitTarget } from './inline';
 import { renderPage, renderSideList } from './render';
 import type { GuideEvent, GuideState } from './state';
-import { CLOSED, currentPage, reduce } from './state';
+import { CLOSED, currentPage, offersContents, reduce } from './state';
 import { toDom } from './vdom';
 
 const HISTORY_KEY = 'fsGuide';
@@ -120,11 +120,21 @@ function build(host: HTMLElement): void {
 
   const title = document.createElement('div');
   title.className = 'g-htitle';
-  title.append(icon('book'), Object.assign(document.createElement('span'), { textContent: 'Game guide' }));
+  title.append(icon('book'), Object.assign(document.createElement('span'), { className: 'g-htitletext', textContent: 'Game guide' }));
+
+  // Straight to the table of contents from any topic page (narrow screens: wide ones have the side list).
+  const contentsBtn = document.createElement('button');
+  contentsBtn.className = 'g-hbtn g-contentsbtn';
+  contentsBtn.setAttribute('type', 'button');
+  contentsBtn.setAttribute('data-nav', 'contents');
+  contentsBtn.setAttribute('aria-label', 'Contents');
+  contentsBtn.title = 'Contents';
+  contentsBtn.hidden = true;
+  contentsBtn.append(icon('list'), Object.assign(document.createElement('span'), { className: 'g-contentstext', textContent: 'Contents' }));
 
   const head = document.createElement('header');
   head.className = 'g-head';
-  head.append(backBtn, title, closeBtn);
+  head.append(backBtn, title, contentsBtn, closeBtn);
 
   side = document.createElement('div');
   side.className = 'g-sidewrap';
@@ -175,6 +185,8 @@ function sync(): void {
   const onContents = cur.topic === null && state.stack.length === 1;
   backBtn?.setAttribute('aria-label', onContents ? 'Close the guide' : 'Back');
   backBtn?.setAttribute('title', onContents ? 'Close the guide' : 'Back');
+  const contentsBtn = root.querySelector<HTMLElement>('.g-contentsbtn');
+  if (contentsBtn) contentsBtn.hidden = !offersContents(state);
 
   // Where to look: the heading asked for, or where the reader was, or the top.
   const target = cur.anchor ? main.querySelector<HTMLElement>(`[data-anchor="${CSS.escape(cur.anchor)}"]`) : null;

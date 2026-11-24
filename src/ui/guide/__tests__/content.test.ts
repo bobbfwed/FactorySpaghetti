@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { CARD_COUNTS } from '../../../engine/config';
+import { BOT_TYPES } from '../../../bots/registry';
 import { GUIDE, findTopic, topicOrder } from '../content';
 import { CARD_GUIDE } from '../content/cards';
 import { PRINTED_GROUPS, RELEASES } from '../content/changes';
@@ -116,7 +117,8 @@ describe('guide content', () => {
   it('describes the newest release with its rule changes, each as before and now', () => {
     const newest = RELEASES[0]!;
     expect(newest.version).toBe('0.1.2');
-    expect(newest.rules.length).toBe(10);
+    // The ten changes the designer decided, plus the four moves the engine now refuses (#43).
+    expect(newest.rules.length).toBe(14);
     for (const c of newest.rules) {
       expect(c.before.length).toBeGreaterThan(10);
       expect(c.now.length).toBeGreaterThan(10);
@@ -136,5 +138,19 @@ describe('guide content', () => {
     for (const id of ['claiming', 'production', 'factories', 'moving', 'belts', 'teleporters', 'bank', 'cards', 'bonuses', 'winning', 'round-end']) {
       expect(withDetails, id).toContain(id);
     }
+  });
+
+  it('names every kind of bot the host can choose, by its label', () => {
+    const online = allText(findTopic('online')!).join(' ');
+    for (const b of BOT_TYPES) expect(online, b.id).toContain(`**${b.label}**`);
+  });
+
+  it('states the rules this release settled: payment with change and the limit, the Mine\'s larger half, the meeple', () => {
+    const all = GUIDE.topics.flatMap(allText).map(plainText).join(' ');
+    expect(all).toContain('Change that fits nowhere is lost');
+    expect(all).toContain('larger half must touch the board');
+    expect(all).toMatch(/If it has anywhere to go, it must be placed/);
+    // Old wording that is no longer true.
+    expect(all).not.toMatch(/paid exactly|at least one of them must touch the board/i);
   });
 });
