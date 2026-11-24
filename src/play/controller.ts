@@ -12,7 +12,7 @@ import type {
 } from '../engine/actions';
 import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
 import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
-import { applyAction, legalActions } from '../engine/reducer';
+import { applyAction } from '../engine/reducer';
 import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
 import { revealedStack as revealedStackOf } from '../engine/rules/pieces';
 import type { RoutePoint } from '../engine/routing';
@@ -22,7 +22,7 @@ import type { Ghost, Target } from '../table/types';
 import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
 import {
   EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, exchangeOutcome, inventoryValue, isBuilding,
-  legalFor, nextMinePrice, pieceById, runBlock, runPreview,
+  legalFor, nextMinePrice, pieceById, runBlock, runPreview, teleporterSpotFree,
 } from './info';
 import {
   CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, amountOf, materialList, pieceName, playerName, selectionLabel,
@@ -1496,11 +1496,7 @@ export class PlayController {
    */
   private teleporterReason(g: GameState, player: Player, price: number, worth: number): string {
     if (player.teleportersRemaining <= 0) return W.noTeleporters;
-    const rich: GameState = {
-      ...g,
-      players: g.players.map(p => (p.id === player.id ? { ...p, inventory: { ore: 999, plate: 0, sphere: 0, tesseract: 0 } } : p)),
-    };
-    if (!legalActions(rich, player.id).some(a => a.type === 'PLACE_TELEPORTER')) return W.noFreeBuffer;
+    if (!teleporterSpotFree(g, player.id)) return W.noFreeBuffer;
     // The materials are the problem: too little value, or (with exact payment) the wrong change.
     return worth < price ? W.cantAfford(price, worth) : W.cantPayExact(price);
   }

@@ -30,6 +30,28 @@ export function legalFor(game: GameState, me: PlayerId): Action[] {
   return list;
 }
 
+const spotCache = new WeakMap<GameState, Map<PlayerId, boolean>>();
+
+/**
+ * Would the engine list a teleporter for `me` if materials were no object? (Same state, the
+ * player's materials replaced by plenty of Ore.) Tells "too poor" apart from "no free buffer"
+ * without a copy of the rules; memoised on the (immutable) state object.
+ */
+export function teleporterSpotFree(game: GameState, me: PlayerId): boolean {
+  let m = spotCache.get(game);
+  if (!m) { m = new Map(); spotCache.set(game, m); }
+  let v = m.get(me);
+  if (v === undefined) {
+    const rich: GameState = {
+      ...game,
+      players: game.players.map((p, i) => (i === me ? { ...p, inventory: { ore: 999, plate: 0, sphere: 0, tesseract: 0 } } : p)),
+    };
+    v = legalActions(rich, me).some(a => a.type === 'PLACE_TELEPORTER');
+    m.set(me, v);
+  }
+  return v;
+}
+
 /** Canonical key of an action (field order independent), for set membership. */
 export function actionKey(a: Action): string {
   const o = a as unknown as Record<string, unknown>;
