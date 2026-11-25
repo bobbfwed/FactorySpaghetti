@@ -107,13 +107,42 @@ function econ(ctx: Ctx, s: GameState): number {
   const p = s.players[ctx.me]!;
   let v = 0;
   for (const m of MATS) v += p.inventory[m] * worth(ctx, m);
-  v += p.powerTokens * ctx.pv;
+  v += powerWorth(ctx, p.powerTokens);
   for (const b of s.board) {
     if (b.type === 'mine' || !owns(b, ctx.me)) continue;
     if (b.output) for (const x of b.output.slots) if (x) v += 0.75 * worth(ctx, x);
     if (b.input) for (const x of b.input.slots) if (x && x !== 'ore') v += 0.4 * MATERIAL_VALUES[x];
   }
   return v;
+}
+
+/**
+ * Worth of holding `tokens` Power Tokens. Tokens are fuel: the first few (enough for the next
+ * Tesseract run) are worth a lot, later ones less, and none past what a turn or two can burn —
+ * so a bot never trades a Sphere for ten tokens it will not use.
+ */
+function powerWorth(ctx: Ctx, tokens: number): number {
+  let v = 0;
+  for (let i = 0; i < tokens; i++) v += ctx.pv * (i < 3 ? 1.5 : i < 6 ? 0.8 : 0.25);
+  return v;
+}
+
+/** The listed move that leaves the bot's economy best (null if none is listed). */
+function bestByEcon(ctx: Ctx, acts: readonly Action[]): { a: Action; gain: number } | null {
+  const base = econ(ctx, ctx.state);
+  let best: { a: Action; gain: number } | null = null;
+  for (const a of acts) {
+    const s = after(ctx.state, a);
+    if (!s) continue;
+    const gain = econ(ctx, s) - base;
+    if (best === null || gain > best.gain + 1e-9) best = { a, gain };
+  }
+  return best;
+}
+
+/** Moves of the step itself, without the Leverage card plays now listed in every step of the turn. */
+function stepMoves(acts: readonly Action[]): Action[] {
+  return acts.filter(a => a.type !== 'PLAY_CARD' && !((a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') && a.fromProductionIncrease === true));
 }
 
 function legal(state: GameState, a: Action): boolean {
@@ -182,14 +211,18 @@ function fallback(state: GameState, me: PlayerId): Action {
 // ── Run or skip an activated factory ──────────────────────────────────────────
 
 function decidePending(ctx: Ctx): Action | null {
+  // Each listed run names what it takes from the inventory through the input teleporter (its
+  // supply); weigh each against what is handed over and take the best, else skip. A Power Plant
+  // with the bot's teleporter must run (no skip is listed), so the best run is taken anyway —
+  // usually with nothing supplied.
   const acts = legalActions(ctx.state, ctx.me);
-  const base = econ(ctx, ctx.state);
-  for (const a of acts) {
-    if (a.type !== 'OPERATE_BUILDING') continue;
-    const s = after(ctx.state, a);
-    if (s && econ(ctx, s) > base + 0.01) return a;
-  }
-  return acts.find(a => a.type === 'SKIP_FACTORY_ROLL') ?? null;
+  const first = acts.find(a => a.type === 'OPERATE_BUILDING' || a.type === 'SKIP_FACTORY_ROLL');
+  const pieceId = first && (first.type === 'OPERATE_BUILDING' || first.type === 'SKIP_FACTORY_ROLL') ? first.pieceId : null;
+  const mine = acts.filter(a => (a.type === 'OPERATE_BUILDING' || a.type === 'SKIP_FACTORY_ROLL') && a.pieceId === pieceId);
+  const skip = mine.find(a => a.type === 'SKIP_FACTORY_ROLL');
+  const best = bestByEcon(ctx, mine.filter(a => a.type === 'OPERATE_BUILDING'));
+  if (best && (best.gain > 0.01 || !skip)) return best.a;
+  return skip ?? null;
 }
 
 // ── Setup claims ──────────────────────────────────────────────────────────────
@@ -330,7 +363,7 @@ function mineSpotScore(ctx: Ctx, mineId: string, coord: { q: number; r: number }
 
 function decidePlacePiece(ctx: Ctx): Action | null {
   const state = ctx.state;
-  const acts = legalActions(state, ctx.me);
+  const acts = stepMoves(legalActions(state, ctx.me));
   if (acts.length === 0) return null;
   if (acts[0]!.type === 'DRAW_PIECE') return decideDraw(ctx, acts);
   if (acts[0]!.type === 'PLACE_MINE') {
@@ -516,18 +549,20 @@ function harvestWorth(ctx: Ctx, b: BoardPiece): number {
 
 function decideMeeple(ctx: Ctx): Action | null {
   const { state } = ctx;
-  const acts = legalActions(state, ctx.me);
+  const acts = stepMoves(legalActions(state, ctx.me));
   if (acts.length === 1) return acts[0]!;
-  const credits = state.mineCount + 1;
-  let creditCache: number | null = null;
+  const creditCache = new Map<number, number>();
   const best = pickBest(acts, a => {
     if (a.type !== 'PLACE_MEEPLE') return -Infinity;
     const piece = state.board.find(b => b.id === a.pieceId);
     if (!piece) return -Infinity;
     if (piece.type === 'mine') {
       if (a.slotIndex === 1) {
-        if (creditCache === null) creditCache = creditsWorth(ctx, credits);
-        return creditCache + ctx.style.meepleUpgrade;
+        // Each Mine's upgrade point pays the credits printed on it (2 / 3 / 4).
+        const r = mineSlotReward(state, piece.id, 1);
+        const credits = r && r.kind === 'credits' ? r.amount : state.mineCount + 1;
+        if (!creditCache.has(credits)) creditCache.set(credits, creditsWorth(ctx, credits));
+        return creditCache.get(credits)! + ctx.style.meepleUpgrade;
       }
       const r = mineSlotReward(state, piece.id, 0);
       if (!r || r.kind !== 'material') return -Infinity;
@@ -565,12 +600,9 @@ function roundEndRun(ctx: Ctx, acts: readonly Action[]): Action | null {
   const { state } = ctx;
   const collect = acts.find(a => a.type === 'COLLECT_OUTPUT');
   if (collect) return collect;
-  const operate = acts.find(a => a.type === 'OPERATE_BUILDING');
-  const base = econ(ctx, state);
-  if (operate) {
-    const s = after(state, operate);
-    if (s && econ(ctx, s) > base + 0.01) return operate;
-  }
+  // The meeple's run: the plain run or one naming what its input teleporter takes from the inventory.
+  const run = bestByEcon(ctx, acts.filter(a => a.type === 'OPERATE_BUILDING'));
+  if (run && run.gain > 0.01) return run.a;
   const p = ctx.p;
   if (p.meepleOperatedThisRound || p.meepleOnPieceId === null || p.meepleSlotIndex !== null) return null;
   const b = state.board.find(x => x.id === p.meepleOnPieceId);
@@ -791,13 +823,15 @@ function cardWorth(ctx: Ctx, card: CardType): number {
 
 function buyCard(ctx: Ctx): Action | null {
   const { state, style } = ctx;
-  if (state.cardDeck.length === 0) return null;
+  // The deck's order is hidden; what is left in it is known (the discards are face-up). An
+  // empty deck is refilled from the discard pile when a card is bought.
+  const pool = state.cardDeck.length > 0 ? state.cardDeck : state.cardDiscard;
+  if (pool.length === 0) return null;
   const cost = cardCost(state.mineCount);
   if (!affordable(ctx, cost)) return null;
-  // The deck's order is hidden; what is left in it is known (the discards are face-up).
   let sum = 0;
-  for (const c of state.cardDeck) sum += cardWorth(ctx, c);
-  const expected = sum / state.cardDeck.length;
+  for (const c of pool) sum += cardWorth(ctx, c);
+  const expected = sum / pool.length;
   if (expected * (0.6 + style.cardAppetite) <= cost) return null;
   return { type: 'BUY_CARD' };
 }
