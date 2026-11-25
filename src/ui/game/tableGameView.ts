@@ -17,7 +17,7 @@ import './game.css';
 import type { AppController, AppState } from '../../app/controller';
 import type { Action } from '../../engine/actions';
 import type { GameState, PieceType, PlayerId } from '../../engine/state';
-import { PlayController } from '../../play';
+import { PlayController, reshuffledBy } from '../../play';
 import type { PlayView } from '../../play';
 import type { Room } from '../../session/room';
 import type { PlayerColor, Table, Target, ViewInsets } from '../../table/types';
@@ -370,19 +370,30 @@ export function tableGameView(ctrl: AppController): View {
         }, wait);
       }
       cues(prev, info.room);
-      announcePlayOnDraw(info.room);
+      announcePlayOnDraw(info.room, prev.game ? reshuffledBy(prev.game, info.room.lastEvents) : 0);
     }
     schedule();
   }
 
-  /** A Leverage card played as soon as it was drawn: say so on the table, for the buyer and everyone else. */
-
-  function announcePlayOnDraw(r: Room): void {
+  /**
+   * A Leverage card played as soon as it was drawn, and a discard pile shuffled into a new deck
+   * (a card bought from an empty deck): say so on the table, for the buyer and everyone else.
+   */
+  function announcePlayOnDraw(r: Room, reshuffled: number): void {
+    const bought = r.lastEvents.find(e => e.kind === 'cardBought');
     const ev = r.lastEvents.find(e => e.kind === 'cardBought' && e.playedOnDraw);
-    if (!ev || ev.kind !== 'cardBought' || !ev.card || !r.game) return;
+    const shuffleText = reshuffled > 0 ? W.reshuffled(reshuffled) : '';
+    if (!ev || ev.kind !== 'cardBought' || !ev.card || !r.game) {
+      if (!shuffleText || !bought) return;
+      setAnnounce({ seq: r.seq, seat: bought.seat, text: shuffleText });
+      return;
+    }
     const you = ev.seat === ctrl.mySeat;
     const n = ev.card === 'overstockSupplies' ? r.game.overstockPieces.length : 0;
-    const a = { seq: r.seq, seat: ev.seat, text: W.playOnDraw(ev.card, seatName(r, ev.seat), n, you) };
+    setAnnounce({ seq: r.seq, seat: ev.seat, text: `${shuffleText ? `${shuffleText} ` : ''}${W.playOnDraw(ev.card, seatName(r, ev.seat), n, you)}` });
+  }
+
+  function setAnnounce(a: { seq: number; seat: number; text: string }): void {
     ui.announce = a;
     if (announceTimer) clearTimeout(announceTimer);
     announceTimer = setTimeout(() => { if (ui.announce === a) { ui.announce = null; schedule(); } }, ANNOUNCE_MS);

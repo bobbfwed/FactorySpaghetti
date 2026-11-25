@@ -41,6 +41,18 @@ function upgrades(ctx: Ctx): string {
   return parts.length ? parts.join(' · ') : '0';
 }
 
+/** "Spend Production Increase": its upgrades can be spent in any step of the turn it was played in. */
+function piButton(ctx: Ctx): Child {
+  const it = ctx.view.bank.find(b => b.id === 'bank:pi');
+  if (!it || !it.enabled) return null;
+  return h('button', {
+    class: 'btn btn-dark tg-pibtn', title: `${it.label}: ${it.detail ?? ''}`,
+    attrs: { 'data-item': it.id, 'data-act': it.id, 'aria-label': `${it.label}, ${it.detail ?? ''}` },
+    // The buildings to tap are on the table: the phone's sheet makes way for them.
+    onclick: () => { if (ctx.phone) ctx.ui.sheetOpen = false; ctx.play.choose(it.id); },
+  }, h('span', { text: it.label }), h('small', { text: it.detail ?? '' }));
+}
+
 function bonusChips(ctx: Ctx): Child {
   const p = ctx.game.players[ctx.me!]!;
   const held = (Object.keys(p.bonusTesseracts) as (keyof typeof p.bonusTesseracts)[]).filter(k => p.bonusTesseracts[k]);
@@ -149,6 +161,7 @@ export function yourPanel(ctx: Ctx): HTMLElement | null {
       bonusChips(ctx),
       h('div', { class: 'tg-kv2' }, icon('meeple', color), h('span', { text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
       h('div', { class: 'tg-kv2' }, h('span', { text: 'Upgrades' }), h('span', { class: 'v', text: upgrades(ctx) })),
+      piButton(ctx),
       ctx.view.myTurn ? h('div', { class: 'tg-kv2' }, h('span', { text: 'Leverage cards played' }), h('span', { class: 'v num', text: `${g.cardsPlayedThisTurn} / ${MAX_CARDS_PLAYED_PER_TURN}` })) : null),
     h('div', { class: 'vr' }),
     h('div', { class: 'tg-sec' }, h('span', { class: 'label', text: 'Control Modules' }), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'desk', ctx.view.instruction)),
@@ -219,6 +232,7 @@ function tabContent(ctx: Ctx): Child {
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Tesseracts' }), h('span', { class: 'v' }, pips(tesseractCount(g, ctx.me as PlayerId)))),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Upgrades' }), h('span', { class: 'v', text: upgrades(ctx) })),
+          piButton(ctx),
           ctx.view.myTurn ? h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Leverage cards played this turn' }), h('span', { class: 'v', text: `${g.cardsPlayedThisTurn} / ${MAX_CARDS_PLAYED_PER_TURN}` })) : null),
         bonusChips(ctx),
         g.gameOver ? null : h('div', null, sectionHead('Bank', h('span', { class: 'muted', text: 'prices in material value' })), bankRows(ctx)));

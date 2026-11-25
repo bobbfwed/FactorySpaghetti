@@ -10,7 +10,8 @@ import type { PlayerId } from '../engine/state';
 import { tesseractCount } from '../engine/rules/scoring';
 import type { Room, Seat } from '../session/room';
 import { activeSeat } from '../session/room';
-import { CARD_NAME, CARD_TEXT } from '../play/words';
+import { CARD_NAME, CARD_TEXT, W } from '../play/words';
+import { piecesExhausted } from '../engine';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import type { IconName } from './icons';
@@ -76,7 +77,8 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     h('div', { class: 'gb-phase' },
       h('div', { class: `gb-turn${myTurn ? ' mine' : ''}`, style: turn !== null ? `--seat:${COLORS[room.seats[turn]!.color]}` : '' },
         turn !== null && !g.gameOver ? h('span', { class: 'sw' }) : null, turnText),
-      h('div', { class: 'muted', text: g.gameOver ? '' : phaseWords(g) })),
+      h('div', { class: 'muted', text: g.gameOver ? '' : phaseWords(g) }),
+      !g.gameOver && piecesExhausted(g) ? h('div', { class: 'final-round', attrs: { role: 'note' }, text: W.finalRound }) : null),
     h('button', {
       class: 'btn btn-quiet icon-only', title: 'Game menu',
       attrs: { 'aria-label': 'Game menu', 'aria-expanded': String(ui.menuOpen) },
@@ -132,11 +134,10 @@ function promptsBlock(ctrl: AppController, room: Room): HTMLElement | null {
     mine.map(p => h('div', { class: 'prompt tray' },
       h('div', { class: 'prompt-text' },
         h('b', { text: `Your ${p.label} was activated by the roll.` }),
-        h('span', { class: 'muted', text: ` Operate: ${p.cost}` }),
-        p.seat !== active && left !== null ? h('span', { class: 'countdown', text: `${seconds(left)} left, then it operates if it can` }) : null),
+        p.cost ? h('span', { class: 'muted', text: ` Operate: ${p.cost}` }) : null,
+        p.seat !== active && left !== null ? h('span', { class: 'countdown', text: `${seconds(left)} left, then it runs only if it can without your materials` }) : null),
       h('div', { class: 'row' },
-        actionButton('Operate', 'btn btn-gold btn-lg', () => ctrl.act(p.operate), { disabled: busy }),
-        actionButton('Skip', 'btn btn-dark btn-lg', () => ctrl.act(p.skip), { disabled: busy })))),
+        p.options.map((o, i) => actionButton(o.label, `btn ${i === 0 && !o.skip ? 'btn-gold' : 'btn-dark'} btn-lg`, () => ctrl.act(o.action), { disabled: busy }))))),
     others.map(p => h('div', { class: 'prompt-other' },
       h('span', { class: 'sw', style: `background:${COLORS[room.seats[p.seat]!.color]}` }),
       h('span', { text: `${room.seats[p.seat]?.name ?? 'A player'} is choosing whether to operate the ${p.label}` }),

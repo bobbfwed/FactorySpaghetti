@@ -6,8 +6,8 @@ import {
 } from '../../../engine/config';
 import type { Block, Topic } from '../types';
 import {
-  MINE_NUMBERS, MINE_RESOURCE_REWARD, ORDINAL, amount, cardPriceWords, diceOdds, likeliest, listWords, mineCredits,
-  minePriceWords, percent, perMineWords,
+  MINE_NUMBERS, MINE_RESOURCE_REWARD, ORDINAL, amount, cardPriceWords, diceOdds, likeliest, listWords, upgradePointWords,
+  minePriceWords, percent,
 } from './facts';
 
 const seconds = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
@@ -21,7 +21,7 @@ export function resourcePointWords(): string {
 export function minePointRows(): string[][] {
   return [
     ['Resource point', resourcePointWords()],
-    ['Upgrade point', `**Mine credits**: the number of Mines + 1 (${perMineWords(mineCredits)}). Spend them on one claim and on upgrades during your round-end turn.`],
+    ['Upgrade point', `**Mine credits**: the number printed on the Mine (${upgradePointWords()}), however many Mines are in play. Spend them on one claim and on upgrades during your round-end turn.`],
   ];
 }
 
@@ -35,14 +35,15 @@ export const turn: Topic = {
       k: 'steps', items: [
         '**Place a piece**: draw a board piece and add it to the board. [[step-place|More…]]',
         '**Roll**: roll one die per Mine. Every building whose Control Module matches the total may run. [[step-roll|More…]]',
-        '**Actions**: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, and play cards. Press **Done with actions** when finished. [[step-actions|More…]]',
+        '**Actions**: buy and lay belts, buy Leverage cards and Mines, place teleporters and exchange materials. Press **Done with actions** when finished. [[step-actions|More…]]',
         '**Place meeple** on one of your buildings or on a Mine point. Confirming it ends your turn. [[step-meeple|More…]]',
       ],
     },
-    { k: 'p', t: `You may play up to **${MAX_CARDS_PLAYED_PER_TURN} Leverage cards** per turn, during your actions step${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? '; a card played as soon as it is drawn counts as one of them' : ''}. There is no limit on buying them. See [[cards|Leverage cards]].` },
+    { k: 'p', t: `You may play up to **${MAX_CARDS_PLAYED_PER_TURN} Leverage cards** per turn, in any of the four steps of your own turn — even before you place your piece, or after your meeple is down${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? '; a card played as soon as it is drawn counts as one of them' : ''}. Cards are bought in the actions step, with no limit. See [[cards|Leverage cards]].` },
+    { k: 'p', t: 'Once the pieces have run out, a turn has no piece to place: it starts at the roll. The round is still played to the end, round-end turns included, and then the game ends. See [[winning#exhausted|When the pieces run out]].' },
     { k: 'p', t: 'When everyone has had a turn, the round ends and each player takes a short **round-end turn**: free upgrades, Mine rewards, and the building their meeple stands on. See [[round-end|The end of a round]].' },
     { k: 'p', t: 'Each round starts one player further on: the player who went first moves to the end of the order.' },
-    { k: 'note', tone: 'tip', t: 'Other players\' rolls can activate your buildings too. If one of your factories is activated, the game asks whether to run it, even when it is not your turn. See [[production|Production]].' },
+    { k: 'note', tone: 'tip', t: 'Other players\' rolls can activate your buildings too. If one of your factories is activated (or a Power Plant with your teleporter on its empty input), the game asks you how to run it, even when it is not your turn. See [[production|Production]].' },
   ],
   see: ['step-place', 'round-end'],
 };
@@ -57,11 +58,12 @@ export const stepPlace: Topic = {
     { k: 'note', tone: 'tip', t: 'Turn a building so its input faces something useful: a Mine\'s ore exit, another building\'s output, or a spot where your belts can reach it.' },
     { k: 'h', t: 'When a stack runs out' },
     { k: 'p', t: 'When a stack becomes empty, the next Mine **drops** into play by itself and the stack under it opens. The next player places that Mine instead of drawing a piece. See [[mines|Mines]].' },
-    { k: 'p', t: 'When all three stacks are empty, the game ends. See [[winning|Winning and the end of the game]].' },
+    { k: 'p', t: 'When all three stacks are empty, the round is finished: every remaining turn starts at the roll (the turn bar shows step 1 struck through), the round-end turns are played, and then the game ends. A notice says **The pieces have run out: this is the final round.** See [[winning#exhausted|When the pieces run out]].' },
     {
       k: 'details', blocks: [
         { k: 'p', t: 'Choosing a stack is final, even though you only see the piece afterwards.' },
-        { k: 'p', t: 'A dropped Mine is placed at the start of the next turn, by the player whose turn it is, in place of their piece. A Mine needs two free spaces side by side, and its larger half (the one with ore exits all round) must touch the board; the smaller half may point any way that is free. See [[mines|Mines]].' },
+        { k: 'p', t: 'A dropped Mine is placed at the start of the next turn, by the player whose turn it is, in place of their piece. A Mine needs two free spaces side by side, and either half may touch the board. See [[mines|Mines]].' },
+        { k: 'p', t: 'You may play Leverage cards in this step too, before your piece is placed. Scouting Drone only before you draw: once you have drawn from a stack, the drawn piece must be placed first.' },
         { k: 'p', t: 'Pieces can also come from Leverage cards: Overstock Supplies takes the top pieces of the lowest-numbered open stack, and Scouting Drone lets you pick a piece from any open stack. These come on top of your normal piece for the turn.' },
       ],
     },
@@ -90,8 +92,8 @@ export const stepRoll: Topic = {
     { k: 'p', t: 'Every building with a Control Module equal to the total **activates**, whoever owns it:' },
     {
       k: 'list', items: [
-        '**Power Plants** run at once and give their owner Power Tokens.',
-        '**Factories** that are able to run ask their owner: **Run it** or **Skip**. Running costs Power Tokens and uses up the inputs. See [[production|Production]].',
+        '**Power Plants** run at once and give their owner Power Tokens — except one with its owner\'s teleporter on its empty input: its owner chooses whether to provide a material for more Power Tokens. See [[teleporters#supply|Supplying through a teleporter]].',
+        '**Factories** that are able to run ask their owner how to run them, or to **Skip**. Running costs Power Tokens and uses up the inputs. See [[production|Production]].',
       ],
     },
     { k: 'p', t: 'Material also moves along belts and between touching pieces, just before and just after the buildings run. See [[moving#when|When material moves]].' },
@@ -121,22 +123,22 @@ export const stepActions: Topic = {
         ['Buy a belt', 'Bank: **Belt**', String(BELT_COST)],
         ['Remove a belt', 'Press **Remove**, then tap one of your belts', 'Free; it goes back to your supply'],
         ['Buy a Leverage card', 'Bank: **Leverage card**', `Number of Mines + 1 (${cardPriceWords()})`],
-        ['Play a Leverage card', 'Tap it in your hand, then **Play**. [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ', cards played as soon as they are drawn included' : ''}`],
-        ['Buy a Mine', 'Bank: **Mine**, then place it like a piece, its larger half touching the board. [[mines|Mines]]', minePriceWords()],
+        ['Play a Leverage card', 'Tap it in your hand, then **Play** (also in the other steps of your turn). [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ', cards played as soon as they are drawn included' : ''}`],
+        ['Buy a Mine', 'Bank: **Mine**, then place it like a piece; either half may touch the board. [[mines|Mines]]', minePriceWords()],
         ['Place a teleporter', 'Press the **Teleporters** tile (it reads **Place a teleporter** when you can), then tap the input or output of one of your buildings. [[teleporters|Teleporters]]', 'Teleporters on the board + 1'],
         ['Exchange materials', 'Press a Plate, Sphere or Tesseract, or the bank\'s **Exchange**, then **Exchange** to confirm. [[bank#exchange|Exchanging]]', 'Free'],
       ],
     },
     { k: 'p', t: 'You can buy anything your materials are worth in total: the game pays for you and gives change, keeping your most valuable materials. See [[bank#paying|Paying with change]].' },
-    { k: 'h', t: 'Factory decisions come first' },
-    { k: 'p', t: 'If your roll activated one of your own factories, decide **Run it** or **Skip** before anything else. Factories of other players are decided by their owners on their own devices: you can carry on meanwhile, but **Done with actions** waits until they have answered.' },
+    { k: 'h', t: 'Decisions on your buildings come first' },
+    { k: 'p', t: 'If your roll activated one of your own buildings and the game asks you about it, decide how to run it (or **Skip**) before anything else. Factories of other players are decided by their owners on their own devices: you can carry on meanwhile, but **Done with actions** waits until they have answered.' },
     { k: 'h', t: 'Finishing' },
     { k: 'p', t: 'Press **Done with actions**. Only then does material move along the belts you laid this turn, so until then you can lay, remove and re-lay belts as you like. **Undo belts** (take back this turn\'s belts) returns every belt you laid this turn to your supply.' },
     { k: 'note', t: 'You cannot claim buildings in this step except with a Leverage card (Short Sale, Production Increase or Changing Priorities). Claims normally happen at the end of the round, with Mine credits. See [[claiming|Claiming and upgrading]].' },
     {
       k: 'details', blocks: [
         { k: 'p', t: 'If you bought Overstock Supplies, place all its pieces before **Done with actions**.' },
-        { k: 'p', t: `Upgrades left over from Production Increase (it gives ${PRODUCTION_INCREASE_BUDGET}) are lost when you press **Done with actions**.` },
+        { k: 'p', t: `Upgrades left over from Production Increase (it gives ${PRODUCTION_INCREASE_BUDGET}) can still be spent in step 4 (press **Spend Production Increase** under Upgrades in your area); they are lost when your turn ends.` },
         { k: 'p', t: 'Belts cannot be laid or removed at any other time: not in another step, not in your round-end turn.' },
       ],
     },
@@ -149,7 +151,7 @@ export const stepMeeple: Topic = {
   title: 'Step 4: Place your meeple',
   summary: 'On one of your buildings, or on a Mine\'s resource or upgrade point.',
   blocks: [
-    { k: 'p', t: 'Every turn ends with placing your meeple. If it has anywhere to go, it **must** be placed: your turn cannot end without it. It stays there until the end of the round. Tap a glowing spot and confirm; confirming ends your turn.' },
+    { k: 'p', t: 'Every turn ends with placing your meeple. If it has anywhere to go, it **must** be placed: your turn cannot end without it. It stays there until the end of the round. Tap a glowing spot and confirm; confirming ends your turn — unless you could still play a Leverage card, in which case the game waits for **End turn**.' },
     {
       k: 'table', head: ['Where', 'What it gives you at the end of the round'], rows: [
         ['One of your buildings', 'In your round-end turn you may load its input from your materials, run it once (even if its number was not rolled), and collect its output. See [[round-end|The end of a round]].'],
@@ -160,7 +162,7 @@ export const stepMeeple: Topic = {
     {
       k: 'details', blocks: [
         { k: 'p', t: 'A resource point\'s reward depends on which Mine it is — the order in which the Mines came into play — not on how many Mines there are.' },
-        { k: 'p', t: 'An upgrade point gives the same on every Mine: the number of Mines on the board at the end of the round, plus 1.' },
+        { k: 'p', t: `An upgrade point gives the number printed on its Mine: ${upgradePointWords()}. The number of Mines in play does not change it.` },
         { k: 'p', t: `Rewards above your limit of ${INVENTORY_CAP} of a material are lost.` },
         { k: 'p', t: 'Only if there is nowhere for your meeple (every Mine point taken and no building of yours on the board) do you end your turn without placing it: the button then reads **No place for your meeple: end turn**.' },
         { k: 'p', t: 'Your meeple is placed once per turn. Tapping somewhere that is not a glowing spot puts your choice back; only a glowing spot can be confirmed.' },
@@ -188,7 +190,7 @@ export const roundEnd: Topic = {
       k: 'list', items: [
         'Use your **free upgrades** to raise Control Modules on **one** building. They cannot pay for a claim.',
         'Spend **Mine credits** on one claim and on upgrades on any of your buildings.',
-        'If your meeple is on one of your buildings: load its input from your materials, **Run it** once, and **Collect the output** — each optional, in any order.',
+        'If your meeple is on one of your buildings: load its input from your materials, **Run it** once, and **Collect the output** — each optional, in any order. With your teleporter on its input you can also run it by providing materials straight from your inventory.',
         'Exchange materials with the bank.',
       ],
     },
@@ -201,7 +203,8 @@ export const roundEnd: Topic = {
         { k: 'p', t: 'Running your meeple\'s building works whether or not its number was rolled. You pay the Power Tokens as usual. A factory whose output is full cannot run: collect first, then run, then collect again if you like.' },
         { k: 'p', t: 'Loading only fills empty input slots; you can never swap or take out what is there. Only a material that keeps a valid recipe possible can go in. See [[factories|Factories and recipes]].' },
         { k: 'p', t: 'Just before the round-end turns, every input that touches a Mine\'s ore exit directly is filled with Ore. After each round-end turn, material moves along belts, so an output you leave behind is carried on at once.' },
-        { k: 'p', t: `The upgrade-point credits depend on the number of Mines at the end of the round: ${perMineWords(mineCredits)}.` },
+        { k: 'p', t: `The upgrade-point credits are the number printed on the Mine: ${upgradePointWords()}.` },
+        { k: 'p', t: 'In the last round (the pieces have run out) the round-end turns are still played; the game ends after the last of them.' },
       ],
     },
   ],

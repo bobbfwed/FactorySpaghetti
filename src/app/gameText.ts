@@ -5,10 +5,11 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
-import { legalActions, revealedStack } from '../engine';
+import { legalActions, piecesExhausted, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
+import { supplyWords } from '../play/words';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
 
@@ -20,7 +21,7 @@ export function phaseWords(game: GameState): string {
     case 'placePiece':
       if (game.pendingMineIds.length > 0) return 'Step 1: place the dropped Mine';
       return revealedStack(game) === null ? 'Step 1: draw a board piece' : 'Step 1: place a board piece';
-    case 'roll': return 'Step 2: roll the dice';
+    case 'roll': return piecesExhausted(game) ? 'Step 2: roll the dice (no pieces are left to place)' : 'Step 2: roll the dice';
     case 'actions': return 'Step 3: actions';
     case 'placeMeeple': return 'Step 4: place your meeple';
     case 'roundEnd': return 'Round end: operate and upgrade';
@@ -144,7 +145,7 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
     case 'LOAD_BUILDING_INPUT':
       return { group: 'buildings', label: `Load 1 ${MATERIAL_NAME[a.material]} into the ${piece(a.pieceId)}` };
     case 'OPERATE_BUILDING':
-      return { group: 'buildings', label: `Run the ${piece(a.pieceId)}` };
+      return { group: 'buildings', label: runLabel(piece(a.pieceId), a.supply) };
     case 'COLLECT_OUTPUT':
       return { group: 'buildings', label: `Collect the output of the ${piece(a.pieceId)}` };
     case 'SKIP_FACTORY_ROLL':
@@ -224,8 +225,16 @@ export interface OperatePrompt {
   pieceId: string;
   label: string;
   cost: string;
-  operate: Action;
-  skip: Action;
+  /**
+   * Every way the owner may answer, as legalActions lists it: run it from its input, run it
+   * providing materials through their input teleporter (one option per supply), skip it.
+   */
+  options: { label: string; action: Action; skip: boolean }[];
+}
+
+/** "Run the Tesseract Factory, providing a Sphere and a Plate" (or plainly "Run the Plate Factory"). */
+export function runLabel(building: string, supply: readonly Material[] | undefined): string {
+  return supply && supply.length > 0 ? `Run the ${building}, providing ${supplyWords(supply)}` : `Run the ${building}`;
 }
 
 /** Every operate-or-skip decision still owed, by any seat (so everyone sees who is deciding). */
@@ -233,14 +242,22 @@ export function operatePrompts(room: Room): OperatePrompt[] {
   const game = room.game;
   if (!game || room.phase !== 'playing') return [];
   const names = room.seats.map(s => s.name);
-  return game.pendingFactoryOps.map(e => ({
-    seat: e.ownerId,
-    pieceId: e.pieceId,
-    label: pieceLabel(game, e.pieceId, names, null),
-    cost: operateCost(game, e.pieceId),
-    operate: { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: e.ownerId },
-    skip: { type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: e.ownerId },
-  }));
+  return game.pendingFactoryOps.map(e => {
+    const piece = game.board.find(p => p.id === e.pieceId);
+    const building = piece ? BUILDING_NAME[piece.type] : 'building';
+    const options = legalActions(game, e.ownerId)
+      .filter(a => (a.type === 'OPERATE_BUILDING' || a.type === 'SKIP_FACTORY_ROLL') && a.pieceId === e.pieceId && a.ownerId === e.ownerId)
+      .map(a => (a.type === 'OPERATE_BUILDING'
+        ? { label: runLabel(building, a.supply), action: a, skip: false }
+        : { label: `Skip the ${building}`, action: a, skip: true }));
+    return {
+      seat: e.ownerId,
+      pieceId: e.pieceId,
+      label: pieceLabel(game, e.pieceId, names, null),
+      cost: operateCost(game, e.pieceId),
+      options,
+    };
+  });
 }
 
 export interface Standing { seat: number; won: boolean; tesseracts: number; points: number }
@@ -268,7 +285,7 @@ export function gameOverWords(room: Room): string {
   if (!g || !g.gameOver) return '';
   const name = (i: number): string => room.seats[i]?.name || `Seat ${i + 1}`;
   const how = g.gameOverReason === 'tesseracts' ? 'with 4 Tesseracts' : g.gameOverReason === 'boardExhausted'
-    ? 'on points (the board pieces ran out)' : '';
+    ? 'on points (the pieces ran out, the last round was finished and material value was counted)' : '';
   if (g.winner !== null) return `${name(g.winner)} wins ${how}.`.replace(' .', '.');
   if (g.tiedWinners.length > 0) return `${g.tiedWinners.map(name).join(' and ')} share the win ${how}.`.replace(' .', '.');
   return 'The game is over.';
@@ -285,8 +302,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   // Engine: whose turn and which step
   WRONG_PHASE: 'That is not allowed at this step of the turn.',
   GAME_OVER: 'The game is over.',
-  PENDING_FACTORY_OPS: 'Every activated factory must be run or skipped first.',
-  DECISION_PENDING: 'First choose whether to run or skip your activated factory.',
+  PENDING_FACTORY_OPS: 'Every activated building must be run or skipped first.',
+  DECISION_PENDING: 'First decide on your activated building: run it (choosing what to supply, if anything) or skip it.',
   NOT_PENDING: 'That building was not activated by this roll.',
   OVERSTOCK_PENDING: 'Place the Overstock Supplies pieces first.',
   PENDING_MINE: 'Place the dropped Mine first.',

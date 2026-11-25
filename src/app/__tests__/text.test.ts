@@ -83,7 +83,7 @@ describe('game text', () => {
     const room = playingRoom({ ...g, gameOver: true, winner: 1, gameOverReason: 'tesseracts' });
     expect(gameOverWords(room)).toBe('Bea wins with 4 Tesseracts.');
     const tie = playingRoom({ ...g, gameOver: true, winner: null, tiedWinners: [0, 1], gameOverReason: 'boardExhausted' });
-    expect(gameOverWords(tie)).toBe('Ann and Bea share the win on points (the board pieces ran out).');
+    expect(gameOverWords(tie)).toBe('Ann and Bea share the win on points (the pieces ran out, the last round was finished and material value was counted).');
   });
 
   it('orders the final standings: winners first, then by the measure the game was won on', () => {

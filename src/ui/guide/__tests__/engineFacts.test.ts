@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { MINE_UPGRADE_REWARDS, applyAction, createGame, payMaterials } from '../../../engine';
 import type { BoardPiece, GameState, Material, PlayerId } from '../../../engine';
-import { MATERIALS, MINE_RESOURCE_REWARD, exchangeDown } from '../content/facts';
+import { MATERIALS, MINE_RESOURCE_REWARD, MINE_UPGRADE_REWARD, exchangeDown } from '../content/facts';
 import { BELT_COST, INVENTORY_CAP, cardCost, teleporterCost } from '../../../engine/config';
 
 const EMPTY: Record<Material, number> = { ore: 0, plate: 0, sphere: 0, tesseract: 0 };
@@ -59,15 +59,14 @@ describe('numbers the guide states, checked against the engine', () => {
     }
   });
 
-  // RULES_CHANGES.md #49: the upgrade point now gives the number printed on its Mine (2, 3, 4),
-  // whatever the number of Mines. The guide's `mineCredits` (Mines + 1) and its wording still
-  // state the old rule and are to be rewritten with the interface for these rules; until then
-  // this checks the engine's number, MINE_UPGRADE_REWARDS.
-  it('a Mine\'s upgrade point gives the number printed on that Mine, however many Mines are in play', () => {
+  // RULES_CHANGES.md #49: the upgrade point gives the number printed on its Mine (2, 3, 4),
+  // whatever the number of Mines. The guide states it as MINE_UPGRADE_REWARD.
+  it('a Mine\'s upgrade point gives what the guide says (the number printed on that Mine), however many Mines are in play', () => {
+    expect(MINE_UPGRADE_REWARD).toEqual(MINE_UPGRADE_REWARDS);
     for (const mines of [1, 2, 3]) {
       for (let m = 0; m < mines; m++) {
         const s = roundEndWith(mines, [{ mine: m, slot: 1 }, { mine: m, slot: 0 }]);
-        expect(s.players[0]!.freeActionCredits, `${mines} Mines, Mine ${m + 1}`).toBe(MINE_UPGRADE_REWARDS[m]);
+        expect(s.players[0]!.freeActionCredits, `${mines} Mines, Mine ${m + 1}`).toBe(MINE_UPGRADE_REWARD[m]);
         expect(s.players[0]!.freeUpgradesRemaining).toBe(mines);
       }
     }

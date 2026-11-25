@@ -45,8 +45,16 @@ export const MINE_RESOURCE_REWARD: readonly { readonly material: Material; reado
   { material: 'sphere', n: 1 },
 ];
 
-/** Mine credits from a Mine's upgrade point at round end: the number of Mines + 1. */
-export const mineCredits = (mines: number): number => mines + 1;
+/**
+ * Mine credits from a Mine's upgrade point at round end, by the order the Mine came into play: the
+ * number printed on that Mine (2, 3, 4), whatever the number of Mines (RULES_CHANGES.md #49).
+ */
+export const MINE_UPGRADE_REWARD: readonly number[] = [2, 3, 4];
+
+/** "2 on the first Mine, 3 on the second and 4 on the third". */
+export function upgradePointWords(): string {
+  return listWords(MINE_UPGRADE_REWARD.map((n, i) => (i === 0 ? `${n} on the ${ORDINAL[i]} Mine` : `${n} on the ${ORDINAL[i]}`)));
+}
 
 /** "6 for the second Mine and 18 for the third". */
 export function minePriceWords(): string {

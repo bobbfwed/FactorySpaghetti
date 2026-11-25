@@ -9,7 +9,7 @@ import {
 import type { Topic } from '../types';
 import {
   BUILDING_NAME, FACTORY_TYPES, MATERIALS, MATERIAL_NAME, MINE_NUMBERS, amount, cardPriceWords, count, exchangeDown,
-  exchangeWords, listWords, mineCredits, mineExits, minePriceWords, perMineWords, piecePoints, pointRanges, recipeWords,
+  exchangeWords, listWords, mineExits, minePriceWords, piecePoints, pointRanges, recipeWords, upgradePointWords,
 } from './facts';
 
 const claimCost = (module: number, mines: number): number => module - mines + 1;
@@ -33,8 +33,8 @@ export const claiming: Topic = {
     {
       k: 'list', items: [
         `**Free upgrades** at the end of every round: one per Mine, for raising Control Modules on a single building.`,
-        `**Mine credits**: your meeple on a Mine's upgrade point earns the number of Mines + 1 at the end of the round (${perMineWords(mineCredits)}). They pay for one claim and for upgrades on any of your buildings.`,
-        `**Production Increase** (a Leverage card): ${PRODUCTION_INCREASE_BUDGET} upgrades to spend in your actions step, with at most one claim among them.`,
+        `**Mine credits**: your meeple on a Mine's upgrade point earns the number printed on that Mine at the end of the round (${upgradePointWords()}). They pay for one claim and for upgrades on any of your buildings.`,
+        `**Production Increase** (a Leverage card): ${PRODUCTION_INCREASE_BUDGET} upgrades to spend in the turn you play it, in any of its steps, with at most one claim among them.`,
       ],
     },
     { k: 'h', t: 'Upgrading', id: 'upgrade' },
@@ -53,7 +53,7 @@ export const claiming: Topic = {
         { k: 'p', t: 'Every claim must be paid for: with Mine credits (one claim per round) or with Production Increase (one claim per card). Only two claims are free: your first claims before the first turn, and Short Sale.' },
         { k: 'p', t: 'The module you place must be in your tray. A module already on another building is not in your tray: to free it, upgrade that building past it first.' },
         { k: 'p', t: `Modules below the number of Mines can no longer be placed. With ${MINE_COUNT} Mines your ${listWords(Array.from({ length: MINE_COUNT - 1 }, (_, i) => String(i + 1)))} are of no more use (the printed rulebook suggests turning them face down).` },
-        { k: 'p', t: 'Short Sale and Changing Priorities are the only ways to put a module on a building another player has claimed; see their card entries in [[cards|Leverage cards]].' },
+        { k: 'p', t: 'Nothing puts your module on a building another player has claimed: Short Sale and Changing Priorities, too, go only to an unclaimed building or one you already hold a claim on. See their card entries in [[cards|Leverage cards]].' },
       ],
     },
   ],
@@ -74,19 +74,21 @@ export const production: Topic = {
     { k: 'h', t: 'Power Plants', id: 'power-plants' },
     { k: 'p', t: 'A Power Plant runs by itself and gives its owner Power Tokens. If material sits in its input, it uses that up and gives more:' },
     { k: 'table', head: ['In its input', 'Power Tokens'], rows: powerRows() },
+    { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you already hold the most Power Tokens, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
     { k: 'p', t: `A Tesseract never goes into a Power Plant. You can hold up to ${POWER_TOKEN_CAP} Power Tokens.` },
     { k: 'h', t: 'Factories', id: 'factories' },
-    { k: 'p', t: 'A factory activates only if it could run right now: its input holds a complete recipe (or your input teleporter can complete it), its output is empty, and you have the Power Tokens. The game then asks you:' },
+    { k: 'p', t: 'A factory activates only if it could run right now: its input holds a complete recipe (or, with your teleporter on its input, you hold materials that complete one), its output is empty, and you have the Power Tokens. The game then asks you:' },
     {
       k: 'list', items: [
         '**Run it**: pay the Power Tokens, use up everything in its input, and put the product in its output.',
+        'With your teleporter on its input: one button for each set of your materials that can fill its empty slots, such as **Provide a Sphere and a Plate** or **Provide 2 Spheres**, and **Run it with what is in it** when its input is already full. See [[teleporters#supply|Supplying through a teleporter]].',
         '**Skip**: nothing happens, and you keep your Power Tokens and materials.',
       ],
     },
     { k: 'table', head: ['Factory', 'Power Tokens to run'], rows: FACTORY_TYPES.map(t => [BUILDING_NAME[t], String(FACTORY_POWER_COST[FACTORY_RECIPES[t]!.product as Exclude<Material, 'ore'>])]) },
     { k: 'p', t: 'The product **stays in the output**, which holds one material. From there it moves on to another of your buildings by direct contact or belt, or you collect it with your meeple, an output teleporter or Personal Jet Pack. A factory with a full output cannot run again. See [[moving|Moving material]].' },
     { k: 'h', t: 'Answering on someone else\'s turn', id: 'off-turn' },
-    { k: 'p', t: `Your factories can activate on other players' turns. The question appears on your own device. Online, if you do not answer within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the game runs the factory if you can pay, and skips it otherwise. On your own turn there is no timer: the game waits for your answer, and you must answer before doing anything else.` },
+    { k: 'p', t: `Your factories can activate on other players' turns. The question appears on your own device. Online, if you do not answer within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the game runs the building only if it can run without your materials (from what is already in its input; a Power Plant as it is), and skips it otherwise — it never hands over anything from your inventory. On your own turn there is no timer: the game waits for your answer, and you must answer before doing anything else.` },
     {
       k: 'details', blocks: [
         { k: 'p', t: 'The power cost depends on what the factory makes, not on what goes in: every Tesseract recipe costs the same.' },
@@ -119,7 +121,7 @@ export const factories: Topic = {
       k: 'list', items: [
         'From a Mine or another building\'s output, by direct contact or along belts. See [[moving|Moving material]].',
         'From your own materials, with your meeple on the building, in your round-end turn.',
-        'From your own materials, by an input teleporter, at the moment the building runs.',
+        'From your own materials, through your teleporter on its input, at the moment the building runs — only the materials you choose.',
       ],
     },
     {
@@ -128,7 +130,7 @@ export const factories: Topic = {
         { k: 'note', tone: 'example', t: 'A Tesseract Factory holding Ore + Plate can only take a Sphere next. One holding Ore can take a Plate or a Sphere, but never a second Ore.' },
         { k: 'p', t: 'Material in an input cannot be taken out again. A factory empties its input only by running.' },
         { k: 'p', t: 'Only claimed buildings receive material. An unclaimed building\'s input stays empty.' },
-        { k: 'p', t: 'An input teleporter completes the recipe from your materials only when the building runs, using the cheapest materials that complete it.' },
+        { k: 'p', t: 'Through an input teleporter you choose, when the building runs, which of your materials fill its empty slots; nothing is taken unless you choose it. See [[teleporters#supply|Supplying through a teleporter]].' },
       ],
     },
   ],
@@ -261,7 +263,7 @@ export const teleporters: Topic = {
     { k: 'p', t: `Each player has ${count(TELEPORTER_COUNT, 'teleporter')}. A teleporter goes on the input or the output of one of your buildings, one per buffer. It connects that buffer with your materials, wherever the building is.` },
     {
       k: 'list', items: [
-        '**On an input**: when the building runs, any missing inputs are taken from your materials — on any player\'s turn.',
+        '**On an input**: when the building runs, you may hand over materials of your own to fill its empty input slots — on any player\'s turn. You choose them; nothing is ever taken on its own.',
         '**On an output**: whatever the building makes goes straight into your materials. Anything sitting in that output is sent to you as soon as you have room.',
       ],
     },
@@ -269,12 +271,25 @@ export const teleporters: Topic = {
     { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap the input or output of one of your buildings, and confirm. A building\'s menu also offers **Teleporter on the input** and **Teleporter on the output**.' },
     { k: 'p', t: `**Price: the number of teleporters on the board (all players) + 1.** The first costs ${teleporterCost(0)}, the next ${teleporterCost(1)}, and so on. It is paid with change like any purchase: a lone Sphere can pay for a teleporter costing ${teleporterCost(2)}. See [[bank#paying|Paying with change]].` },
     { k: 'p', t: 'You can never remove a teleporter yourself. It comes back only if you lose your last claim on its building (for example through Changing Priorities): it then returns to your supply and the price drops by one for everyone.' },
+    { k: 'h', t: 'Supplying through a teleporter', id: 'supply' },
+    { k: 'p', t: 'When a building with your teleporter on its input runs and a slot of its input is empty, the game shows what the building needs ("The Tesseract Factory needs a Sphere and a Plate to run", or "needs one of these" when several recipes fit), its input slots, and your materials. Below are one button for each way it can run:' },
+    {
+      k: 'list', items: [
+        '**Provide …**: one button for each set of your materials that completes a recipe with what is already in the input, for example **Provide a Sphere and a Plate** or **Provide 2 Spheres**. Each says what running costs and makes.',
+        '**Run it with what is in it**, when its input already holds a full recipe.',
+        '**Skip**, for a factory.',
+      ],
+    },
+    { k: 'p', t: 'If you do not hold the materials it needs (or lack the Power Tokens), the game says so and offers only Skip.' },
+    { k: 'p', t: 'A **Power Plant** with your teleporter on its empty input asks too: **Run it as it is** (+1 Power Token) or provide one Ore, Plate or Sphere for more tokens. It always runs, so there is no Skip unless you already hold the most Power Tokens.' },
+    { k: 'p', t: 'The same choice appears in your round-end turn for the building your meeple stands on.' },
     {
       k: 'details', blocks: [
-        { k: 'p', t: 'An input teleporter takes from your materials only when the building runs, and only what completes a recipe, choosing the cheapest materials that do. It works for its owner only.' },
+        { k: 'p', t: 'Only whole materials you hold go in, exactly one for each empty slot; nothing is exchanged down for it. What already lies in the input stays and is used.' },
+        { k: 'p', t: `If an activation on someone else\'s turn is not answered within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the building runs only if it can without your materials, and is skipped otherwise. Nothing is ever taken from your inventory without your choice.` },
+        { k: 'p', t: 'An input teleporter works for its owner only.' },
         { k: 'p', t: `An output teleporter respects your limit of ${INVENTORY_CAP}: if you already hold ${INVENTORY_CAP} of that material, the product stays in the output (so the factory cannot run again) until you have room.` },
         { k: 'p', t: 'Output teleporters act first: material in a teleported output goes to you, never down a belt.' },
-        { k: 'p', t: 'A teleporter on a Power Plant\'s input does nothing: a Power Plant uses only what is actually in its input.' },
         { k: 'p', t: 'R&D Tax Write-Off places a teleporter for free, but it still uses one of yours and raises the price like a bought one.' },
       ],
     },

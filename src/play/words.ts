@@ -3,7 +3,7 @@
 // Never put internal names here (phase names, action type names, piece or card ids).
 
 import type { CardType, Material, PieceType } from '../engine/config';
-import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN } from '../engine/config';
+import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, POWER_TOKEN_CAP } from '../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 
 export { CARD_NAME, MATERIAL_NAME };
@@ -25,16 +25,37 @@ export function materialList(mats: readonly Material[]): string {
   return mats.length === 0 ? 'nothing' : mats.map(m => MATERIAL_NAME[m]).join(' + ');
 }
 
+const VALUE_ORDER: readonly Material[] = ['tesseract', 'sphere', 'plate', 'ore'];
+
+/** "a Sphere", "an Ore", "2 Spheres". */
+export function someOf(n: number, m: Material): string {
+  if (n !== 1) return amountOf(n, m);
+  return m === 'ore' ? 'an Ore' : `a ${MATERIAL_NAME[m]}`;
+}
+
+/** "a, b and c". */
+export function andList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]!}`;
+}
+
+/** A handful of materials in words, largest first: "a Sphere and a Plate", "2 Spheres", "an Ore". */
+export function supplyWords(mats: readonly Material[]): string {
+  const n = new Map<Material, number>();
+  for (const m of mats) n.set(m, (n.get(m) ?? 0) + 1);
+  return andList(VALUE_ORDER.filter(m => n.has(m)).map(m => someOf(n.get(m)!, m)));
+}
+
 // ── Card rules text (from RULES.md; matches what the engine does) ─────────────
 
 export const CARD_TEXT: Record<CardType, string> = {
   scoutingDrone: 'Look through the stacks, choose a piece and place it on the board now.',
-  shortSale: 'Claim a building with your lowest Control Module that is not below the number of mines.',
+  shortSale: 'Claim an unclaimed building (or add to one you hold a claim on) with your lowest Control Module that is not below the number of Mines.',
   embezzlement: 'Take 1 Sphere from the bank.',
   sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to their owners.',
   overstockSupplies: 'Draw 3 pieces and place them next to the board. Played as soon as it is drawn.',
   netSurplusSellOff: 'Each other player gives you 3 Power Tokens (or all they have), until you reach 10.',
-  changingPriorities: 'Move one of your Control Modules from one building to another.',
+  changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on.',
   productionIncrease: 'Spend 4 upgrades this turn on claims and upgrades (at most one claim).',
   mineInspection: 'Take 1 Plate from the bank for each Mine in play. Played as soon as it is drawn.',
   personalJetPack: 'Collect the output of all your factories into your materials.',
@@ -49,8 +70,14 @@ export const W = {
   // Inert / over
   spectating: 'You are watching this game.',
   noGame: 'No game in progress.',
-  gameOverWinner: (name: string): string => `The game is over. ${name} wins.`,
-  gameOverTie: (names: string): string => `The game is over. Shared win: ${names}.`,
+  gameOverWinner: (name: string, how: string): string => `The game is over. ${name} wins${how}.`,
+  gameOverTie: (names: string, how: string): string => `The game is over. Shared win${how}: ${names}.`,
+  /** How the game ended, after the winner's name. */
+  gameOverHow: (reason: 'tesseracts' | 'boardExhausted' | null): string => (reason === 'tesseracts' ? ' with 4 Tesseracts'
+    : reason === 'boardExhausted' ? ' on points (the pieces ran out, the last round was finished and material value was counted)' : ''),
+  /** Shown all through the last round, once no piece is left to draw. */
+  finalRound: 'The pieces have run out: this is the final round.',
+  noPiecesLeft: 'none left',
   gameOverNone: 'The game is over.',
 
   // Waiting (someone else's turn)
@@ -89,19 +116,21 @@ export const W = {
   placePickStack: 'Place a board piece: pick one of the glowing stacks.',
   placePickCell: (what: string): string => `Place the ${what}: tap a glowing space next to the board.`,
   placeTurnConfirm: (what: string): string => `Turn the ${what} if you like, then confirm.`,
-  mineDropped: 'A Mine has dropped: tap a glowing space for it.',
+  mineDropped: 'A Mine has dropped: tap a glowing space for its larger half (either half may touch the board), then turn it.',
+  minePick: 'Place the Mine: tap a glowing space for its larger half (either half may touch the board), then turn it.',
   minePlaceConfirm: 'Turn the Mine if you like, then confirm.',
 
   // Step 2
   rollNow: 'Roll the dice: one die for each Mine in play.',
+  rollNoPieces: 'The pieces have run out, so there is no piece to place: roll the dice (one die for each Mine in play).',
   rollLabel: (n: number): string => `Roll ${n} ${n === 1 ? 'die' : 'dice'}`,
 
   // Step 3
   actionsIdle: 'Take any actions you want, then press Done with actions.',
   actionsDone: 'Done with actions',
   overstockPlace: (i: number, n: number, what: string): string => `Overstock Supplies: place piece ${i} of ${n} (a ${what}) next to the board.`,
-  pendingMine: 'Decide whether to run your activated factory.',
-  pendingMineMany: (n: number): string => `Decide whether to run your ${n} activated factories.`,
+  pendingMine: 'Decide how to run your activated building (or whether to skip it).',
+  pendingMineMany: (n: number): string => `Decide on your ${n} activated buildings.`,
 
   // Step 4
   meeplePlace: 'Place your meeple: tap one of your glowing buildings or a Mine point. Every turn ends with this step.',
@@ -116,6 +145,7 @@ export const W = {
     : ` You hold ${amountOf(have, m)}, so only ${fits} ${fits === 1 ? 'fits' : 'fit'} under your limit of ${INVENTORY_CAP}.`),
   meepleSlotDetail: (gain: string): string => `Gain ${gain} at the end of the round`,
   meepleDone: 'Your meeple is placed. End your turn.',
+  meepleDoneCards: 'Your meeple is placed. You may still play a Leverage card; then end your turn.',
   endTurn: 'End turn',
   noMeepleSpot: 'There is nowhere to place your meeple. End your turn.',
 
@@ -129,11 +159,11 @@ export const W = {
   confirmHint: 'Confirm to place it.',
 
   // Primary button reasons
-  decideFirst: 'First decide whether to run your activated factory.',
-  othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated factory.`,
+  decideFirst: 'First decide on your activated building.',
+  othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated building.`,
   overstockFirst: 'Place the Overstock Supplies pieces first.',
   meepleFirst: 'Place your meeple first: tap a glowing building or Mine point.',
-  unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they are lost when you finish.`,
+  unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they can be spent until your turn ends.`,
 
   // Generic reasons
   notYourTurn: 'It is not your turn.',
@@ -156,14 +186,20 @@ export const W = {
   price: (n: number): string => `Price ${n}, paid from your materials with change`,
   /** The teleporter's price: teleporters on the board + 1. */
   teleporterPrice: (n: number): string => `Price ${n} (teleporters on the board + 1), paid from your materials with change`,
-  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials with change · ${left} left in the deck · some cards are played as soon as they are drawn`,
+  cardPriceDetail: (n: number, deck: number, discard: number): string =>
+    `Price ${n}, paid from your materials with change · ${deck} in the deck${discard > 0 ? `, ${discard} in the discard pile (shuffled into a new deck when the deck runs out)` : ''} · some cards are played as soon as they are drawn`,
   /** What a purchase paid with change leaves (" · You keep 1 Plate and 2 Ore"); `lost`: change that did not fit under the limit. */
   payKeep: (kept: string, lost: number): string =>
     ` · You keep ${kept}${lost > 0 ? `; ${lost} of the change is lost (limit of ${INVENTORY_CAP} each)` : ''}`,
+  /** Right after a purchase paid with change: "Paid 3. You keep 1 Plate and 2 Ore." */
+  paidKeep: (price: number, kept: string, lost: number): string =>
+    `Paid ${price}. You keep ${kept}.${lost > 0 ? ` ${lost} of the change is lost (limit of ${INVENTORY_CAP} each).` : ''}`,
   noBelts: 'No belts in your supply. Buy one first.',
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
-  deckEmpty: 'The Leverage deck is empty.',
+  deckEmpty: 'No Leverage cards are left: the deck and the discard pile are both empty.',
+  /** The deck was empty when a card was bought: the discard pile became a new deck. */
+  reshuffled: (n: number): string => `The Leverage deck was empty, so the discard pile (${n} ${n === 1 ? 'card' : 'cards'}) was shuffled into a new deck.`,
   deckFinishFirst: 'Confirm or cancel what you are doing first, then tap the deck to buy a Leverage card.',
   allMinesIn: 'All Mines are already in play.',
   mineDropPending: 'A dropped Mine must be placed first.',
@@ -291,12 +327,37 @@ export const W = {
   promptSkipDetail: 'Keep your Power Tokens and materials',
   promptRunUnknown: 'Run it with what is in its input',
   promptCannotRun: 'Its output buffer is already full, so it cannot run now; skip it.',
-  promptHint: 'Decide on your activated factory.',
+  promptHint: 'Decide on your activated building.',
+  /** What the host does when an off-turn decision is not answered in time (it never supplies anything). */
+  promptTimeout: 'When the time runs out, it runs only if it can without your materials; otherwise it is skipped.',
+
+  // Supplying a building through your teleporter on its input
+  /** "The Tesseract Factory needs a Sphere and a Plate to run." */
+  supplyNeeds: (building: string, needs: string): string => `The ${building} needs ${needs} to run.`,
+  /** Several recipes fit: "needs one of: a Plate and an Ore; or 2 Plates." */
+  supplyNeedsOneOf: (building: string, options: readonly string[]): string =>
+    `The ${building} needs one of these to run: ${options.join('; or ')}.`,
+  supplyPlantAsk: 'Your Power Plant runs. Provide a material for more Power Tokens?',
+  /** "Provide a Sphere and a Plate". */
+  provide: (what: string): string => `Provide ${what}`,
+  runAsIs: 'Run it with what is in it',
+  /** A Power Plant's plain run: "Run it as it is (+1 Power Token)". */
+  runPlantAsIs: (gain: number): string => `Run it as it is (+${tokens(gain)})`,
+  plantGain: (gain: number, nominal: number): string =>
+    `+${tokens(gain)}${gain < nominal ? ` (your limit is ${POWER_TOKEN_CAP})` : ''}`,
+  supplyYouHold: 'Your materials',
+  supplyInput: 'Its input',
+  supplyLacking: 'You do not hold the materials for any of these.',
+  supplyPlantNothing: 'You hold no Ore, Plate or Sphere to provide, so it runs as it is.',
+  supplyPlantFull: `You already have ${POWER_TOKEN_CAP} Power Tokens, so it cannot run: skip it.`,
+  supplyNoPower: (need: number, have: number): string => `It needs ${tokens(need)} to run; you have ${have}. Skip it.`,
+  supplyHowTo: 'Your teleporter is on its input: choose what to hand over from your materials. Nothing is taken unless you choose it.',
 
   // Cards
   playCard: (name: string): string => `Play ${name}?`,
   cardsMaxed: `You have already played ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards this turn.`,
-  cardOnlyActions: 'Leverage cards can be played only during your actions step.',
+  cardOwnTurnOnly: 'Leverage cards are played in the four steps of your own turn, not in the setup or the round-end turns.',
+  droneBeforeDraw: 'In step 1, Scouting Drone can be played only before you draw a piece.',
   cardNoModule: (floor: number): string => `You have no Control Module of ${floor} or more left.`,
   cardNoTarget: 'There is nothing this card can be used on right now.',
   cardNoTeleporters: 'You have no teleporters left.',
@@ -318,6 +379,10 @@ export const W = {
   droneInstruction: 'Scouting Drone: choose a piece from the list.',
   piInstruction: (left: number): string => `Production Increase: tap a glowing building to claim or upgrade (${units(left)} left).`,
   piDone: 'Done with Production Increase',
+  piDoneStep: 'Done with Production Increase: back to this step',
+  piSpend: 'Spend Production Increase',
+  piSpendDetail: (n: number): string => `${units(n)} left this turn`,
+  piSpending: 'Tap a glowing building to claim or upgrade it.',
   piDoneDetail: 'Any upgrades left stay available until your turn ends',
   cardCount: (name: string, n: number): string => (n > 1 ? `${name} ×${n}` : name),
 
