@@ -42,7 +42,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     details: [
       p('If your low modules are already on the board, your lowest one may be quite high — which can be useful.'),
       p(`It can add a claim to a building you already own, up to ${MAX_CLAIMS_PER_BUILDING} of your modules there.`),
-      p('In this version Short Sale can also claim a building another player has claimed. You then share it: each of you runs it on your own numbers, and you may each lay belts to it.'),
+      p('It cannot claim a building another player has claimed: only an unclaimed building, or one you already hold a claim on, glows.'),
     ],
   },
   embezzlement: {
@@ -92,17 +92,18 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     details: [
       p('The module must not be below the number of Mines, and it must go to a different building.'),
       p('If this takes away your last claim on a building, your teleporters on it come back to you. See [[teleporters|Teleporters]].'),
-      p('In this version the receiving building can be any Factory or Power Plant: one of yours, an unclaimed one (which you claim this way), or even one another player has claimed (you then share it).'),
+      p('The receiving building can be one of yours or an unclaimed one (which you claim this way), never one claimed only by another player.'),
+      p('You cannot move your last Control Module off the building your meeple stands on this turn: your meeple may stand only on a building of yours.'),
     ],
   },
   productionIncrease: {
     short: `Spend ${PRODUCTION_INCREASE_BUDGET} upgrades this turn on claims and upgrades.`,
     blocks: [
-      p(`You get ${PRODUCTION_INCREASE_BUDGET} upgrades to spend during this actions step on claims and upgrades, at the normal costs (see [[claiming|Claiming and upgrading]]). At most one of them may be a claim.`),
-      p('After playing it, tap a glowing building to claim or upgrade it.'),
+      p(`You get ${PRODUCTION_INCREASE_BUDGET} upgrades to spend in this turn, in any of its steps, on claims and upgrades, at the normal costs (see [[claiming|Claiming and upgrading]]). At most one of them may be a claim.`),
+      p('After playing it, tap a glowing building to claim or upgrade it. **Done with Production Increase** puts it aside; **Spend Production Increase** (under Upgrades in your area) brings it back while upgrades are left.'),
     ],
     details: [
-      p('Upgrades left when you press **Done with actions** are lost.'),
+      p('Upgrades left when your turn ends are lost.'),
       p(`A second Production Increase in the same turn sets your remaining upgrades back to ${PRODUCTION_INCREASE_BUDGET} (it does not add to them), and allows one more claim.`),
       { k: 'note', tone: 'example', t: 'With 2 Mines: claim a building with module 4 (4 − 2 + 1 = 3 upgrades), then upgrade another module by 1.' },
     ],
@@ -156,9 +157,16 @@ export const cards: Topic = {
   summary: `Buying and playing them, and what each of the ${CARD_TYPES.length} cards does.`,
   blocks: [
     { k: 'p', t: `Buy Leverage cards from the bank in your actions step, for the number of Mines + 1 (${cardPriceWords()}). You get the top card of the deck without seeing it first. Buy as many as you can pay for.` },
-    { k: 'p', t: `Play cards from your hand in your actions step: tap a card to read it and press **Play**, then choose what it acts on if it asks, and confirm. You can play **${MAX_CARDS_PLAYED_PER_TURN} cards per turn**; your area shows how many you have played this turn ("Leverage cards played 1 / ${MAX_CARDS_PLAYED_PER_TURN}").` },
+    { k: 'p', t: `Play cards from your hand in any of the four steps of your own turn — before you place your piece, before or after you roll, in your actions, and before or after your meeple is down: tap a card to read it and press **Play**, then choose what it acts on if it asks, and confirm. The step then carries on where you left it. You can play **${MAX_CARDS_PLAYED_PER_TURN} cards per turn**; your area shows how many you have played this turn ("Leverage cards played 1 / ${MAX_CARDS_PLAYED_PER_TURN}"). Cards are never played in another player's turn or in a round-end turn.` },
+    {
+      k: 'details', blocks: [
+        p('Scouting Drone can be played in step 1 only before you draw from a stack: once you have drawn, the drawn piece must be placed first. In the other steps it can be played as usual.'),
+        p('If a card in step 1 empties a stack, the next Mine drops and takes the place of your piece; if it takes the last piece of all, there is nothing left to place and your turn goes on to the roll.'),
+        p('Once your meeple is down, your turn does not end by itself while you could still play a card: press **End turn** when you are done.'),
+      ],
+    },
     { k: 'p', t: `${listWords(onDraw.map(c => `**${CARD_NAME[c]}**`))} are **played as soon as they are drawn** and never go to your hand. Each uses up one of your ${MAX_CARDS_PLAYED_PER_TURN} plays for the turn if you have one left; if you have already played ${MAX_CARDS_PLAYED_PER_TURN}, it still takes effect. Buying is never blocked.` },
-    { k: 'p', t: `Played cards go to the discard pile. The deck holds ${deckSize()} cards; once it is empty, no more can be bought.` },
+    { k: 'p', t: `Played cards go to the discard pile. The deck holds ${deckSize()} cards. When you buy a card and the deck is empty, the discard pile is shuffled into a new deck first (the table says so). Cards run out only when the deck and the discard pile are both empty. The bank's Leverage card shows how many are in each.` },
     {
       k: 'table', head: ['Card', 'Copies', 'In short'],
       rows: CARD_TYPES.map(c => [`[[cards#${c}|${CARD_NAME[c]}]]`, String(CARD_COUNTS[c]), CARD_GUIDE[c].short]),

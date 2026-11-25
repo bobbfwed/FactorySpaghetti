@@ -117,8 +117,8 @@ describe('guide content', () => {
   it('describes the newest release with its rule changes, each as before and now', () => {
     const newest = RELEASES[0]!;
     expect(newest.version).toBe('0.1.2');
-    // The ten changes the designer decided, plus the four moves the engine now refuses (#43).
-    expect(newest.rules.length).toBe(14);
+    // The designer's decisions (#35-#39, #42, #44-#50) and the moves the engine now refuses (#43): 22 in all.
+    expect(newest.rules.length).toBe(22);
     for (const c of newest.rules) {
       expect(c.before.length).toBeGreaterThan(10);
       expect(c.now.length).toBeGreaterThan(10);
@@ -148,9 +148,50 @@ describe('guide content', () => {
   it('states the rules this release settled: payment with change and the limit, the Mine\'s larger half, the meeple', () => {
     const all = GUIDE.topics.flatMap(allText).map(plainText).join(' ');
     expect(all).toContain('Change that fits nowhere is lost');
-    expect(all).toContain('larger half must touch the board');
+    expect(all).toContain('Either half may touch the board');
     expect(all).toMatch(/If it has anywhere to go, it must be placed/);
     // Old wording that is no longer true.
     expect(all).not.toMatch(/paid exactly|at least one of them must touch the board/i);
+  });
+
+  it('states the second set of decisions (#44-#50) and none of the rules they replaced', () => {
+    const topics = GUIDE.topics.filter(t => t.id !== 'changes' && t.id !== 'printed');
+    const all = topics.flatMap(allText).map(plainText).join(' ');
+    // Supplying through an input teleporter is the player's choice; the timer never supplies.
+    expect(all).toContain('Provide a Sphere and a Plate');
+    expect(all).toContain('nothing is ever taken on its own');
+    expect(all).toMatch(/runs only if it can without your materials/);
+    // Power Plant decisions.
+    expect(all).toContain('Run it as it is');
+    // Cards in every step; Scouting Drone before the draw.
+    expect(all).toMatch(/any of the four steps of your own turn/);
+    expect(all).toMatch(/Scouting Drone can be played in step 1 only before you draw/);
+    // The reshuffle, the upgrade point, finishing the round.
+    expect(all).toContain('the discard pile is shuffled into a new deck');
+    expect(all).toContain('2 on the first Mine, 3 on the second and 4 on the third');
+    expect(all).toContain('The pieces have run out: this is the final round');
+    // Old rules that no longer hold.
+    expect(all).not.toMatch(/cheapest materials|missing inputs are taken|teleporter on a Power Plant's input does nothing/i);
+    expect(all).not.toMatch(/once it is empty, no more can be bought|during this actions step|during your actions step/i);
+    expect(all).not.toMatch(/upgrade point[^.]*Mines \+ 1|larger half must touch/i);
+    expect(all).not.toMatch(/the game ends at the end of the turn in which the last piece/i);
+    expect(all).not.toMatch(/claim a building another player has claimed\. You then share/i);
+  });
+
+  it('lists 0.1.2 with the second set of decisions, and no longer the withdrawn Mine rule', () => {
+    const titles = RELEASES[0]!.rules.map(r => r.title);
+    expect(titles).not.toContain('A Mine\'s larger half must touch the board');
+    for (const t of ['You choose what goes in through an input teleporter', 'Leverage cards in every step of your turn',
+      'A Mine may touch the board with either half', 'The empty Leverage deck is refilled from the discard pile',
+      'A Mine\'s upgrade point gives the number printed on it', 'When the pieces run out, the round is finished']) {
+      expect(titles).toContain(t);
+    }
+  });
+
+  it('no longer lists printed-rulebook differences this version has given up', () => {
+    const titles = PRINTED_GROUPS.flatMap(g => g.items.map(i => i.title));
+    for (const gone of ['When cards are played', 'The Mine\'s upgrade point', 'An empty deck', 'When the pieces run out']) {
+      expect(titles).not.toContain(gone);
+    }
   });
 });

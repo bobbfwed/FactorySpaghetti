@@ -5,7 +5,7 @@ import {
   CARD_COUNTS, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import type { Block, PrintedGroup, Release, Topic } from '../types';
-import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, piecePoints, stackSize } from './facts';
+import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, piecePoints, stackSize, upgradePointWords } from './facts';
 
 const onDrawNames = listWords(CARD_TYPES.filter(c => PLAY_ON_DRAW_CARDS.has(c)).map(c => CARD_NAME[c]));
 
@@ -78,10 +78,58 @@ export const RELEASES: readonly Release[] = [
         see: 'bank#exchange',
       },
       {
-        title: 'A Mine\'s larger half must touch the board',
-        before: 'The rules let a Mine touch the board with its smaller half only, although the game never offered such a place.',
-        now: 'A Mine is placed with its larger half, the one with ore exits all round, touching the board. The smaller half may point any way that is free.',
-        see: 'mines',
+        title: 'You choose what goes in through an input teleporter',
+        before: 'When a building with your teleporter on its input ran, the game itself took the cheapest materials that completed a recipe from your inventory, without asking. A Power Plant ignored the teleporter.',
+        now: 'Nothing is taken unless you choose it: the game shows what the building needs and your materials, with one button for each way to run it (for example **Provide a Sphere and a Plate** or **Provide 2 Spheres**), **Run it with what is in it** when its input is full, and **Skip**. This works on any player\'s turn and in your round-end turn.',
+        see: 'teleporters#supply',
+      },
+      {
+        title: 'Power Plants with a teleporter on their input ask you',
+        before: 'A Power Plant always ran by itself, burning only what lay in its input.',
+        now: 'With your teleporter on its empty input it asks you: run it as it is, or provide one Ore, Plate or Sphere for more Power Tokens. It always runs, so there is no Skip unless you already hold the most Power Tokens.',
+        see: 'production#power-plants',
+      },
+      {
+        title: 'An unanswered question never spends your materials',
+        before: 'When the operate timer ran out on another player\'s turn, the game ran your factory if it could, completing its recipe from your inventory through an input teleporter.',
+        now: 'The building runs only if it can without your materials (a Power Plant as it is); otherwise it is skipped.',
+        see: 'online#timers',
+      },
+      {
+        title: 'Leverage cards in every step of your turn',
+        before: 'Leverage cards could be played only in your actions step, and Production Increase spent only there.',
+        now: `Play up to ${MAX_CARDS_PLAYED_PER_TURN} per turn in any of the four steps of your own turn, before or after your meeple is down — never in another player\'s turn or a round-end turn. Production Increase can be spent in any step of the turn it is played in. Scouting Drone in step 1 only before you draw. Buying stays in step 3.`,
+        see: 'cards',
+      },
+      {
+        title: 'Short Sale and Changing Priorities stay off other players\' buildings',
+        before: 'Both could put your Control Module on a building another player had claimed, so you shared it.',
+        now: 'They go only to an unclaimed building or one you already hold a claim on. Changing Priorities may not move your last module off the building your meeple stands on this turn.',
+        see: 'cards#changingPriorities',
+      },
+      {
+        title: 'A Mine may touch the board with either half',
+        before: 'The game offered only places where a Mine\'s larger half touched the board.',
+        now: 'Either half may touch the board, in any of the six directions, as long as both spaces are free.',
+        see: 'mines#placing',
+      },
+      {
+        title: 'The empty Leverage deck is refilled from the discard pile',
+        before: 'Once the deck was empty, no more cards could be bought.',
+        now: 'When a card is bought from an empty deck, the discard pile is shuffled into a new deck first. Cards run out only when both are empty.',
+        see: 'cards',
+      },
+      {
+        title: 'A Mine\'s upgrade point gives the number printed on it',
+        before: 'Every Mine\'s upgrade point gave the number of Mines + 1.',
+        now: `It gives the number printed on that Mine: ${upgradePointWords()}, however many Mines are in play.`,
+        see: 'mines#points',
+      },
+      {
+        title: 'When the pieces run out, the round is finished',
+        before: 'The game ended at the end of the turn in which the last piece was placed; later players in that round lost their turn, and there were no round-end turns.',
+        now: 'Every remaining player takes their turn (starting at the roll, since there is nothing to place), the round-end turns are played, and then the game ends on points. A notice says when the final round has begun.',
+        see: 'winning#exhausted',
       },
       {
         title: 'Your meeple must be placed',
@@ -106,7 +154,10 @@ export const RELEASES: readonly Release[] = [
       'This game guide, from the start menu and from the game.',
       'Press a Plate, Sphere or Tesseract in your materials to exchange it down.',
       'Your materials show their Total Value.',
-      'A purchase that gives change says what you will keep.',
+      'A purchase that gives change says what you will keep, right after you buy ("Paid 3. You keep 1 Plate and 2 Ore.").',
+      'Running a building through your input teleporter shows what it needs, your materials and one button for each way to run it.',
+      'Once the pieces run out, a notice says the final round has begun, and the game-over card says how the game ended.',
+      'The table tells everyone when the discard pile is shuffled into a new Leverage deck.',
       'The Teleporters tile lights up when you can place one, and says why when you cannot.',
       'Placing your meeple on a Mine point tells you what it will give you.',
       'Belts on the table point the way material flows.',
@@ -184,7 +235,6 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
     subject: 'Your turn',
     items: [
       { title: 'Drawing a piece', printed: 'Draw a piece from any of the available stacks.', here: 'Choose a face-down stack first; you must place the piece you drew.', see: 'step-place' },
-      { title: 'When cards are played', printed: 'Cards can be played at any time in your turn, even before placing a piece.', here: 'Cards are played in your actions step.', see: 'cards' },
       {
         title: 'Cards played when drawn',
         printed: `Only ${MAX_CARDS_PLAYED_PER_TURN} cards can be played per turn.`,
@@ -198,7 +248,7 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         see: 'round-end',
       },
       { title: 'Trading', printed: 'Players may trade Power Tokens; trading materials is allowed but discouraged.', here: 'There is no trading between players.' },
-      { title: 'Timers', printed: 'No timers.', here: 'Online, unanswered off-turn factory questions and idle round-end turns are settled by timers the host sets.', see: 'online#timers' },
+      { title: 'Timers', printed: 'No timers.', here: 'Online, unanswered off-turn questions about your buildings and idle round-end turns are settled by timers the host sets (never by spending your materials).', see: 'online#timers' },
     ],
   },
   {
@@ -238,12 +288,6 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         here: 'When a stack runs out, the next Mine drops into play by itself and opens its stack. Pieces removed by Sink Hole never come back.',
         see: 'mines#next',
       },
-      {
-        title: 'The Mine\'s upgrade point',
-        printed: 'Each upgrade point gives the number of upgrades printed on it (two, three or four).',
-        here: 'Every Mine\'s upgrade point gives the number of Mines on the board + 1.',
-        see: 'mines#points',
-      },
     ],
   },
   {
@@ -259,8 +303,8 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
       {
         title: 'Claims on other players\' buildings',
         printed: 'Additional claims can only go on buildings you own; Changing Priorities moves a tile to another building you have claimed.',
-        here: 'Short Sale and Changing Priorities can also put your Control Module on a building another player has claimed; you then share it.',
-        see: 'cards#shortSale',
+        here: 'The same for other players\' buildings: Short Sale and Changing Priorities never put your Control Module there. Changing Priorities may also move a module to an unclaimed building, which you then claim.',
+        see: 'cards#changingPriorities',
       },
     ],
   },
@@ -276,7 +320,6 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
       },
       { title: 'Embezzlement', printed: 'A Sphere with one or two Mines, a Tesseract with three.', here: 'Always a Sphere.', see: 'cards#embezzlement' },
       { title: 'Sink Hole and belts', printed: 'Belts on the removed piece go back to the bank.', here: 'They go back to their owners\' supplies.', see: 'cards#sinkHole' },
-      { title: 'An empty deck', printed: 'When the deck runs out, the discard pile is shuffled to form a new deck.', here: 'When the deck runs out, no more cards can be bought.', see: 'cards' },
     ],
   },
   {
@@ -294,12 +337,6 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         printed: `The first player with ${TESSERACTS_TO_WIN} Tesseracts in their inventory wins.`,
         here: `You win with ${TESSERACTS_TO_WIN} Tesseracts, bonus cards included, during your own turn.`,
         see: 'winning',
-      },
-      {
-        title: 'When the pieces run out',
-        printed: 'All players complete the final round; the most resource points wins.',
-        here: 'The game ends at the end of the turn in which the last piece is placed; the most material value wins, with tie-breaks.',
-        see: 'winning#exhausted',
       },
     ],
   },

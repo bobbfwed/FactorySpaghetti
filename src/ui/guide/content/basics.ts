@@ -33,7 +33,7 @@ export const goal: Topic = {
         '**Belts** carry material from Mines and factory outputs to factory inputs, so your production chain runs by itself.',
       ],
     },
-    { k: 'p', t: 'If the board pieces run out before anyone has won, the player whose materials are worth the most wins. See [[winning|Winning and the end of the game]].' },
+    { k: 'p', t: 'If the board pieces run out before anyone has won, the round is played to its end and then the player whose materials are worth the most wins. See [[winning|Winning and the end of the game]].' },
     { k: 'h', t: 'Materials and their value', id: 'values' },
     { k: 'icons', items: MATERIALS.map(m => ({ icon: m === 'tesseract' ? 'tess' as const : m, label: `${MATERIAL_NAME[m]} · ${MATERIAL_VALUES[m]}` })) },
     { k: 'p', t: `Each material has a value: ${listWords(MATERIALS.map(m => `${MATERIAL_NAME[m]} ${MATERIAL_VALUES[m]}`))}. Prices are paid in value, and value decides the winner if the pieces run out. You can hold at most **${INVENTORY_CAP} of each material** and **${POWER_TOKEN_CAP} Power Tokens**; anything more is lost.` },

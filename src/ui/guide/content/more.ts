@@ -8,7 +8,7 @@ import { defaultSettings } from '../../../session/room';
 import { BOT_TYPES } from '../../../bots/registry';
 import type { Topic } from '../types';
 import { minePointRows } from './turn';
-import { MATERIALS, MATERIAL_NAME, ORDINAL, cardPriceWords, listWords, mineCredits, minePriceWords, perMineWords } from './facts';
+import { MATERIALS, MATERIAL_NAME, ORDINAL, cardPriceWords, listWords, minePriceWords, upgradePointWords } from './facts';
 
 const secs = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
 
@@ -24,7 +24,6 @@ export const mines: Topic = {
         `the price of a Leverage card: Mines + 1 (${cardPriceWords()});`,
         'the lowest Control Module you may place on a building (the claim floor);',
         'how many free upgrades everyone gets at the end of each round;',
-        `what a Mine's upgrade point gives: Mines + 1 (${perMineWords(mineCredits)});`,
         'how many Plates Mine Inspection gives.',
       ],
     },
@@ -39,9 +38,11 @@ export const mines: Topic = {
     { k: 'h', t: 'Meeple points', id: 'points' },
     { k: 'p', t: 'Each Mine has a resource point and an upgrade point, each with room for one meeple. They pay out at the end of the round:' },
     { k: 'table', head: ['Point', 'Gives'], rows: minePointRows() },
+    { k: 'p', t: `Each Mine's upgrade point gives the number printed on it (${upgradePointWords()}), however many Mines are in play.` },
+    { k: 'h', t: 'Placing a Mine', id: 'placing' },
+    { k: 'p', t: 'A Mine covers two spaces side by side: its larger half, with ore exits all round, and its smaller half. **Either half may touch the board**, as long as both spaces are free. Tap the glowing space for its larger half (spaces one step further out glow too, for placings where only the smaller half touches), then turn it with the turn button until it lies the way you want, and confirm.' },
     {
       k: 'details', blocks: [
-        { k: 'p', t: 'A Mine covers two spaces side by side: its larger half, with ore exits all round, and its smaller half. The **larger half must touch the board**; the smaller half may point any way that is free. Only the spaces where that works glow. Choose its direction with the turn button before you confirm.' },
         { k: 'p', t: 'Where Ore comes out: see [[belts#points|Which holes take a belt]].' },
         { k: 'p', t: 'You cannot buy a Mine while a dropped Mine is still waiting to be placed.' },
         { k: 'p', t: 'Mines can never be removed.' },
@@ -88,7 +89,8 @@ export const winning: Topic = {
     { k: 'p', t: `You win the moment you hold **${TESSERACTS_TO_WIN} Tesseracts** — in your materials plus your bonus cards — during your own turn, your round-end turn included. The game checks after every move; there is nothing to announce.` },
     { k: 'p', t: 'Tesseracts that reach you on someone else\'s turn, for example through an output teleporter, count as soon as your next turn (or round-end turn) begins and you make a move.' },
     { k: 'h', t: 'When the pieces run out', id: 'exhausted' },
-    { k: 'p', t: `When all three stacks are empty, the game ends at the end of the turn in which the last piece was placed. The player whose materials are worth the most wins: ${listWords(MATERIALS.map(m => `${MATERIAL_NAME[m]} ${MATERIAL_VALUES[m]}`))}. Bonus cards add nothing to this total.` },
+    { k: 'p', t: 'When all three stacks are empty (and no Mine is waiting to be placed), the round is finished: the notice **The pieces have run out: this is the final round** appears, every player still to play takes their turn — starting at the roll, since there is nothing to place — and the round-end turns are played. You can still win with Tesseracts in those last turns.' },
+    { k: 'p', t: `After the last round-end turn the game ends, and the player whose materials are worth the most wins: ${listWords(MATERIALS.map(m => `${MATERIAL_NAME[m]} ${MATERIAL_VALUES[m]}`))}. Bonus cards add nothing to this total. The game-over card says the game was won on points because the pieces ran out.` },
     {
       k: 'details', title: 'Tie-breaks', blocks: [
         { k: 'p', t: 'If players are level, the game compares, in this order, until one is ahead:' },
@@ -99,11 +101,11 @@ export const winning: Topic = {
             'The most Spheres.',
             'The most Plates.',
             'The most Ore.',
-            'Who comes earliest in the turn order of that round.',
+            'Who comes earliest in the turn order the last round-end turns used.',
           ],
         },
         { k: 'p', t: 'Only if they are still level do they share the win — which the last step makes impossible in practice.' },
-        { k: 'p', t: 'If the last piece is placed in the last turn of a round, the Mine resource points still pay out, but there are no round-end turns.' },
+        { k: 'p', t: 'The Mine points pay out at the end of the last round as usual, before the round-end turns.' },
       ],
     },
   ],
@@ -132,7 +134,7 @@ export const online: Topic = {
     { k: 'h', t: 'Timers', id: 'timers' },
     {
       k: 'table', head: ['Timer', 'Normally', 'What it does'], rows: [
-        ['Operate timer', secs(FACTORY_OP_TIMEOUT_MS), 'Time to answer **Run it** or **Skip** for a factory activated on someone else\'s turn. When it runs out, the game runs the factory if you can pay, and skips it otherwise.'],
+        ['Operate timer', secs(FACTORY_OP_TIMEOUT_MS), 'Time to answer for a building of yours activated on someone else\'s turn. When it runs out, the building runs only if it can without your materials, and is skipped otherwise; nothing is taken from your inventory.'],
         ['Round-end timer', secs(ROUND_END_TIMEOUT_MS), 'A round-end turn with no move for this long ends by itself. Every move starts the countdown again.'],
         ['If a player drops', `A bot takes over after ${secs(st.awayGraceMs)}`, 'Or the game waits for the player to come back.'],
       ],

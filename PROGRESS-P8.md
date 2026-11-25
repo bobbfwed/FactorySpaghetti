@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: A, B, C, D, F done; E: texts + Rules tab done, Game guide in progress.
+Status: A-F done; running the four checks.
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -33,3 +33,4 @@ Baseline `npx vitest run` on the untouched branch: running.
 - F: right after a purchase paid with change the controller's hint (shown as the table toast) says "Paid 3. You keep 1 Plate and 2 Ore." (controller `purchaseHint`, route buys in `layPlan`). Chips keep the tooltip. Test: paidKeep.test.ts.
 - D: final-round note (`finalRoundNote` in turnBar.ts, desktop turn bar + phone step line; text view header), step 1 shown struck through "(none left)" when piecesExhausted, roll instruction `rollNoPieces`, phaseWords for the roll; game-over words say how it ended (controller + gameOverWords); reshuffle announced on the table (`reshuffledBy` in info.ts + announce strip in tableGameView.ts; the log line already existed in session/describe.ts). Bank card detail shows deck + discard counts. Tests: lastRound.test.ts.
 - E (part): words.ts card texts (Short Sale, Changing Priorities targets), 'activated building' wording, refusal texts; Rules tab (rules.ts): cards in any step, deck/discard counts + reshuffle, Mine either half, Mine point rewards 2/3/4, teleporter supply, Power Plant decision, turn starts at the roll once pieces ran out.
+- E (guide): facts.ts MINE_UPGRADE_REWARD + upgradePointWords (checked against the engine); Teleporters topic gains 'Supplying through a teleporter' (#supply); Production/Power Plants, cards (any step, Short Sale/CP targets, reshuffle, Scouting Drone), Mines (#placing, either half, 2/3/4), Winning (finishing the round), turn pages; What changed 0.1.2: +9 Before/Now entries, withdrawn Mine larger-half entry removed; printed differences: removed cards-any-time, upgrade point, empty deck, pieces run out; Short Sale/CP item updated. content.test.ts extended.
