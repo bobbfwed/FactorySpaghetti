@@ -16,12 +16,9 @@
 2. Rewrite `docs/BOT_FINDINGS.md` from the new runs only.
 3. Full checks (`npm test`, `npm run typecheck`, `npm run lint`, `npm run build`), then commit.
 
-## Runs (planned; status below)
-| Run | Command (`npm run sim -- …`) | Status |
-|---|---|---|
-| A field vs Smart Bot | `--mode field --baseline greedy --players 2,3,4 --seeds 16 --start 10000 --jobs 4` | pending |
-| B all vs all | `--mode all --bots greedy,planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter --seeds 3 --start 20000 --jobs 4` | pending |
-| C mirror | `--mode mirror --bots planner --seeds 150 --start 30000` and `--bots greedy --seeds 60` | pending |
-| E scripted lines | `--import` scratch files (Empire rush, Investor lock, bonus rush, buy every card) | pending |
-| D variants | `MINE_UPGRADE_REWARDS` and `BONUS_THRESHOLDS` via `--import` | pending |
-| F styles only | `--mode all --bots <six styles> --seeds 4 --start 60000 --jobs 4` | pending |
+## Runs
+All ten runs are chained in one background job (script: scratchpad chain2.sh, 4 processes). Each finished run writes its report to `docs/bot-study/<run>.txt` and is committed on its own ("WIP: bot study run <run>"). Full per-game JSON is kept outside the repo (scratchpad runs2/). The throw-away scripted lines and config variants are in `docs/bot-study/scripts/` (loaded with `--import`).
+
+Order: A-field, B-all, C-mirror-planner, C-mirror-greedy, E1-scripted-vs-smart, E2-vs-planners, D1-emp8, D3-up123 (upgrade point 1/2/3), D4-up123-emp8, F-styles. Status: check which `docs/bot-study/*.txt` exist (git log).
+
+To redo any run: the command is at the top of its .txt file.
