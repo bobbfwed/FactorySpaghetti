@@ -82,6 +82,39 @@ describe('moves', () => {
     expect(await bea.act({ type: 'END_ACTIONS' })).toMatchObject({ ok: false, error: { code: 'NOT_YOUR_TURN' } });
   });
 
+  // RULES_CHANGES.md #45: what a player supplies through their input teleporter reaches the
+  // engine, off-turn (the host stamps the owner) and in the round-end turn (the host drops the
+  // owner field but keeps the supply).
+  it('carries the supply through an input teleporter, off-turn and at round end', async () => {
+    const found = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length === 0);
+    const active = activeSeat(found)!;
+    const owner = (1 - active) as 0 | 1;
+    const tpf: GameState['board'][number] = {
+      id: 'tpf', type: 'plateFact', coord: { q: 60, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
+      input: { slots: [null], teleporterOwner: owner }, output: { slots: [null], teleporterOwner: null },
+    };
+    // The factory takes the place of a piece of the first stack, so the pieces still add up.
+    const withOre = (g: GameState): GameState => ({
+      ...g, board: [...g.board.filter(p => p.id !== 'tpf'), tpf],
+      stacks: [{ ...g.stacks[0], pieces: g.stacks[0].pieces.slice(1) }, g.stacks[1], g.stacks[2]],
+      players: g.players.map(p => (p.id === owner ? { ...p, powerTokens: 5, inventory: { ore: 2, plate: 0, sphere: 0, tesseract: 0 } } : p)),
+    });
+    const offTurn: GameState = { ...withOre(found), pendingFactoryOps: [{ pieceId: 'tpf', ownerId: owner }] };
+    const a = await twoHumans(offTurn, active); // Bea owns the activation
+    expect(await a.bea.act({ type: 'OPERATE_BUILDING', pieceId: 'tpf', supply: ['ore'] })).toEqual({ ok: true });
+    expect(a.host.room.game!.players[owner]!.inventory.ore).toBe(1);
+    expect(a.host.room.log.at(-1)?.text).toMatch(/^Bea ran the Plate Factory.*, supplying 1 Ore through its teleporter$/);
+
+    const roundEnd: GameState = withOre({
+      ...found, phase: 'roundEnd', activePlayerIndex: found.turnOrder.indexOf(owner),
+      players: found.players.map(p => (p.id === owner ? { ...p, meepleOnPieceId: 'tpf', meepleSlotIndex: null, meepleOperatedThisRound: false } : p)),
+    });
+    const b = await twoHumans(roundEnd, active);
+    expect(await b.bea.act({ type: 'OPERATE_BUILDING', pieceId: 'tpf', ownerId: owner, supply: ['ore'] })).toEqual({ ok: true });
+    expect(b.host.room.game!.board.find(p => p.id === 'tpf')!.output!.slots).toEqual(['plate']);
+    expect(b.host.room.game!.players[owner]!.inventory.ore).toBe(1);
+  });
+
   it('acknowledges a repeated move id without applying it twice', async () => {
     const game = findState(2, s => s.phase === 'placePiece');
     const active = activeSeat(game)!;

@@ -1,6 +1,7 @@
 // Action union and RulesError.
 
 import type { HexCoord, CardType, Material, PlayerId } from './state';
+import { MATERIAL_ORDER } from './config';
 
 export interface RulesError {
   readonly code: string;
@@ -93,7 +94,8 @@ export interface BuyBeltAction {
 }
 
 // Place one of your Control Modules on a building to claim/multi-claim it.
-// Cost = controlModule value in resource-units. Minimum module = mineCount (claim floor).
+// Paid in upgrade-units: from the Mine free claim (round end) or a Production Increase played
+// this turn (any step of your own turn). Minimum module = mineCount (claim floor).
 // A player may hold at most 3 claims on a single building.
 export interface ClaimBuildingAction {
   readonly type: 'CLAIM_BUILDING';
@@ -128,13 +130,17 @@ export interface BuyMineAction {
 // ── M5 actions ────────────────────────────────────────────────────────────────
 
 // Buy one card from the top of the draw pile (no per-turn purchase limit; phase = actions).
-// Play-on-draw cards resolve immediately and go to discard; others go to player's hand.
+// Play-on-draw cards resolve immediately and go to discard; others go to player's hand. An empty
+// deck is first refilled by shuffling the discard pile (RULES_CHANGES.md #48).
 export interface BuyCardAction {
   readonly type: 'BUY_CARD';
 }
 
 // Play a card from hand (at most MAX_CARDS_PLAYED_PER_TURN cards played per turn, play-on-draw
-// cards included — see PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT).
+// cards included — see PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT), in any step of your own turn: place a
+// piece, roll, actions, place the meeple (RULES_CHANGES.md #50). Scouting Drone in the place-a-piece
+// step only before drawing; Changing Priorities never off the building the meeple stands on
+// once it is down, if that is your last Control Module there.
 // Per-card parameters are optional — only the relevant fields need be set for each card:
 //   scoutingDrone  : stackIndex + pieceIndex + coord (+ rotation?)
 //   shortSale      : pieceId
@@ -207,6 +213,14 @@ export interface OperateBuildingAction {
   // For resolving a pending factory activation, the owner acting (may be a non-active
   // player on someone else's roll). Omitted for the round-end meeple operation (= active).
   readonly ownerId?: PlayerId;
+  // The materials the operator takes from their own inventory, through THEIR teleporter on the
+  // building's input, into its EMPTY input slots as it runs (RULES_CHANGES.md #45). Whole units
+  // they hold; never exchanged down. For a factory it fills every empty slot so that, with what
+  // already lies in the input, a recipe is complete; for a Power Plant it is one Ore, Plate or
+  // Sphere. Missing or [] = run from the building's own input only. Nothing is ever taken from
+  // an inventory without it. Order does not matter (canonicalAction sorts it: Ore, Plate,
+  // Sphere, Tesseract).
+  readonly supply?: ReadonlyArray<Material>;
 }
 
 // Collect material from a building's OUTPUT buffer into the active player's
@@ -270,7 +284,9 @@ export type Action =
 //     play) without a rotation is rotation 0, as the engine reads it (the list always names it);
 //   • an optional flag set to false is the same as leaving it out, and an upgrade paid from Mine
 //     credits or Production Increase ignores the other payment fields, as the engine does;
-//   • a Leverage card play keeps only the choices that card takes (the engine ignores others).
+//   • a Leverage card play keeps only the choices that card takes (the engine ignores others);
+//   • an OPERATE_BUILDING supply is sorted (Ore, Plate, Sphere, Tesseract), and an empty one is
+//     the same as none.
 // Every other action is returned unchanged. For a Scouting Drone play, which copy of a piece
 // type is named also does not matter; that needs the state: listedForm (rules/legalActions.ts).
 const CARD_CHOICES: Readonly<Record<string, readonly string[]>> = {
@@ -284,6 +300,16 @@ const CARD_CHOICES: Readonly<Record<string, readonly string[]>> = {
 export function canonicalAction(a: Action): Action {
   if (a.type === 'PLACE_BELT') {
     return a.fromPoint > a.toPoint ? { ...a, fromPoint: a.toPoint, toPoint: a.fromPoint } : a;
+  }
+  if (a.type === 'OPERATE_BUILDING') {
+    if (a.supply === undefined) return a;
+    if (a.supply.length === 0) {
+      const rest = { ...a } as Record<string, unknown>;
+      delete rest.supply;
+      return rest as unknown as Action;
+    }
+    const sorted = sortMaterials(a.supply);
+    return sorted.every((m, i) => m === a.supply![i]) ? a : { ...a, supply: sorted };
   }
   const rec = { ...(a as unknown as Record<string, unknown>) };
   let changed = false;
@@ -301,6 +327,12 @@ export function canonicalAction(a: Action): Action {
     if (rec.fromProductionIncrease === true && a.type === 'UPGRADE_BUILDING') drop('freeCredits');
   }
   return changed ? rec as unknown as Action : a;
+}
+
+// A material list in the fixed material order (Ore, Plate, Sphere, Tesseract); unknown names last.
+export function sortMaterials(mats: ReadonlyArray<Material>): Material[] {
+  const rank = (m: Material): number => { const i = MATERIAL_ORDER.indexOf(m); return i < 0 ? MATERIAL_ORDER.length : i; };
+  return [...mats].sort((x, y) => rank(x) - rank(y));
 }
 
 // True when two actions are the same move: equal fields after canonicalAction (so a PLACE_BELT

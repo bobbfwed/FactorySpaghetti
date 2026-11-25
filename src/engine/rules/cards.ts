@@ -27,8 +27,9 @@ import {
   MAX_CLAIMS_PER_BUILDING,
   PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
 } from '../config';
-import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation } from './pieces';
+import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation, drawnStack, OWN_TURN_STEPS } from './pieces';
 import { payMaterials } from './flow';
+import { shuffle } from '../rng';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -57,15 +58,40 @@ function addInventory(
   return { ...inv, [mat]: Math.min(inv[mat] + amount, INVENTORY_CAP) };
 }
 
+// ── The Leverage deck ─────────────────────────────────────────────────────────
+
+// The state ready for a card to be drawn: when the deck is empty, the discard pile is shuffled
+// into a new deck with the game's seeded RNG (state.rng, which setup leaves behind and nothing
+// else uses), so the shuffle is reproducible from the state alone (RULES_CHANGES.md #48).
+// Unchanged when the deck still has cards, or when deck and discard pile are both empty.
+export function withDrawableDeck(state: GameState): GameState {
+  if (state.cardDeck.length > 0 || state.cardDiscard.length === 0) return state;
+  const [deck, rng] = shuffle(state.cardDiscard, state.rng);
+  return { ...state, cardDeck: deck, cardDiscard: [], rng };
+}
+
+// Cards left to draw: the deck, and the discard pile that is shuffled into a new deck when the
+// deck runs out. A card can be bought only while this is above 0.
+export function cardsLeftToDraw(state: Pick<GameState, 'cardDeck' | 'cardDiscard'>): number {
+  return state.cardDeck.length + state.cardDiscard.length;
+}
+
+// The card the next purchase draws (after any reshuffle), or null when none is left. Pure; for
+// the interface and the move log, which name a play-on-draw card when it is bought.
+export function nextCardDrawn(state: GameState): CardType | null {
+  return withDrawableDeck(state).cardDeck[0] ?? null;
+}
+
 // ── BUY_CARD ──────────────────────────────────────────────────────────────────
 
 export function applyBuyCard(state: GameState, _action: BuyCardAction): ActionResult {
   if (state.phase !== 'actions') {
     return err('WRONG_PHASE', `Expected actions phase, got ${state.phase}`);
   }
-  if (state.cardDeck.length === 0) {
-    return err('DECK_EMPTY', 'The card deck is empty');
+  if (cardsLeftToDraw(state) === 0) {
+    return err('DECK_EMPTY', 'The card deck and the discard pile are both empty');
   }
+  state = withDrawableDeck(state);
 
   const activeId = state.turnOrder[state.activePlayerIndex];
   if (activeId === undefined) return err('INTERNAL', 'No active player');
@@ -119,8 +145,8 @@ export function applyBuyCard(state: GameState, _action: BuyCardAction): ActionRe
 // ── PLAY_CARD ─────────────────────────────────────────────────────────────────
 
 export function applyPlayCard(state: GameState, action: PlayCardAction): ActionResult {
-  if (state.phase !== 'actions') {
-    return err('WRONG_PHASE', `Expected actions phase, got ${state.phase}`);
+  if (!OWN_TURN_STEPS.has(state.phase)) {
+    return err('WRONG_PHASE', `Leverage cards are played in the steps of your own turn, not in ${state.phase}`);
   }
 
   const { cardType } = action;
@@ -333,6 +359,12 @@ function resolveScoutingDrone(
   if (stackIndex === undefined || action.pieceIndex === undefined || coord === undefined) {
     return err('MISSING_PARAMS', 'scoutingDrone requires stackIndex, pieceIndex, and coord');
   }
+  // In the place-a-piece step the drone goes before the draw: once a piece is drawn (it is in
+  // the player's hand, to be placed) the drone would reach into the stacks around it, and a Mine
+  // it drops would have to replace a draw already made (RULES_CHANGES.md #50).
+  if (state.phase === 'placePiece' && drawnStack(state) !== null) {
+    return err('ALREADY_DRAWN', 'You have already drawn a piece this turn; place it before playing Scouting Drone');
+  }
 
   const stack = state.stacks[stackIndex] as PieceStack | undefined;
   if (!stack) return err('INVALID_STACK', `There is no stack ${String(stackIndex)}`);
@@ -391,6 +423,15 @@ function resolveScoutingDrone(
   };
 }
 
+// Whether Short Sale or Changing Priorities may put `playerId`'s Control Module on `piece`: only
+// an unclaimed building or one they already hold a claim on, never another player's building
+// (RULES_CHANGES.md #46; still at most 3 claims of theirs per building, checked separately).
+// So two owners on one building no longer come about; older saves that have such a building
+// still load and play (each owner holding a claim there may add to it).
+export function mayAddClaimByCard(piece: BoardPiece, playerId: PlayerId): boolean {
+  return piece.claims.length === 0 || piece.claims.some(c => c.ownerId === playerId);
+}
+
 // shortSale: claim a building with your lowest available module (≥ mine floor) for free.
 function resolveShortSale(
   state: GameState,
@@ -409,6 +450,9 @@ function resolveShortSale(
     return err('NOT_CLAIMABLE', 'Only factories and power plants can be claimed');
   }
 
+  if (!mayAddClaimByCard(piece, activeId)) {
+    return err('ALREADY_CLAIMED', "Short Sale cannot claim another player's building");
+  }
   const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
   if (myClaimsOnPiece.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on this building');
@@ -508,6 +552,15 @@ function resolveNetSurplusSellOff(state: GameState, activeId: PlayerId): ActionR
   return { ok: true, state: { ...state, players: newPlayers } };
 }
 
+// True when moving one of `playerId`'s Control Modules off `fromId` would leave their meeple,
+// placed on that building this turn, on a building where they hold no claim.
+export function leavesMeepleUnowned(state: GameState, playerId: PlayerId, fromId: string): boolean {
+  const p = state.players[playerId];
+  if (!p || p.meepleOnPieceId !== fromId || p.meepleSlotIndex !== null) return false;
+  const from = state.board.find(b => b.id === fromId);
+  return !!from && from.claims.filter(c => c.ownerId === playerId).length === 1;
+}
+
 // changingPriorities: move a Control Module from one of your buildings to another.
 function resolveChangingPriorities(
   state: GameState,
@@ -538,8 +591,16 @@ function resolveChangingPriorities(
     return err('CLAIM_NOT_FOUND', `You don't have module ${controlModule} on ${fromId}`);
   }
 
+  if (!mayAddClaimByCard(toPiece, activeId)) {
+    return err('ALREADY_CLAIMED', "Changing Priorities cannot move a Control Module onto another player's building");
+  }
   if (toPiece.claims.filter(c => c.ownerId === activeId).length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on the target building');
+  }
+  // Once the meeple stands on a building this turn, its last Control Module there stays: the
+  // meeple may stand only on a building of the player's (RULES_CHANGES.md #50).
+  if (leavesMeepleUnowned(state, activeId, fromPiece.id)) {
+    return err('MEEPLE_ON_BUILDING', 'Your meeple stands on that building; its last Control Module of yours must stay');
   }
 
   // Module must be >= claim floor at destination

@@ -8,6 +8,7 @@ import {
   bonusesEnabled,
 } from '../config';
 import { longestBeltChain } from './beltWeaver';
+import { piecesExhausted } from './pieces';
 
 // ── Per-player resource points ────────────────────────────────────────────────
 
@@ -199,10 +200,13 @@ function checkTesseractVictory(state: GameState): GameState {
 
 // ── Victory check: board exhaustion ──────────────────────────────────────────
 
-// Check whether all stacks are depleted and resolve by points + tiebreak.
-// Called only at round-end, so all players have had equal turns.
+// Check whether every board piece has been played (all stacks empty, no Mine waiting) and, if
+// so, end the game on points + tiebreak. Called only when a round is complete — every player's
+// turn and the round-end turns played — so the round in which the pieces ran out is finished
+// first, as the rulebook says (RULES_CHANGES.md #44). The turn order of the tiebreak is the one
+// the round-end turns just used.
 function checkBoardExhaustion(state: GameState): GameState {
-  if (!state.stacks.every(s => s.pieces.length === 0)) return state;
+  if (!piecesExhausted(state)) return state;
 
   const winners = tiebreakWinners(state);
   return {
@@ -224,7 +228,7 @@ export function postActionChecks(state: GameState): GameState {
   return checkTesseractVictory(s);
 }
 
-// Called only when a complete round finishes (last player's END_TURN resolved).
+// Called only when a complete round finishes (the last round-end turn ended).
 // Recomputes bonuses then checks board-exhaustion end condition.
 export function postRoundChecks(state: GameState): GameState {
   if (state.gameOver) return state;

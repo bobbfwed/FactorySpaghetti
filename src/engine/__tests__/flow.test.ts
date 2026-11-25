@@ -74,8 +74,13 @@ describe('input teleporter', () => {
     expect(res.state.pendingFactoryOps).toContainEqual({ pieceId: 'pf-tele-in', ownerId: 0 });
     expect(res.state.board.find(p => p.id === 'pf-tele-in')!.output?.slots[0]).toBeNull();
 
-    // Player 0 operates off-turn → teleporter completes ore from inventory and produces.
-    const op = applyAction(res.state, { type: 'OPERATE_BUILDING', pieceId: 'pf-tele-in', ownerId: 0 });
+    // Nothing is taken from the inventory unless Player 0 names it (RULES_CHANGES.md #45): a
+    // plain run has an empty input and is refused.
+    const plain = applyAction(res.state, { type: 'OPERATE_BUILDING', pieceId: 'pf-tele-in', ownerId: 0 });
+    expect(plain.ok).toBe(false);
+
+    // Player 0 operates off-turn, supplying their ore through the teleporter, and it produces.
+    const op = applyAction(res.state, { type: 'OPERATE_BUILDING', pieceId: 'pf-tele-in', ownerId: 0, supply: ['ore'] });
     expect(op.ok).toBe(true);
     if (!op.ok) return;
     const outPiece = op.state.board.find(p => p.id === 'pf-tele-in')!;

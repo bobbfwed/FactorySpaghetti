@@ -155,13 +155,17 @@ describe('round-end meeple operation: listed exactly when the engine accepts it'
       inventory: { ore: inventoryOre, plate: 0, sphere: 0, tesseract: 0 },
     });
   }
-  const operate: Action = { type: 'OPERATE_BUILDING', pieceId: 'pf' };
-  const listed = (s: GameState): boolean => legalActions(s, 0).some(a => key(a) === key(operate));
+  // The ore goes in only when player 0 names it as the supply (RULES_CHANGES.md #45).
+  const operate: Action = { type: 'OPERATE_BUILDING', pieceId: 'pf', supply: ['ore'] };
+  const plain: Action = { type: 'OPERATE_BUILDING', pieceId: 'pf' };
+  const listed = (s: GameState, a: Action = operate): boolean => legalActions(s, 0).some(l => key(l) === key(a));
 
-  it('an input teleporter that completes the recipe from inventory makes it operable', () => {
+  it('an input teleporter with ore supplied from inventory makes it operable; without, it is not', () => {
     const s = roundEnd(2, 5);
     expect(applyAction(s, operate).ok).toBe(true);
     expect(listed(s)).toBe(true);
+    expect(applyAction(s, plain).ok).toBe(false);
+    expect(listed(s, plain)).toBe(false);
   });
 
   it('not listed when the engine refuses it (no material, no power, or already operated)', () => {

@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
 import { listedForm } from '../rules/legalActions';
-import { hexNeighbours, mineSecondaryCoord } from '../rules/pieces';
+import { hexNeighbours, mineSecondaryCoord, OWN_TURN_STEPS } from '../rules/pieces';
 import { createRng, nextIntBelow } from '../rng';
 import { CARD_COUNTS, CONTROL_MODULE_MAX } from '../config';
 import type { CardType, Material } from '../config';
@@ -41,6 +41,18 @@ function nearbyCoords(s: GameState): HexCoord[] {
   return [...seen.values()];
 }
 
+/** Every list of 1 to 3 materials (with repeats), in sorted and in reversed order. */
+function supplies(): Material[][] {
+  const out: Material[][] = [];
+  const grow = (cur: Material[], from: number): void => {
+    if (cur.length > 0) { out.push(cur); if (cur.length > 1) out.push([...cur].reverse()); }
+    if (cur.length === 3) return;
+    for (let i = from; i < MATERIALS.length; i++) grow([...cur, MATERIALS[i]!], i);
+  };
+  grow([], 0);
+  return out;
+}
+
 /** A broad superset of the moves the active player `me` could send. */
 function candidates(s: GameState, me: PlayerId): Action[] {
   const out: Action[] = [];
@@ -57,6 +69,11 @@ function candidates(s: GameState, me: PlayerId): Action[] {
     // The host stamps the sender as owner of an answer in the actions step, and drops it elsewhere.
     const owner = s.phase === 'actions' ? { ownerId: me } : {};
     out.push({ type: 'OPERATE_BUILDING', pieceId: id, ...owner }, { type: 'SKIP_FACTORY_ROLL', pieceId: id, ...owner });
+    // What a player may name to supply through an input teleporter: every 1–3 materials, in any
+    // order (pieces with a teleporter on their input only, to keep the sweep quick).
+    if (s.board.find(p => p.id === id)?.input?.teleporterOwner != null) {
+      for (const supply of supplies()) out.push({ type: 'OPERATE_BUILDING', pieceId: id, ...owner, supply });
+    }
     for (const material of MATERIALS) out.push({ type: 'LOAD_BUILDING_INPUT', pieceId: id, material });
     for (let m = 1; m <= CONTROL_MODULE_MAX; m++) {
       out.push({ type: 'CLAIM_BUILDING', pieceId: id, controlModule: m });
@@ -109,9 +126,9 @@ describe('accepted ⇒ listed, every kind of move, seeded games', () => {
     let rng = createRng(77);
     const below = (n: number): number => { const [v, next] = nextIntBelow(rng, n); rng = next; return v; };
     const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
-    const seen = { states: 0, probes: 0, accepted: 0, ownPending: 0, kinds: new Set<string>() };
+    const seen = { states: 0, probes: 0, accepted: 0, ownPending: 0, supplied: 0, kinds: new Set<string>(), cardSteps: new Set<string>() };
 
-    for (const [pc, seed] of [[2, 11], [3, 12], [4, 13], [2, 14]] as const) {
+    for (const [pc, seed] of [[2, 11], [3, 12], [4, 13], [2, 14], [3, 15], [4, 16]] as const) {
       let s = createGame(seed, pc);
       for (let step = 0; step < 450 && !s.gameOver; step++) {
         const active = s.turnOrder[s.activePlayerIndex]!;
@@ -125,15 +142,18 @@ describe('accepted ⇒ listed, every kind of move, seeded games', () => {
             if (!applyAction(st, a).ok) continue;
             seen.accepted++;
             seen.kinds.add(a.type === 'PLAY_CARD' ? `PLAY_CARD:${a.cardType}` : a.type);
+            if (a.type === 'PLAY_CARD') seen.cardSteps.add(st.phase);
+            if (a.type === 'OPERATE_BUILDING' && (a.supply?.length ?? 0) > 0) seen.supplied++;
             expect(listed.has(key(listedForm(st, a))), `seed ${seed} step ${step} phase ${st.phase}: ${JSON.stringify(a)}`).toBe(true);
           }
         };
-        if ((step % 9 === 0 || ownPending) && s.phase !== 'roll') {
+        if (step % 9 === 0 || ownPending) {
           if (ownPending) seen.ownPending++;
           probe(s);
           // The same state with one of every Leverage card in hand and no card played yet, so
-          // every card's choices are probed, not only the cards these games happen to hold.
-          if (s.phase === 'actions') {
+          // every card's choices are probed, not only the cards these games happen to hold — in
+          // every step of the player's own turn (RULES_CHANGES.md #50).
+          if (OWN_TURN_STEPS.has(s.phase)) {
             const allCards = Object.keys(CARD_COUNTS) as CardType[];
             probe({ ...s, cardsPlayedThisTurn: 0, players: s.players.map(p => (p.id === active ? { ...p, hand: allCards } : p)) }, 'PLAY_CARD');
           }
@@ -141,8 +161,11 @@ describe('accepted ⇒ listed, every kind of move, seeded games', () => {
         // Advance: any owner's pending answer first, then a random move of the active player
         // (an action type first, so rare kinds get played).
         let action: Action;
-        if (s.phase === 'roll') {
+        const rollCards = s.phase === 'roll' ? legalActions(s, active) : [];
+        if (s.phase === 'roll' && (rollCards.length === 0 || below(4) > 0)) {
           action = { type: 'ROLL_DICE', rolls: Array.from({ length: s.mineCount }, () => 1 + below(6)) };
+        } else if (s.phase === 'roll') {
+          action = pick(rollCards); // a card played before rolling
         } else {
           const owner = s.pendingFactoryOps[0]?.ownerId;
           const who = (owner ?? active) as PlayerId;
@@ -161,9 +184,10 @@ describe('accepted ⇒ listed, every kind of move, seeded games', () => {
       }
     }
     // eslint-disable-next-line no-console -- coverage figures for the report
-    console.log(`accepted ⇒ listed sweep: ${JSON.stringify({ ...seen, kinds: [...seen.kinds].sort() })}`);
+    console.log(`accepted ⇒ listed sweep: ${JSON.stringify({ ...seen, kinds: [...seen.kinds].sort(), cardSteps: [...seen.cardSteps].sort() })}`);
     expect(seen.states).toBeGreaterThan(80);
     expect(seen.ownPending).toBeGreaterThan(0);
     expect(seen.kinds.size).toBeGreaterThan(12);
+    expect([...seen.cardSteps].sort()).toEqual(['actions', 'placeMeeple', 'placePiece', 'roll']);
   });
 });

@@ -2,7 +2,7 @@ import type { GameState, PlayerId } from './state';
 import { TESSERACTS_TO_WIN } from './config';
 import type { Action, RulesError, SkipFactoryRollAction, ExchangeMaterialsAction } from './actions';
 import { applySetupClaim } from './rules/setupClaim';
-import { applyDrawPiece, applyPlacePiece } from './rules/pieces';
+import { applyDrawPiece, applyPlacePiece, skipEmptyPlacePiece } from './rules/pieces';
 import {
   applyRollDice,
   applyEndActions,
@@ -111,10 +111,10 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     const result = applyEndTurn(withBonuses);
     if (!result.ok) return result;
 
-    // Check exhaustion after every END_TURN: if the board filled up mid-round
-    // (last piece placed by a non-last player), the game must end immediately
-    // so subsequent players aren't left with no pieces to place.
-    return { ok: true, state: postRoundChecks(returnOrphanedTeleporters(result.state)) };
+    // The board running out no longer ends the game here: the round is finished first (the
+    // check runs when the round-end turns are over, below). A next player with nothing to draw
+    // goes straight to the roll (RULES_CHANGES.md #44).
+    return { ok: true, state: skipEmptyPlacePiece(recomputeBonuses(returnOrphanedTeleporters(result.state))) };
   }
 
   const result = dispatch(state, action);
@@ -128,7 +128,11 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
   // A teleporter whose placer no longer holds a claim on its building goes back to them (after
   // any action, so every claim-removing effect is covered). Then recompute bonuses and check if
   // the active player just hit 4 Tesseracts.
-  return { ok: true, state: postActionChecks(returnOrphanedTeleporters(result.state)) };
+  const after = postActionChecks(returnOrphanedTeleporters(result.state));
+  // The last round-end turn ends the round: if every board piece has been played, the game ends
+  // now, on points (postRoundChecks; RULES_CHANGES.md #44).
+  const roundOver = state.phase === 'roundEnd' && after.phase === 'placePiece';
+  return { ok: true, state: skipEmptyPlacePiece(roundOver ? postRoundChecks(after) : after) };
 }
 
 // Returns every legal action for the given player in the current state.

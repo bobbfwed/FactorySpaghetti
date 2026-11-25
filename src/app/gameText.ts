@@ -301,7 +301,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   STACK_LOCKED: 'That stack is still covered by its Mine.',
   INVALID_STACK: 'There is no such stack.',
   MUST_DRAW: 'More than one stack is open: draw from one of them first.',
-  ALREADY_DRAWN: 'You have already drawn a piece this turn. Place it.',
+  ALREADY_DRAWN: 'You have already drawn a piece this turn. Place it first.',
   NOT_DRAWN_STACK: 'Place the piece you drew, from the stack you drew it from.',
   NO_DRAW_NEEDED: 'Only one stack is open, so there is nothing to choose: place its top piece.',
   INVALID_PIECE_INDEX: 'There is no such piece in that stack.',
@@ -314,7 +314,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NO_OVERSTOCK: 'There is no Overstock Supplies piece to place.',
   INVALID_ROTATION: 'A piece can only be turned to one of its six sides.',
   // Engine: Control Modules
-  ALREADY_CLAIMED: 'That building is already claimed.',
+  ALREADY_CLAIMED: 'That building is already claimed by another player.',
   NOT_CLAIMABLE: 'Only factories and Power Plants can be claimed.',
   TOO_MANY_CLAIMS: 'You already have 3 Control Modules on that building.',
   MODULE_NOT_AVAILABLE: 'That Control Module is not in your supply.',
@@ -331,6 +331,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   PI_CLAIM_USED: 'Production Increase allows only one claim per turn.',
   UNFUNDED_CLAIM: 'A claim must be paid with the Mine\'s free claim or with Production Increase.',
   SAME_BUILDING: 'Move the Control Module to a different building.',
+  MEEPLE_ON_BUILDING: 'Your meeple stands on that building, so your last Control Module there must stay.',
   // Engine: buildings, materials and Power Tokens
   CANNOT_AFFORD: 'You cannot afford that.',
   INSUFFICIENT_MATERIAL: 'You do not have that material.',
@@ -342,6 +343,9 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NO_INPUT: 'That building has no input.',
   NO_OUTPUT: 'That building has no output.',
   NO_BUFFER: 'That piece has no buffer there.',
+  NO_INPUT_TELEPORTER: 'Materials go into a building from your inventory only through your own teleporter on its input.',
+  INVALID_SUPPLY: 'Supply one material from your inventory for each empty input slot.',
+  MUST_RUN: 'A Power Plant always runs. Choose what to supply to it, or supply nothing.',
   ALREADY_OPERATED: 'At round end you may run the building with your meeple only once.',
   INVALID_TARGET: 'You can only do that with the building your meeple is on.',
   // Engine: meeple
@@ -368,7 +372,7 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NOT_OWNER: 'You must own that building.',
   NOT_YOUR_BUILDING: 'You need a Control Module on that building.',
   // Engine: Leverage cards
-  DECK_EMPTY: 'The Leverage deck is empty.',
+  DECK_EMPTY: 'No Leverage cards are left: the deck and the discard pile are both empty.',
   CARD_NOT_IN_HAND: 'That Leverage card is not in your hand.',
   CARD_LIMIT_REACHED: 'You may play only 2 Leverage cards per turn.',
   PLAY_ON_DRAW: 'That Leverage card is played when it is drawn, not from your hand.',

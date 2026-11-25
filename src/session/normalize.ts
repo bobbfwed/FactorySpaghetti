@@ -36,6 +36,9 @@ const material = (x: unknown): Material => (typeof x === 'string' && MATERIALS.h
 const card = (x: unknown): CardType => (typeof x === 'string' && CARDS.has(x) ? x as CardType : no());
 const dice = (x: unknown): number[] =>
   (Array.isArray(x) && x.length <= 3 ? x.map(d => int(d, 1, 6)) : no());
+/** What a building is supplied through its input teleporter: at most 3 materials (a Tesseract Factory's input). */
+const supply = (x: unknown): Material[] =>
+  (Array.isArray(x) && x.length <= 3 ? x.map(material) : no());
 
 /** Copy the optional fields that are present (not undefined), each through its reader. */
 function opt(src: Obj, readers: Record<string, (x: unknown) => unknown>): Obj {
@@ -85,7 +88,7 @@ export function normalizeAction(raw: unknown): Action | null {
           }),
         } as Action;
       case 'SKIP_FACTORY_ROLL': return { type: 'SKIP_FACTORY_ROLL', pieceId: str(a.pieceId), ...opt(a, { ownerId: seat }) } as Action;
-      case 'OPERATE_BUILDING': return { type: 'OPERATE_BUILDING', pieceId: str(a.pieceId), ...opt(a, { ownerId: seat }) } as Action;
+      case 'OPERATE_BUILDING': return { type: 'OPERATE_BUILDING', pieceId: str(a.pieceId), ...opt(a, { ownerId: seat, supply }) } as Action;
       case 'EXCHANGE_MATERIALS': return { type: 'EXCHANGE_MATERIALS', give: material(a.give) };
       case 'LOAD_BUILDING_INPUT': return { type: 'LOAD_BUILDING_INPUT', pieceId: str(a.pieceId), material: material(a.material) };
       case 'COLLECT_OUTPUT': return { type: 'COLLECT_OUTPUT', pieceId: str(a.pieceId) };

@@ -78,7 +78,7 @@ export interface Player {
   // Which building received free upgrade credits this round (null = none yet).
   // All free credits in a round must go to the same building.
   readonly freeUpgradePieceId: string | null;
-  // Credits from mine slot 1 (mineCount+1 per trigger). Spend on:
+  // Credits from a Mine's upgrade point (slot 1): 2 / 3 / 4 on Mine 1 / 2 / 3. Spend on:
   //   • 1 free claim (cost = controlModule − mineCount + 1, max once per trigger)
   //   • free upgrades (1 credit per module step, any building)
   readonly freeActionCredits: number;
@@ -127,6 +127,8 @@ export type TurnPhase =
 
 export interface GameState {
   readonly seed: number;
+  // The seeded RNG as setup left it; advanced only when the discard pile is shuffled into a new
+  // Leverage deck (cards.ts withDrawableDeck, RULES_CHANGES.md #48). Dice are not drawn from it.
   readonly rng: RngState;
   readonly playerCount: 2 | 3 | 4;
   readonly players: ReadonlyArray<Player>;
@@ -158,7 +160,9 @@ export interface GameState {
   readonly drawnStackIndex?: 0 | 1 | 2 | null;
   // Factories (any owner) that matched the roll and await their owner's operate/skip choice.
   // Populated on ROLL_DICE; must be emptied (each entry OPERATEd or SKIPped, by its owner)
-  // before the active player may END_ACTIONS. Power plants are exempt (they auto-operate).
+  // before the active player may END_ACTIONS. Power Plants auto-operate, except one with its
+  // owner's teleporter on an empty input: the owner chooses what to supply (operate only; skip
+  // only once it cannot run — RULES_CHANGES.md #45).
   readonly pendingFactoryOps: ReadonlyArray<PendingFactoryOp>;
   // ── Per-turn card tracking ────────────────────────────────────────────────────
   // Leverage cards played this turn (max MAX_CARDS_PLAYED_PER_TURN); a play-on-draw card counts

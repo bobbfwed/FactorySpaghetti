@@ -2,11 +2,14 @@
 
 export { createGame } from './rules/setup';
 export { applyAction, legalActions } from './reducer';
-export { revealedStack } from './rules/pieces';
-export { upcomingTurnOrder } from './rules/production';
+export { revealedStack, piecesExhausted, OWN_TURN_STEPS } from './rules/pieces';
+export { upcomingTurnOrder, operateSupplies, isPowerPlantDecision } from './rules/production';
+export { cardsLeftToDraw, nextCardDrawn } from './rules/cards';
 export { canonicalAction, sameMove } from './actions';
 export { beltDirections, type BeltDirection } from './rules/beltDirection';
-export { mineSlotReward, cappedAmount, MINE_RESOURCE_REWARDS, type MineSlotReward } from './rules/mineRewards';
+export {
+  mineSlotReward, cappedAmount, MINE_RESOURCE_REWARDS, MINE_UPGRADE_REWARDS, type MineSlotReward,
+} from './rules/mineRewards';
 export { listedForm, isListedMove } from './rules/legalActions';
 export { payMaterials, canAfford, isReservedPoint } from './rules/flow';
 

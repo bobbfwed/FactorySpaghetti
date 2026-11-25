@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { GameState } from '../../engine/state';
+import type { BoardPiece, GameState } from '../../engine/state';
 import { legalActions } from '../../engine';
 import { HostSession } from '../hostSession';
 import { ClientSession } from '../clientSession';
@@ -100,6 +100,41 @@ describe('off-turn operate-or-skip timer', () => {
     expect(host.room.log.some(e => e.seat === owner && /^Bea chose not to run the /.test(e.text))).toBe(true);
     expect(host.room.log.some(e => e.text === 'Bea did not choose in time.')).toBe(true);
     expect(host.room.game!.players[owner]!.powerTokens).toBe(0);
+  });
+
+  // RULES_CHANGES.md #45: what goes through an input teleporter is the owner's choice, so the
+  // default never takes it: a building with an empty input is skipped, a Power Plant runs with
+  // nothing supplied.
+  it('never takes materials from the inventory through an input teleporter', async () => {
+    const found = offTurnState();
+    const active = activeSeat(found)!;
+    const owner = (1 - active) as 0 | 1;
+    const tpf: BoardPiece = {
+      id: 'tpf', type: 'plateFact', coord: { q: 60, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
+      input: { slots: [null], teleporterOwner: owner }, output: { slots: [null], teleporterOwner: null },
+    };
+    const tpp: BoardPiece = {
+      id: 'tpp', type: 'powerPlant', coord: { q: 62, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
+      input: { slots: [null], teleporterOwner: owner }, output: null,
+    };
+    const inventory = { ore: 3, plate: 1, sphere: 1, tesseract: 0 };
+    const game: GameState = {
+      ...found,
+      board: [...found.board, tpf, tpp],
+      // The two buildings take the place of two pieces of the first stack, so the pieces add up.
+      stacks: [{ ...found.stacks[0], pieces: found.stacks[0].pieces.slice(2) }, found.stacks[1], found.stacks[2]],
+      pendingFactoryOps: [{ pieceId: 'tpf', ownerId: owner }, { pieceId: 'tpp', ownerId: owner }],
+      players: found.players.map(p => (p.id === owner ? { ...p, powerTokens: 4, inventory } : p)),
+    };
+    expect(legalActions(game, owner).filter(a => a.type === 'OPERATE_BUILDING' && a.pieceId === 'tpf'))
+      .toEqual([{ type: 'OPERATE_BUILDING', pieceId: 'tpf', ownerId: owner, supply: ['ore'] }]);
+    const { host, sched } = await host2(game, active, { factoryOpTimeoutMs: 8000, roundEndTimeoutMs: 0 });
+    await sched.advance(8000);
+    const g = host.room.game!;
+    expect(g.pendingFactoryOps).toEqual([]);
+    expect(g.players[owner]!.inventory).toEqual(inventory);
+    expect(g.players[owner]!.powerTokens).toBe(5); // the Power Plant ran with nothing supplied
+    expect(g.board.find(p => p.id === 'tpf')!.output!.slots).toEqual([null]); // skipped
   });
 
   it('also answers for an owner who is away', async () => {

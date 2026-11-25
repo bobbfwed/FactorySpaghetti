@@ -498,8 +498,11 @@ export class HostSession {
         const pieceId = action.pieceId;
         ownChoice = game.pendingFactoryOps.some(e => e.pieceId === pieceId && e.ownerId === seat);
       } else {
-        // Elsewhere the active player operates: no owner field is taken from the sender.
-        action = { type: action.type, pieceId: action.pieceId };
+        // Elsewhere the active player operates: no owner field is taken from the sender (what
+        // they supply through their input teleporter is kept: it is their choice).
+        action = action.type === 'OPERATE_BUILDING' && action.supply !== undefined
+          ? { type: action.type, pieceId: action.pieceId, supply: action.supply }
+          : { type: action.type, pieceId: action.pieceId };
       }
     }
     if (!ownChoice && activeSeat(game) !== seat) {
@@ -977,7 +980,11 @@ export class HostSession {
     if (action && this.applyMove(seat, action, null, 'bot').ok) return true;
 
     if (turn.pendingPieceId !== null) {
-      return this.applyMove(seat, { type: 'SKIP_FACTORY_ROLL', pieceId: turn.pendingPieceId, ownerId: seat as PlayerId }, null, 'bot').ok;
+      // Skip it; a Power Plant cannot be skipped while it can run, so it runs from its own input
+      // with nothing supplied. Never with anything from the inventory.
+      const pieceId = turn.pendingPieceId;
+      return this.applyMove(seat, { type: 'SKIP_FACTORY_ROLL', pieceId, ownerId: seat as PlayerId }, null, 'bot').ok
+        || this.applyMove(seat, { type: 'OPERATE_BUILDING', pieceId, ownerId: seat as PlayerId }, null, 'bot').ok;
     }
     if (g.phase === 'roll') return this.applyMove(seat, { type: 'ROLL_DICE', rolls: [] }, null, 'bot').ok;
     for (const a of legalActions(g, seat as PlayerId)) {
@@ -1042,7 +1049,12 @@ export class HostSession {
     }
   }
 
-  /** Default for unanswered off-turn activations: operate when affordable, otherwise skip. */
+  /**
+   * Default for unanswered off-turn activations: run the building from its own input when it can
+   * (a Power Plant: with nothing supplied), otherwise skip. The default never takes anything from
+   * the player's inventory through an input teleporter (RULES_CHANGES.md #45): the plain
+   * OPERATE_BUILDING carries no supply, and the engine takes nothing without one.
+   */
   private onOpTimeout(): void {
     this.opTimer = null;
     const r = this.room;

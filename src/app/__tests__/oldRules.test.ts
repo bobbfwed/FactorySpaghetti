@@ -84,9 +84,12 @@ describe('files made before the draw step', () => {
     expect(rs.status).toBe('ready');
     const c = rs.cursor!;
     expect(c.sameRules).toBe(false);
-    // Stacks opened one at a time in this game, so no draw was ever needed: every move still fits.
-    expect(c.refused).toBeNull();
-    expect(c.length).toBe((JSON.parse(OLD_REPLAY) as { moves: unknown[] }).moves.length);
+    // Stacks opened one at a time in this game, so no draw was ever needed. Its Mine credits
+    // follow the old upgrade point (Mines + 1), so the replay stops at the first upgrade that
+    // spends more credits than the Mine's printed number now gives (RULES_CHANGES.md #49).
+    expect(c.refused).toMatchObject({ error: { code: 'INSUFFICIENT_CREDITS' } });
+    expect(c.length).toBeGreaterThan(100);
+    expect(c.length).toBeLessThan((JSON.parse(OLD_REPLAY) as { moves: unknown[] }).moves.length);
     for (let p = 0; p <= c.length; p += 7) { expect(c.stateAt(p).phase).toBeTruthy(); expect(c.lineAt(p)).toBeTruthy(); }
     ctrl.closeReplay();
     expect(ctrl.screen).toBe('menu');

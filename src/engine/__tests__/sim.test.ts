@@ -87,9 +87,11 @@ describe('legalActions correctness', () => {
 // Seeded property check over whole random games: at EVERY step and for EVERY player (not just
 // the active one — owners of a pending factory activation may act off-turn), every action that
 // legalActions lists is accepted by applyAction. The policy picks an action type first, then an
-// action of that type, so rare kinds (card plays, pending operations) are exercised too; it also
-// steers towards a second player's claim on an already-claimed building (Short Sale / Changing
-// Priorities), so co-owned buildings occur. On sampled states it checks the other direction too:
+// action of that type, so rare kinds (card plays, pending operations) are exercised too. Short
+// Sale and Changing Priorities can no longer put a Control Module on another player's building
+// (RULES_CHANGES.md #46; checked: never listed), so a building claimed by two players comes only
+// from an older save: the non-saving games are given one, as such a save would hold it, and play
+// on with it. On sampled states it checks the other direction too:
 // every PLACE_BELT (every piece, every ordered pair of points) and every DRAW_PIECE (every stack)
 // that applyAction accepts is listed — a belt up to endpoint order (sameMove), with the same
 // effect as its listed form apart from the stored order.
@@ -106,6 +108,24 @@ function coOwningPlay(state: GameState, p: PlayerId, a: Action): boolean {
 const isCoOwned = (state: GameState): boolean =>
   state.board.some(b => new Set(b.claims.map(c => c.ownerId)).size >= 2);
 
+// The state with a second player's Control Module added to a claimed building, as a save made
+// before #46 could hold it (the lowest module of theirs at or above the claim floor); unchanged
+// when no such pair exists.
+function withLegacySharedBuilding(state: GameState): GameState {
+  for (const b of state.board) {
+    if (b.claims.length === 0 || isCoOwned(state)) continue;
+    const other = state.players.find(p => !b.claims.some(c => c.ownerId === p.id) && p.controlModules.some(m => m >= state.mineCount));
+    if (!other) continue;
+    const module = Math.min(...other.controlModules.filter(m => m >= state.mineCount));
+    return {
+      ...state,
+      board: state.board.map(x => (x.id === b.id ? { ...x, claims: [...x.claims, { ownerId: other.id, controlModule: module }] } : x)),
+      players: state.players.map(p => (p.id === other.id ? { ...p, controlModules: p.controlModules.filter(m => m !== module) } : p)),
+    };
+  }
+  return state;
+}
+
 describe('legalActions ⊆ applyAction, every player, seeded games', () => {
   it('holds at every step of several 2-, 3- and 4-player games; accepted belts and draws are listed', { timeout: 180_000 }, () => {
     let rng = createRng(2024);
@@ -115,7 +135,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
       steps: 0, actions: 0, offTurnPending: 0, staleOperates: 0, drones: 0,
       drawsApplied: 0, laterMineStates: 0, coOwnedStates: 0, minesBought: 0, buyMineListed: 0,
       beltSweeps: 0, beltsAccepted: 0, reversedAccepted: 0, drawSweeps: 0, drawsAccepted: 0,
-      ownPendingStates: 0, ownPendingSweeps: 0,
+      ownPendingStates: 0, ownPendingSweeps: 0, suppliedOperates: 0, cardsOutsideActions: 0,
     };
 
     // `saving` games steer towards an early Mine purchase (two open stacks: the draw step); the
@@ -123,6 +143,8 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
     for (const [pc, seed, saving] of [[2, 1, false], [2, 2, true], [3, 3, false], [3, 22, true], [4, 5, false], [4, 6, true], [3, 7, false], [4, 8, true]] as const) {
       let state = createGame(seed, pc);
       for (let step = 0; step < 400 && !state.gameOver; step++) {
+        // An older save's shared building, in the actions step of the non-saving games.
+        if (!saving && step >= 40 && state.phase === 'actions' && !isCoOwned(state)) state = withLegacySharedBuilding(state);
         checked.steps++;
         if (state.board.some(b => b.id === 'mine-2' || b.id === 'mine-3')) checked.laterMineStates++;
         if (isCoOwned(state)) checked.coOwnedStates++;
@@ -136,7 +158,10 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             checked.actions++;
             if (a.type === 'OPERATE_BUILDING' && a.ownerId !== undefined && p !== active) checked.offTurnPending++;
             if (a.type === 'PLAY_CARD' && a.cardType === 'scoutingDrone') checked.drones++;
+            if (a.type === 'OPERATE_BUILDING' && (a.supply?.length ?? 0) > 0) checked.suppliedOperates++;
+            if (a.type === 'PLAY_CARD' && state.phase !== 'actions') checked.cardsOutsideActions++;
             if (a.type === 'BUY_MINE') checked.buyMineListed++;
+            expect(coOwningPlay(state, p as PlayerId, a), `listed onto another player's building: ${JSON.stringify(a)}`).toBe(false);
             choices.push({ p: p as PlayerId, a });
           }
           // A pending entry whose operate is not listed is a stale one (now only skippable). These
@@ -199,7 +224,8 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
           action = { type: 'ROLL_DICE', rolls: Array.from({ length: state.mineCount }, () => 1 + below(6)) };
         } else {
           if (choices.length === 0) break;
-          const coOwning = choices.filter(c => coOwningPlay(state, c.p, c.a));
+          // Cards that add a claim (on a building with claims already) keep shared buildings in play.
+          const coOwning = choices.filter(c => c.a.type === 'PLAY_CARD' && (c.a.cardType === 'shortSale' || c.a.cardType === 'changingPriorities'));
           const buyCard = choices.filter(c => c.a.type === 'BUY_CARD');
           // Buying a Mine before a stack runs out is what leaves two stacks open (the draw step);
           // an auto-dropped Mine only arrives once the earlier stack is empty. So the "saving" games
