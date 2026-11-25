@@ -110,7 +110,8 @@ export const W = {
   placePickStack: 'Place a board piece: pick one of the glowing stacks.',
   placePickCell: (what: string): string => `Place the ${what}: tap a glowing space next to the board.`,
   placeTurnConfirm: (what: string): string => `Turn the ${what} if you like, then confirm.`,
-  mineDropped: 'A Mine has dropped: tap a glowing space for it.',
+  mineDropped: 'A Mine has dropped: tap a glowing space for its larger half (either half may touch the board), then turn it.',
+  minePick: 'Place the Mine: tap a glowing space for its larger half (either half may touch the board), then turn it.',
   minePlaceConfirm: 'Turn the Mine if you like, then confirm.',
 
   // Step 2

@@ -800,7 +800,7 @@ export class PlayController {
         }
         b.clearTargets();
         if (m.src.kind === 'buyMine') {
-          v.instruction = W.placePickCell(pieceName('mine'));
+          v.instruction = W.minePick;
           return this.placement(b, m, ofType(legal, 'BUY_MINE'), 'mine', selectionLabel.mine, 'mine', W.minePlaceConfirm);
         }
         if (m.src.kind === 'drone') return this.buildExtra(b, g, me, player, legal);
