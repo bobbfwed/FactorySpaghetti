@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: A done (commit "Supply chooser"), next B.
+Status: A, B done; next C (mine placement), then D, F, E.
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -19,3 +19,13 @@ Status: A done (commit "Supply chooser"), next B.
 
 ## Tests
 Baseline `npx vitest run` on the untouched branch: running.
+- B: cards in every step. controller `isExtraMode` + `buildExtra` (card, drone, drone placement,
+  pi, menu, claim, upgrade) used by place/roll/meeple/actions steps; outside actions the step's
+  targets are cleared while a card waits and come back after. Production Increase outside the
+  actions step: default mode `pi` while `piActive`; re-entry via bank item `bank:pi` ("Spend
+  Production Increase", shown as a button under "Upgrades" in your area). Hand reasons:
+  `cardOwnTurnOnly`, `droneBeforeDraw`. After the meeple is down, the turn no longer ends by itself
+  while a card can still be played (`meepleDoneCards`). awaitingInterface filter removed from
+  helpers.ts; completeness/soundness pass. Tests: src/play/__tests__/steps.test.ts.
+- D (part): bank Leverage card uses cardsLeftToDraw; detail shows deck and discard counts; roll
+  step says when pieces ran out (`rollNoPieces`).

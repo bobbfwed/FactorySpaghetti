@@ -67,7 +67,7 @@ export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose:
 
 /** A Leverage card face. */
 export function cardFace(card: CardType, opts: { count?: number; big?: boolean; off?: boolean } = {}): HTMLElement {
-  const foot = PLAY_ON_DRAW_CARDS.has(card) ? 'Played as soon as it is drawn' : `Step 3 · up to ${MAX_CARDS_PLAYED_PER_TURN} per turn`;
+  const foot = PLAY_ON_DRAW_CARDS.has(card) ? 'Played as soon as it is drawn' : `Any step of your turn · up to ${MAX_CARDS_PLAYED_PER_TURN} per turn`;
   return h('div', { class: `tg-card${opts.big ? ' big' : ''}${opts.off ? ' off' : ''}` },
     h('div', { class: 'top', text: 'LEVERAGE' }),
     h('div', { class: 'band' }, h('span', { text: CARD_NAME[card] }), opts.count && opts.count > 1 ? h('span', { class: 'x', text: `×${opts.count}` }) : null),

@@ -860,3 +860,7 @@ button.tg-mat { width: 100%; text-align: left; }
 /* A planned belt route's panel never covers the bank: beside it on narrower windows, below it on wide ones. */
 @media (max-width: 1240px) { .tg-hud.desk .tg-choices.route { right: auto; left: 16px; } }
 @media (min-width: 1241px) { .tg-hud.desk .tg-choices.route { max-height: min(46vh, max(150px, calc(100% - var(--bottom-h) - 16px - 290px))); } }
+
+/* Spend Production Increase (any step of the turn it was played in). */
+.tg-pibtn { min-height: 44px; display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 4px 12px; margin: 4px 0; }
+.tg-pibtn small { font-size: 11.5px; color: var(--text-2); font-weight: 600; }

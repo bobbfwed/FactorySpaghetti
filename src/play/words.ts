@@ -115,6 +115,7 @@ export const W = {
 
   // Step 2
   rollNow: 'Roll the dice: one die for each Mine in play.',
+  rollNoPieces: 'The pieces have run out, so there is no piece to place: roll the dice (one die for each Mine in play).',
   rollLabel: (n: number): string => `Roll ${n} ${n === 1 ? 'die' : 'dice'}`,
 
   // Step 3
@@ -137,6 +138,7 @@ export const W = {
     : ` You hold ${amountOf(have, m)}, so only ${fits} ${fits === 1 ? 'fits' : 'fit'} under your limit of ${INVENTORY_CAP}.`),
   meepleSlotDetail: (gain: string): string => `Gain ${gain} at the end of the round`,
   meepleDone: 'Your meeple is placed. End your turn.',
+  meepleDoneCards: 'Your meeple is placed. You may still play a Leverage card; then end your turn.',
   endTurn: 'End turn',
   noMeepleSpot: 'There is nowhere to place your meeple. End your turn.',
 
@@ -154,7 +156,7 @@ export const W = {
   othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated factory.`,
   overstockFirst: 'Place the Overstock Supplies pieces first.',
   meepleFirst: 'Place your meeple first: tap a glowing building or Mine point.',
-  unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they are lost when you finish.`,
+  unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they can be spent until your turn ends.`,
 
   // Generic reasons
   notYourTurn: 'It is not your turn.',
@@ -177,14 +179,15 @@ export const W = {
   price: (n: number): string => `Price ${n}, paid from your materials with change`,
   /** The teleporter's price: teleporters on the board + 1. */
   teleporterPrice: (n: number): string => `Price ${n} (teleporters on the board + 1), paid from your materials with change`,
-  cardPriceDetail: (n: number, left: number): string => `Price ${n}, paid from your materials with change · ${left} left in the deck · some cards are played as soon as they are drawn`,
+  cardPriceDetail: (n: number, deck: number, discard: number): string =>
+    `Price ${n}, paid from your materials with change · ${deck} in the deck${discard > 0 ? `, ${discard} in the discard pile (shuffled into a new deck when the deck runs out)` : ''} · some cards are played as soon as they are drawn`,
   /** What a purchase paid with change leaves (" · You keep 1 Plate and 2 Ore"); `lost`: change that did not fit under the limit. */
   payKeep: (kept: string, lost: number): string =>
     ` · You keep ${kept}${lost > 0 ? `; ${lost} of the change is lost (limit of ${INVENTORY_CAP} each)` : ''}`,
   noBelts: 'No belts in your supply. Buy one first.',
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
-  deckEmpty: 'The Leverage deck is empty.',
+  deckEmpty: 'No Leverage cards are left: the deck and the discard pile are both empty.',
   deckFinishFirst: 'Confirm or cancel what you are doing first, then tap the deck to buy a Leverage card.',
   allMinesIn: 'All Mines are already in play.',
   mineDropPending: 'A dropped Mine must be placed first.',
@@ -341,7 +344,8 @@ export const W = {
   // Cards
   playCard: (name: string): string => `Play ${name}?`,
   cardsMaxed: `You have already played ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards this turn.`,
-  cardOnlyActions: 'Leverage cards can be played only during your actions step.',
+  cardOwnTurnOnly: 'Leverage cards are played in the four steps of your own turn, not in the setup or the round-end turns.',
+  droneBeforeDraw: 'In step 1, Scouting Drone can be played only before you draw a piece.',
   cardNoModule: (floor: number): string => `You have no Control Module of ${floor} or more left.`,
   cardNoTarget: 'There is nothing this card can be used on right now.',
   cardNoTeleporters: 'You have no teleporters left.',
@@ -363,6 +367,10 @@ export const W = {
   droneInstruction: 'Scouting Drone: choose a piece from the list.',
   piInstruction: (left: number): string => `Production Increase: tap a glowing building to claim or upgrade (${units(left)} left).`,
   piDone: 'Done with Production Increase',
+  piDoneStep: 'Done with Production Increase: back to this step',
+  piSpend: 'Spend Production Increase',
+  piSpendDetail: (n: number): string => `${units(n)} left this turn`,
+  piSpending: 'Tap a glowing building to claim or upgrade it.',
   piDoneDetail: 'Any upgrades left stay available until your turn ends',
   cardCount: (name: string, n: number): string => (n > 1 ? `${name} ×${n}` : name),
 

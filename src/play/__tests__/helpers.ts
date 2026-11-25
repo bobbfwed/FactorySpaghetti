@@ -168,6 +168,14 @@ function rotateTo(c: PlayController, rotation: number): void {
   throw new GestureError(`rotation ${rotation} not reachable (ghost ${c.view.ghost?.rotation})`);
 }
 
+/**
+ * Outside the actions step a Production Increase is spent through "Spend Production Increase"
+ * (there the step's own targets, such as the meeple's buildings, answer a tap on a building).
+ */
+function spendPI(c: PlayController): void {
+  if (c.view.step !== 'actions' && hasItem(c, 'bank:pi')) pick(c, 'bank:pi');
+}
+
 function placeAt(c: PlayController, coord: { q: number; r: number }, rotation: number | undefined): void {
   tapLit(c, { kind: 'cell', q: coord.q, r: coord.r });
   rotateTo(c, rotation ?? 0);
@@ -207,11 +215,13 @@ export function gesturesFor(c: PlayController, a: Action): void {
     case 'EXCHANGE_MATERIALS': pick(c, 'bank:exchange'); pick(c, `exchange:${a.give}`); return;
     case 'PLACE_TELEPORTER': tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, `menu:teleporter:${a.bufferType}`); return;
     case 'CLAIM_BUILDING':
+      if (a.fromProductionIncrease) spendPI(c);
       tapLit(c, { kind: 'piece', pieceId: a.pieceId });
       pick(c, `menu:claim:${a.fromProductionIncrease ? 'pi' : 'free'}`);
       pick(c, `module:${a.controlModule}`);
       return;
     case 'UPGRADE_BUILDING': {
+      if (a.fromProductionIncrease) spendPI(c);
       tapLit(c, { kind: 'piece', pieceId: a.pieceId });
       const src = a.fromProductionIncrease ? 'pi' : a.fromMineCredit ? 'mineCredit' : 'endOfRound';
       pick(c, `menu:upgrade:${src}`);
@@ -260,24 +270,11 @@ export function expectedSend(a: Action): Action {
 
 /** Every action a player may take in `s`, as the controller sees it (legalActions plus the roll). */
 export function offered(s: GameState, p: PlayerId): Action[] {
-  const legal = legalActions(s, p).filter(a => !awaitingInterface(s, a));
+  const legal = legalActions(s, p);
   if (s.phase === 'roll' && active(s) === p && !s.gameOver && s.pendingFactoryOps.length === 0) {
     return [{ type: 'ROLL_DICE', rolls: [] }, ...legal];
   }
   return legal;
-}
-
-/**
- * Moves the engine lists since RULES_CHANGES.md #45 and #50 that the play controller has no
- * gesture for yet (the interface for them is the next work package): a Leverage card played, or a
- * Production Increase spent, outside the actions step; and running a building with materials
- * supplied through its input teleporter. Left out of what these tests expect a gesture for.
- * Remove this filter when the interface offers them.
- */
-function awaitingInterface(s: GameState, a: Action): boolean {
-  if (s.phase === 'actions') return false;
-  if (a.type === 'PLAY_CARD') return true;
-  return (a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') && a.fromProductionIncrease === true;
 }
 
 export function expectLegal(s: GameState, p: PlayerId, a: Action): void {

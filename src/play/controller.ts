@@ -14,7 +14,8 @@ import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Pl
 import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, POWER_TOKEN_CAP, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
 import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
-import { revealedStack as revealedStackOf } from '../engine/rules/pieces';
+import { piecesExhausted, revealedStack as revealedStackOf } from '../engine/rules/pieces';
+import { cardsLeftToDraw } from '../engine/rules/cards';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
@@ -66,6 +67,12 @@ type Mode =
   | { k: 'pi' };
 
 const IDLE: Mode = { k: 'idle' };
+
+/** Modes of a Leverage card being played or a Production Increase being spent: any step of my own turn. */
+function isExtraMode(m: Mode): boolean {
+  return m.k === 'card' || m.k === 'drone' || m.k === 'pi' || m.k === 'menu' || m.k === 'claim'
+    || m.k === 'upgradeOld' || m.k === 'upgrade' || (m.k === 'place' && m.src.kind === 'drone');
+}
 
 /** Actions-step modes in which a tap on the Leverage deck buys a card (nothing waits for a particular pick). */
 const DECK_MODES: ReadonlySet<Mode['k']> = new Set<Mode['k']>(['idle', 'menu', 'belt', 'route', 'removeBelt', 'exchange', 'pi']);
@@ -425,10 +432,10 @@ export class PlayController {
     switch (g.phase) {
       case 'setupClaimPF':
       case 'setupClaimPP': return this.buildSetup(b, g, legal);
-      case 'placePiece': return this.buildPlace(b, g, legal);
-      case 'roll': return this.buildRoll(b, g);
+      case 'placePiece': return this.buildPlace(b, g, me, player, legal);
+      case 'roll': return this.buildRoll(b, g, me, player, legal);
       case 'actions': return this.buildActions(b, g, me, player, legal);
-      case 'placeMeeple': return this.buildMeeple(b, g, legal);
+      case 'placeMeeple': return this.buildMeeple(b, g, me, player, legal);
       case 'roundEnd': return this.buildRoundEnd(b, g, me, player, legal);
     }
   }
@@ -436,6 +443,9 @@ export class PlayController {
   /** The idle state of the current step: a forced placement takes over when one is owed. */
   private defaultMode(g: GameState, me: PlayerId, legal: readonly Action[]): Mode {
     if (g.turnOrder[g.activePlayerIndex] !== me) return IDLE;
+    // A Production Increase played this turn, outside the actions step: spend it first (Done returns to the step).
+    if ((g.phase === 'placePiece' || g.phase === 'roll' || g.phase === 'placeMeeple')
+      && this.piActive && g.productionIncreaseBudget > 0 && this.piActions(g, me).length > 0) return { k: 'pi' };
     if (g.phase === 'placePiece') {
       if (ofType(legal, 'PLACE_MINE').length > 0) return { k: 'place', src: { kind: 'mine' }, coord: null, rotation: 0, auto: true };
       const stacks = [...new Set(ofType(legal, 'PLACE_PIECE').map(a => a.stackIndex))];
@@ -623,11 +633,16 @@ export class PlayController {
 
   // ── Step 1: place a piece (or a dropped mine) ───────────────────────────────
 
-  private buildPlace(b: Builder, g: GameState, legal: readonly Action[]): boolean {
+  private buildPlace(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
     const v = b.view;
     v.step = 'place';
     const mines = ofType(legal, 'PLACE_MINE');
     const m = this.mode;
+    // A Leverage card (or a Production Increase being spent) before the piece: the card's flow.
+    if (isExtraMode(m)) {
+      v.instruction = mines.length > 0 ? W.mineDropped : W.placePickStack;
+      return this.buildExtra(b, g, me, player, legal);
+    }
     if (mines.length > 0) {
       v.instruction = W.mineDropped;
       if (m.k !== 'place' || m.src.kind !== 'mine') return false;
@@ -721,12 +736,14 @@ export class PlayController {
 
   // ── Step 2: roll ────────────────────────────────────────────────────────────
 
-  private buildRoll(b: Builder, g: GameState): boolean {
+  private buildRoll(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
     const v = b.view;
     v.step = 'roll';
-    v.instruction = W.rollNow;
+    // With the pieces gone the turn starts here (there is nothing to place).
+    v.instruction = piecesExhausted(g) ? W.rollNoPieces : W.rollNow;
     v.primary = { label: W.rollLabel(g.mineCount), enabled: true };
     b.onPrimary = (): void => this.send({ type: 'ROLL_DICE', rolls: [] });
+    if (isExtraMode(this.mode)) return this.buildExtra(b, g, me, player, legal);
     return this.mode.k === 'idle';
   }
 
@@ -786,22 +803,11 @@ export class PlayController {
           v.instruction = W.placePickCell(pieceName('mine'));
           return this.placement(b, m, ofType(legal, 'BUY_MINE'), 'mine', selectionLabel.mine, 'mine', W.minePlaceConfirm);
         }
-        if (m.src.kind === 'drone') {
-          const src = m.src;
-          const piece = g.stacks[src.stack].pieces[src.index];
-          if (!piece) return false;
-          const what = pieceName(piece.type);
-          const cands = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone'
-            && a.stackIndex === src.stack && a.pieceIndex === src.index);
-          v.instruction = W.placePickCell(what);
-          return this.placement(b, m, cands, piece.type, selectionLabel.drone(what), 'drone', W.placeTurnConfirm(what));
-        }
+        if (m.src.kind === 'drone') return this.buildExtra(b, g, me, player, legal);
         return false;
       }
-      case 'menu': return this.buildMenu(b, g, me, player, legal, m.pieceId);
-      case 'claim': return this.buildClaim(b, g, legal, m);
-      case 'upgradeOld': return this.buildUpgradeOld(b, g, legal, m);
-      case 'upgrade': return this.buildUpgrade(b, g, legal, m);
+      case 'menu': case 'claim': case 'upgradeOld': case 'upgrade': case 'card': case 'drone': case 'pi':
+        return this.buildExtra(b, g, me, player, legal);
       case 'belt': return this.buildBelt(b, g, me, legal, m);
       case 'route': return this.buildRoute(b, g, me);
       case 'removeBelt': return this.buildRemove(b, legal, m);
@@ -814,6 +820,37 @@ export class PlayController {
         return true;
       }
       case 'exchangeOne': return this.buildExchangeOne(b, g, me, legal, m);
+      default: return false;
+    }
+  }
+
+  /**
+   * A Leverage card being played, or a Production Increase being spent: the same flows in every
+   * step of my own turn (RULES_CHANGES.md #50). Outside the actions step the step's own targets
+   * are put away while the card waits for its choices; it comes back once the card is played or
+   * cancelled. False if the mode is no longer possible.
+   */
+  private buildExtra(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
+    const v = b.view;
+    const m = this.mode;
+    if (g.phase !== 'actions') b.clearTargets();
+    switch (m.k) {
+      case 'place': {
+        if (m.src.kind !== 'drone') return false;
+        b.clearTargets();
+        const src = m.src;
+        const piece = g.stacks[src.stack].pieces[src.index];
+        if (!piece) return false;
+        const what = pieceName(piece.type);
+        const cands = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone'
+          && a.stackIndex === src.stack && a.pieceIndex === src.index);
+        v.instruction = W.placePickCell(what);
+        return this.placement(b, m, cands, piece.type, selectionLabel.drone(what), 'drone', W.placeTurnConfirm(what));
+      }
+      case 'menu': return this.buildMenu(b, g, me, player, legal, m.pieceId);
+      case 'claim': return this.buildClaim(b, g, legal, m);
+      case 'upgradeOld': return this.buildUpgradeOld(b, g, legal, m);
+      case 'upgrade': return this.buildUpgrade(b, g, legal, m);
       case 'card': return this.buildCard(b, g, player, legal, m);
       case 'drone': {
         const plays = ofType(legal, 'PLAY_CARD').filter(a => a.cardType === 'scoutingDrone');
@@ -851,10 +888,11 @@ export class PlayController {
         for (const id of new Set(pis.map(a => a.pieceId))) {
           b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
         }
+        if (pis.length === 0) return false;
         v.instruction = W.piInstruction(g.productionIncreaseBudget);
         v.choices = {
           title: CARD_NAME.productionIncrease,
-          items: [b.item({ id: 'pi:done', label: W.piDone, detail: W.piDoneDetail, enabled: true }, () => {
+          items: [b.item({ id: 'pi:done', label: g.phase === 'actions' ? W.piDone : W.piDoneStep, detail: W.piDoneDetail, enabled: true }, () => {
             this.piActive = false;
             this.mode = IDLE;
           })],
@@ -1395,22 +1433,25 @@ export class PlayController {
 
   // ── Step 4: meeple ──────────────────────────────────────────────────────────
 
-  private buildMeeple(b: Builder, g: GameState, legal: readonly Action[]): boolean {
+  private buildMeeple(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): boolean {
     const v = b.view;
     v.step = 'meeple';
     const end = legal.find(a => a.type === 'END_TURN');
     const places = ofType(legal, 'PLACE_MEEPLE');
-    const player = this.me !== null ? g.players[this.me] : undefined;
+    // Leverage cards (or a Production Increase) are still playable here, before and after the meeple is down.
+    const cardsLeft = legal.some(a => a.type === 'PLAY_CARD') || this.piActions(g, me).length > 0;
     if (places.length === 0) {
       // Nothing to choose: one explicit button ends the turn.
-      const placed = !!player?.meepleOnPieceId;
-      v.instruction = placed ? W.meepleDone : W.noMeepleSpot;
+      const placed = !!player.meepleOnPieceId;
+      v.instruction = placed ? (cardsLeft ? W.meepleDoneCards : W.meepleDone) : W.noMeepleSpot;
       v.primary = { label: placed ? W.endTurn : W.noMeepleSpotEnd, enabled: !!end };
       if (end) b.onPrimary = (): void => this.send(end);
+      if (isExtraMode(this.mode)) return this.buildExtra(b, g, me, player, legal);
       return this.mode.k === 'idle';
     }
     v.primary = { label: W.meepleChoose, enabled: false, hint: W.meepleChooseWhy };
     v.instruction = W.meeplePlace;
+    if (isExtraMode(this.mode)) return this.buildExtra(b, g, me, player, legal);
     const minePieces = new Set<string>();
     for (const a of places) {
       if (a.slotIndex === undefined) {
@@ -1542,8 +1583,9 @@ export class PlayController {
     add({ id: 'bank:undoBelts', label: W.bankUndoBelts, detail: W.bankUndoDetail(g.beltsPlacedThisTurn.length) }, has('UNDO_BELTS'),
       () => W.noBeltsThisTurn, () => this.send({ type: 'UNDO_BELTS' }));
     const cc = cardCost(g.mineCount);
-    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length) + keep(cc), price: cc }, has('BUY_CARD'),
-      () => (g.cardDeck.length === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }, this.modeAfterBuy()));
+    // The deck runs out only when the discard pile is empty too: it is shuffled into a new deck (RULES_CHANGES.md #48).
+    add({ id: 'bank:buyCard', label: W.bankBuyCard, detail: W.cardPriceDetail(cc, g.cardDeck.length, g.cardDiscard.length) + keep(cc), price: cc }, has('BUY_CARD'),
+      () => (cardsLeftToDraw(g) === 0 ? W.deckEmpty : W.cantAfford(cc, worth)), () => this.send({ type: 'BUY_CARD' }, this.modeAfterBuy()));
     const mp = nextMinePrice(g, MINE_COSTS);
     add({ id: 'bank:buyMine', label: W.bankBuyMine, detail: mp === null ? W.allMinesIn : W.price(mp) + keep(mp), ...(mp === null ? {} : { price: mp }) }, has('BUY_MINE'),
       () => (mp === null ? W.allMinesIn : g.pendingMineIds.length > 0 ? W.mineDropPending : W.cantAfford(mp, worth)),
@@ -1558,6 +1600,15 @@ export class PlayController {
       ? { id: 'bank:exchange', label: W.bankExchange, detail: W.bankExchangeDetail, enabled: true }
       : { id: 'bank:exchange', label: W.bankExchange, detail: W.bankExchangeDetail, enabled: false, reason: exGate ?? W.nothingToExchange },
     exOk ? (): void => this.setMode({ k: 'exchange' }) : undefined));
+    // A Production Increase played this turn with upgrades left: spend them now, in any step of the turn.
+    const me = this.me;
+    if (me !== null && myTurn && !pending && g.productionIncreaseBudget > 0 && this.piActions(g, me).length > 0) {
+      const inPi = this.mode.k === 'pi' || (this.mode.k === 'idle' && this.piActive);
+      items.push(b.item(inPi
+        ? { id: 'bank:pi', label: W.piSpend, detail: W.piSpendDetail(g.productionIncreaseBudget), enabled: false, reason: W.piSpending }
+        : { id: 'bank:pi', label: W.piSpend, detail: W.piSpendDetail(g.productionIncreaseBudget), enabled: true },
+      inPi ? undefined : (): void => { this.piActive = true; this.mode = { k: 'pi' }; }));
+    }
     return items;
   }
 
@@ -1600,8 +1651,9 @@ export class PlayController {
       if (!enabled) {
         if (pending) reason = W.decideFirst;
         else if (!myTurn) reason = W.notYourTurn;
-        else if (g.phase !== 'actions') reason = W.cardOnlyActions;
+        else if (g.phase === 'roundEnd' || g.phase === 'setupClaimPF' || g.phase === 'setupClaimPP') reason = W.cardOwnTurnOnly;
         else if (g.cardsPlayedThisTurn >= MAX_CARDS_PLAYED_PER_TURN) reason = W.cardsMaxed;
+        else if (card === 'scoutingDrone' && g.phase === 'placePiece' && (g.drawnStackIndex ?? null) !== null) reason = W.droneBeforeDraw;
         else if (card === 'shortSale' && !player.controlModules.some(x => x >= g.mineCount)) reason = W.cardNoModule(g.mineCount);
         else if (card === 'rdTaxWriteOff' && player.teleportersRemaining <= 0) reason = W.cardNoTeleporters;
         else reason = W.cardNoTarget;

@@ -108,9 +108,16 @@ describe('Buying a Leverage card', () => {
     expect(isLit(c.view, { kind: 'deck' })).toBe(false);
     c.tap({ kind: 'deck' });
     expect(c.view.hint).toBe(W.cantAfford(3, 2));
-    const { c: c2 } = harness({ ...s0, cardDeck: [] }, p);
+    // Only when the discard pile is empty too: otherwise it is shuffled into a new deck (#48).
+    const { c: c2 } = harness({ ...s0, cardDeck: [], cardDiscard: [] }, p);
     c2.tap({ kind: 'deck' });
     expect(c2.view.hint).toBe(W.deckEmpty);
+    const refill = patchPlayer({ ...s0, cardDeck: [], cardDiscard: ['embezzlement', 'sinkHole'] }, p, { inventory: INV(6, 0, 0) });
+    const { c: c3, sent: sent3 } = harness(refill, p);
+    expect(isLit(c3.view, { kind: 'deck' })).toBe(true);
+    expect(c3.view.bank.find(i => i.id === 'bank:buyCard')?.detail).toContain('0 in the deck, 2 in the discard pile');
+    c3.tap({ kind: 'deck' });
+    expect(sent3).toEqual([{ type: 'BUY_CARD' }]);
     expect(sent).toEqual([]);
   });
 });
