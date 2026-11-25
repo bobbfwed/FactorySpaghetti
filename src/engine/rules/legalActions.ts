@@ -1,17 +1,19 @@
 // Enumerates every legal action for the active player in the current state.
-// Returns [] only when the game is over or it is not this player's turn.
+// Returns [] when the game is over or it is not this player's turn (and they have no decision
+// pending), and in the roll step when no Leverage card can be played.
 // Note: ROLL_DICE is NOT returned here — dice values are caller-supplied;
 // bots and the sim generate them externally and pass them as ROLL_DICE actions.
 
 import type { GameState, PlayerId, HexCoord } from '../state';
 import type { Action, OperateBuildingAction } from '../actions';
 import { canonicalAction, sameMove } from '../actions';
-import { scoutingDronePieceIndex } from './cards';
+import { scoutingDronePieceIndex, cardsLeftToDraw, mayAddClaimByCard, leavesMeepleUnowned } from './cards';
+import { minePlacementError } from './buildings';
 import type { CardType } from '../config';
 import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
 import type { Material } from '../config';
 import { canAfford, beltEndpointFacesOreExit, beltEndpointBlocked } from './flow';
-import { applyOperateBuilding, canLoadMaterial, meepleTargets } from './production';
+import { applyOperateBuilding, canLoadMaterial, meepleTargets, operateSupplies } from './production';
 import {
   hexNeighbours,
   isCoordsOccupied,
@@ -36,12 +38,15 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
   if (myPending.length > 0) {
     const acts: Action[] = [];
     for (const e of myPending) {
-      // Operating is offered only while the engine would accept it: an entry can go stale
-      // (e.g. a co-owner already operated the same building, so its output buffer is full).
-      // Skipping is always accepted for a pending entry.
-      const operate: OperateBuildingAction = { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: playerId };
-      if (canOperate(state, operate)) acts.push(operate);
-      acts.push({ type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: playerId });
+      // One operate per way the engine would accept it: from the building's own input (no
+      // supply), and with each distinct supply from the owner's inventory through their input
+      // teleporter (operateSupplies). An entry can go stale (e.g. a co-owner already operated
+      // the same building, so its output buffer is full): then only the skip is left. A Power
+      // Plant always runs, so its skip is offered only when it cannot run any more.
+      const runs = operateOptions(state, e.pieceId, playerId, { ownerId: playerId });
+      acts.push(...runs);
+      const isPlant = state.board.find(p => p.id === e.pieceId)?.type === 'powerPlant';
+      if (!isPlant || runs.length === 0) acts.push({ type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: playerId });
     }
     return acts;
   }
@@ -51,12 +56,27 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
   switch (state.phase) {
     case 'setupClaimPF': return computeSetupClaim(state, 'plateFact');
     case 'setupClaimPP': return computeSetupClaim(state, 'powerPlant');
-    case 'placePiece':   return computePlacePiece(state);
-    case 'roll':         return []; // dice values are caller-supplied
+    case 'placePiece':   return [...computePlacePiece(state), ...ownTurnExtras(state, playerId)];
+    // The dice are caller-supplied (ROLL_DICE is never listed); Leverage cards may still be
+    // played (and a Production Increase spent) before rolling.
+    case 'roll':         return ownTurnExtras(state, playerId);
     case 'actions':      return computeActions(state, playerId);
-    case 'placeMeeple':  return computePlaceMeeple(state, playerId);
+    case 'placeMeeple':  return [...computePlaceMeeple(state, playerId), ...ownTurnExtras(state, playerId)];
     case 'roundEnd':     return computeRoundEnd(state, playerId);
   }
+}
+
+// What may be done in any step of the player's own turn (RULES_CHANGES.md #50): play a Leverage
+// card (at most MAX_CARDS_PLAYED_PER_TURN per turn) and spend a Production Increase played this
+// turn on a claim (at most one) or upgrades.
+function ownTurnExtras(state: GameState, playerId: PlayerId): Action[] {
+  const out: Action[] = [];
+  if (state.cardsPlayedThisTurn < MAX_CARDS_PLAYED_PER_TURN) addCardPlays(state, playerId, out);
+  if (state.productionIncreaseBudget > 0) {
+    if (!state.productionIncreaseClaimedThisTurn) addClaimBuilding(state, playerId, out, true);
+    addUpgradeBuilding(state, playerId, out, true);
+  }
+  return out;
 }
 
 // The form in which legalActions would list `action` in this state: canonicalAction (belt end
@@ -83,10 +103,17 @@ export function isListedMove(state: GameState, playerId: PlayerId, action: Actio
   return legalActions(state, playerId).some(l => sameMove(l, form));
 }
 
-// Probe the engine's own OPERATE_BUILDING check, so the list can never disagree with it
-// (output buffer, recipe, power, input-teleporter completion, once-per-round-end meeple use).
-function canOperate(state: GameState, action: OperateBuildingAction): boolean {
-  return applyOperateBuilding(state, action).ok;
+// The OPERATE_BUILDING moves `playerId` may make on `pieceId` now: one per supply the building
+// runs with (operateSupplies: the plain run first, then each supply through the input teleporter),
+// each confirmed by the engine's own OPERATE_BUILDING check so the list can never disagree with
+// it (pending entry, meeple building, once-per-round-end use).
+function operateOptions(state: GameState, pieceId: string, playerId: PlayerId, extra: { ownerId?: PlayerId }): OperateBuildingAction[] {
+  const out: OperateBuildingAction[] = [];
+  for (const supply of operateSupplies(state, pieceId, playerId)) {
+    const a: OperateBuildingAction = { type: 'OPERATE_BUILDING', pieceId, ...extra, ...(supply.length > 0 ? { supply } : {}) };
+    if (applyOperateBuilding(state, a).ok) out.push(a);
+  }
+  return out;
 }
 
 // ── Hex helpers ───────────────────────────────────────────────────────────────
@@ -151,17 +178,31 @@ function computePlacePiece(state: GameState): Action[] {
 }
 
 function computePlaceMineActions(state: GameState): Action[] {
-  const actions: Action[] = [];
-  const board = state.board;
-  for (const coord of adjacentFreeCoords(state)) {
+  return minePlacements(state).map(({ coord, rotation }) => ({ type: 'PLACE_MINE' as const, coord, rotation }));
+}
+
+// Every (rich-hex cell, rotation) a Mine may be put down at, each once: both hexes free and at
+// least one of them next to the board — the rich hex on a free cell next to the board, or the
+// lean hex there with the rich hex on the free cell behind it (RULES_CHANGES.md #47). Shared
+// by PLACE_MINE and BUY_MINE; each confirmed by the engine's own check (minePlacementError).
+function minePlacements(state: GameState): Array<{ coord: HexCoord; rotation: number }> {
+  const out: Array<{ coord: HexCoord; rotation: number }> = [];
+  const seen = new Set<string>();
+  const add = (coord: HexCoord, rotation: number): void => {
+    const key = `${coord.q},${coord.r},${rotation}`;
+    if (seen.has(key) || minePlacementError(state, coord, rotation)) return;
+    seen.add(key);
+    out.push({ coord, rotation });
+  };
+  for (const cell of adjacentFreeCoords(state)) {
     for (const r of ROTATIONS) {
-      const secondary = mineSecondaryCoord(coord, r);
-      if (!isCoordsOccupied(secondary, board)) {
-        actions.push({ type: 'PLACE_MINE', coord, rotation: r });
-      }
+      add(cell, r); // the rich hex touches the board
+      // The lean hex on `cell`: the rich hex sits one step the other way.
+      const back = mineSecondaryCoord(cell, r);
+      add({ q: 2 * cell.q - back.q, r: 2 * cell.r - back.r }, r);
     }
   }
-  return actions;
+  return out;
 }
 
 // ── actions phase ─────────────────────────────────────────────────────────────
@@ -185,8 +226,9 @@ function computeActions(state: GameState, playerId: PlayerId): Action[] {
   addBuyCard(state, playerId, actions);
   addBuyBelt(state, playerId, actions);
 
-  // Production Increase budget: claim/upgrade during the actions phase, funded only by the
-  // budget (never materials). Claiming during actions is ONLY via this card (≤1 claim/turn).
+  // Production Increase budget: claim/upgrade funded only by the budget (never materials).
+  // Claiming in your own turn is ONLY via this card (≤1 claim/turn). The same as ownTurnExtras
+  // offers in the other steps, kept in this order here.
   if (state.productionIncreaseBudget > 0) {
     if (!state.productionIncreaseClaimedThisTurn) {
       addClaimBuilding(state, playerId, actions, true);
@@ -220,7 +262,8 @@ function addOverstockPlacements(state: GameState, out: Action[]) {
 }
 
 function addBuyCard(state: GameState, playerId: PlayerId, out: Action[]) {
-  if (state.cardDeck.length === 0) return;
+  // An empty deck is refilled from the discard pile; only both empty stop a purchase.
+  if (cardsLeftToDraw(state) === 0) return;
   const player = state.players[playerId];
   if (!player) return;
   if (canAfford(player.inventory, cardCost(state.mineCount))) {
@@ -252,6 +295,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       if (!hasValidModule) break;
       for (const piece of state.board) {
         if (piece.type === 'blank' || piece.type === 'mine') continue;
+        if (!mayAddClaimByCard(piece, playerId)) continue; // never another player's building
         if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
         out.push({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId: piece.id });
       }
@@ -270,11 +314,14 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       for (const fromPiece of state.board) {
         if (fromPiece.type === 'mine' || fromPiece.type === 'blank') continue;
         const myClaims = fromPiece.claims.filter(c => c.ownerId === playerId);
+        // The meeple placed on this building this turn keeps the player's last module there.
+        if (leavesMeepleUnowned(state, playerId, fromPiece.id)) continue;
         for (const claim of myClaims) {
           if (claim.controlModule < state.mineCount) continue;
           for (const toPiece of state.board) {
             if (toPiece.type === 'mine' || toPiece.type === 'blank') continue;
             if (toPiece.id === fromPiece.id) continue;
+            if (!mayAddClaimByCard(toPiece, playerId)) continue; // never another player's building
             if (toPiece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
             out.push({
               type: 'PLAY_CARD', cardType: 'changingPriorities',
@@ -302,6 +349,8 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
     }
 
     case 'scoutingDrone': {
+      // In the place-a-piece step only before drawing (cards.ts resolveScoutingDrone).
+      if (state.phase === 'placePiece' && drawnStack(state) !== null) break;
       // Any piece of any open stack may be chosen. Pieces of one type are interchangeable, so
       // each type present in a stack is listed once, at its first (topmost) index: the copy the
       // engine takes whichever index of that type is named (scoutingDronePieceIndex, cards.ts).
@@ -442,10 +491,7 @@ function computeRoundEnd(state: GameState, playerId: PlayerId): Action[] {
       // (Loading input before/after operating is still allowed via LOAD_BUILDING_INPUT.)
       // Probed against the engine, so an input teleporter that completes the recipe from
       // inventory counts exactly as applyOperateBuilding allows.
-      const operate: OperateBuildingAction = { type: 'OPERATE_BUILDING', pieceId: piece.id };
-      if (!player.meepleOperatedThisRound && canOperate(state, operate)) {
-        actions.push(operate);
-      }
+      if (!player.meepleOperatedThisRound) actions.push(...operateOptions(state, piece.id, playerId, {}));
       // Collect output buffer → inventory (optional; only the building's own output).
       if (piece.output && piece.output.slots.some(s => s !== null && player.inventory[s] < INVENTORY_CAP)) {
         actions.push({ type: 'COLLECT_OUTPUT', pieceId: piece.id });
@@ -484,15 +530,7 @@ function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]) {
   if (cost === undefined) return;
   if (!canAfford(player.inventory, cost)) return;
 
-  const board = state.board;
-  for (const coord of adjacentFreeCoords(state)) {
-    for (const r of ROTATIONS) {
-      const secondary = mineSecondaryCoord(coord, r);
-      if (!isCoordsOccupied(secondary, board)) {
-        out.push({ type: 'BUY_MINE', coord, rotation: r });
-      }
-    }
-  }
+  for (const { coord, rotation } of minePlacements(state)) out.push({ type: 'BUY_MINE', coord, rotation });
 }
 
 // Each belt is listed ONCE, lower point first (fromPoint < toPoint). applyPlaceBelt also accepts

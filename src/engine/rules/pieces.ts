@@ -76,6 +76,13 @@ export function makeBuffers(type: PieceType): { input: Buffer | null; output: Bu
   }
 }
 
+// ── Steps of a turn ───────────────────────────────────────────────────────────
+
+// The steps of a player's own turn: place a piece, roll, actions, place the meeple. Leverage
+// cards may be played, and a Production Increase spent, in any of them (RULES_CHANGES.md #50);
+// not in the setup claims and not in the round-end turns.
+export const OWN_TURN_STEPS: ReadonlySet<GameState['phase']> = new Set(['placePiece', 'roll', 'actions', 'placeMeeple']);
+
 // ── Drawing from the stacks ───────────────────────────────────────────────────
 
 // Stacks a piece may be drawn from right now: unlocked and not empty (ascending index).
@@ -97,6 +104,24 @@ export function revealedStack(state: GameState): 0 | 1 | 2 | null {
   if (drawn !== null) return drawn;
   const open = openStacks(state);
   return open.length === 1 ? open[0]! : null;
+}
+
+// True when no board piece is left to draw and no Mine is waiting to be placed: the end of the
+// game is near — the current round is finished, and then the game ends on points
+// (RULES_CHANGES.md #44; scoring.ts checkBoardExhaustion).
+export function piecesExhausted(state: Pick<GameState, 'stacks' | 'pendingMineIds' | 'overstockPieces'>): boolean {
+  return state.stacks.every(s => s.pieces.length === 0) && state.pendingMineIds.length === 0 &&
+    state.overstockPieces.length === 0;
+}
+
+// A place-a-piece step with nothing to place (every stack empty, no Mine waiting) is skipped:
+// the turn goes straight on to the roll, so the player who must act is never left without a
+// move (RULES_CHANGES.md #44). Returns the state unchanged in every other case. Run after every
+// move (reducer), so any way a turn reaches this step is covered.
+export function skipEmptyPlacePiece(state: GameState): GameState {
+  if (state.gameOver || state.phase !== 'placePiece' || state.pendingMineIds.length > 0) return state;
+  if (openStacks(state).length > 0) return state;
+  return { ...state, phase: 'roll', drawnStackIndex: null };
 }
 
 // ── DRAW_PIECE ────────────────────────────────────────────────────────────────

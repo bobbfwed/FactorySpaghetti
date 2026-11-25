@@ -241,9 +241,9 @@ describe("a belt end facing a building it may not serve is a dead end (#38)", ()
     s = expectOk(applyAction(s, { type: 'PLAY_CARD', cardType: 'shortSale', pieceId: 'F' }));
     expect(s.belts.map(b => b.ownerId)).toEqual([0]); // the belt stays
     expect(inF(s)).toBeNull();                         // but it is a dead end
-    // Player 0 claims it too (Short Sale): the belt carries ore again.
-    s = { ...s, turnOrder: [0, 1], cardsPlayedThisTurn: 0, players: s.players.map(p => (p.id === 0 ? { ...p, hand: ['shortSale'] } : p)) };
-    s = expectOk(applyAction(s, { type: 'PLAY_CARD', cardType: 'shortSale', pieceId: 'F' }));
+    // Player 0 holds a claim on it too (a shared building, as older saves may have — Short Sale
+    // can no longer claim another player's building, #46): the belt carries ore again.
+    s = { ...s, board: s.board.map(p => (p.id === 'F' ? { ...p, claims: [...p.claims, { ownerId: 0 as const, controlModule: 5 }] } : p)) };
     expect(inF(s)).toBe('ore');
     // And when the building is unclaimed again, anyone's belt feeds it... no claimed input takes
     // material, so check the reservation lifts: the end is no longer reserved.
@@ -434,7 +434,7 @@ describe('moves the list never offered are refused by the engine too (#43)', () 
     }
   });
 
-  it("a Mine must touch the board with its rich hex", () => {
+  it("a Mine touching the board with its lean hex only: since #47 accepted and listed (was refused)", () => {
     const base = reachActionsPhase(1, 2);
     const me = activePlayer(base);
     const s = patchPlayer(base, me, { inventory: inv(6, 0, 0, 0) });
@@ -456,8 +456,9 @@ describe('moves the list never offered are refused by the engine too (#43)', () 
       }
     }
     expect(found).not.toBeNull();
-    expect(code(s, found!)).toBe('NOT_ADJACENT');
-    expect(listed(s, found!, me)).toBe(false);
+    // The designer widened the rule (RULES_CHANGES.md #47): either half may touch the board.
+    expect(code(s, found!)).toBeNull();
+    expect(listed(s, found!, me)).toBe(true);
   });
 
   it('a rotation outside 0–5 is refused (INVALID_ROTATION)', () => {

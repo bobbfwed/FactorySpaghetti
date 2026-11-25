@@ -12,6 +12,10 @@ export type PieceType =
 
 export type Material = 'ore' | 'plate' | 'sphere' | 'tesseract';
 
+// The materials in their fixed order (Ore, Plate, Sphere, Tesseract): the canonical order of a
+// material list in a move, such as the supply of OPERATE_BUILDING.
+export const MATERIAL_ORDER: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
+
 export type CardType =
   | 'scoutingDrone'
   | 'shortSale'

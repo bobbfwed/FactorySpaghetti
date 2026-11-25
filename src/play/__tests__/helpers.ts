@@ -257,11 +257,25 @@ export function expectedSend(a: Action): Action {
 
 /** Every action a player may take in `s`, as the controller sees it (legalActions plus the roll). */
 export function offered(s: GameState, p: PlayerId): Action[] {
-  const legal = legalActions(s, p);
+  const legal = legalActions(s, p).filter(a => !awaitingInterface(s, a));
   if (s.phase === 'roll' && active(s) === p && !s.gameOver && s.pendingFactoryOps.length === 0) {
-    return [...legal, { type: 'ROLL_DICE', rolls: [] }];
+    return [{ type: 'ROLL_DICE', rolls: [] }, ...legal];
   }
   return legal;
+}
+
+/**
+ * Moves the engine lists since RULES_CHANGES.md #45 and #50 that the play controller has no
+ * gesture for yet (the interface for them is the next work package): a Leverage card played, or a
+ * Production Increase spent, outside the actions step; and running a building with materials
+ * supplied through its input teleporter. Left out of what these tests expect a gesture for.
+ * Remove this filter when the interface offers them.
+ */
+function awaitingInterface(s: GameState, a: Action): boolean {
+  if (a.type === 'OPERATE_BUILDING') return (a.supply?.length ?? 0) > 0;
+  if (s.phase === 'actions') return false;
+  if (a.type === 'PLAY_CARD') return true;
+  return (a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') && a.fromProductionIncrease === true;
 }
 
 export function expectLegal(s: GameState, p: PlayerId, a: Action): void {

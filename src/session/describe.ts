@@ -4,6 +4,7 @@ import type { Action } from '../engine/actions';
 import type { GameState } from '../engine/state';
 import type { CardType, Material, PieceType } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
+import { nextCardDrawn } from '../engine/rules/cards';
 import { whereWords } from './where';
 
 export const BUILDING_NAME: Record<PieceType, string> = {
@@ -96,16 +97,25 @@ function describeVerb(s: GameState, a: Action): string {
     case 'BUY_MINE': return `bought a Mine and placed it ${whereWords(s, a.coord)}`;
     case 'PLACE_MINE': return `placed the dropped Mine ${whereWords(s, a.coord)}`;
     case 'BUY_CARD': {
-      const card = s.cardDeck[0];
+      const card = nextCardDrawn(s);
+      const reshuffled = s.cardDeck.length === 0 && s.cardDiscard.length > 0 ? 'shuffled the discard pile into a new deck and ' : '';
       return card && PLAY_ON_DRAW_CARDS.has(card)
-        ? `bought ${CARD_NAME[card]}, which is played at once`
-        : 'bought a Leverage card';
+        ? `${reshuffled}bought ${CARD_NAME[card]}, which is played at once`
+        : `${reshuffled}bought a Leverage card`;
     }
     case 'PLAY_CARD': return `played ${CARD_NAME[a.cardType]}`;
     case 'PLACE_OVERSTOCK_PIECE': return 'placed an Overstock Supplies piece';
     case 'BUY_BELT': return 'bought a belt';
     case 'LOAD_BUILDING_INPUT': return `loaded 1 ${MATERIAL_NAME[a.material]} into ${pieceName(s, a.pieceId)}`;
-    case 'OPERATE_BUILDING': return `ran ${pieceName(s, a.pieceId)}`;
+    case 'OPERATE_BUILDING': {
+      const supply = a.supply ?? [];
+      if (supply.length === 0) return `ran ${pieceName(s, a.pieceId)}`;
+      const counts = new Map<Material, number>();
+      for (const m of supply) counts.set(m, (counts.get(m) ?? 0) + 1);
+      const words = [...counts].map(([m, n]) => `${n} ${MATERIAL_NAME[m]}`);
+      const list = words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]!}` : words[0]!;
+      return `ran ${pieceName(s, a.pieceId)}, supplying ${list} through its teleporter`;
+    }
     case 'COLLECT_OUTPUT': return `collected the output of ${pieceName(s, a.pieceId)}`;
     case 'SKIP_FACTORY_ROLL': return `chose not to run ${pieceName(s, a.pieceId)}`;
     case 'EXCHANGE_MATERIALS': return `broke 1 ${MATERIAL_NAME[a.give]} down into smaller materials`;

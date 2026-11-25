@@ -87,8 +87,15 @@ describe('a game with draws through a host and three clients', () => {
     expect(cursor.dice.status).toBe('ok');
     expect(cursor.stateAt(cursor.length)).toEqual(room.game);
 
-    // The save link, at the end and while a drawn piece waited to be placed.
-    for (const r of [room, JSON.parse(linkAtDraw!) as Room]) {
+    // The save link, at the end and while a drawn piece waited to be placed. Instant bots play in
+    // batches, so that moment is not always seen between two of them; then it is rebuilt from the
+    // journal (the room at the first draw, as the host held it then).
+    const firstDraw = journal.moves.findIndex(m => m.type === 'DRAW_PIECE') + 1;
+    const atDraw: Room = linkAtDraw
+      ? JSON.parse(linkAtDraw) as Room
+      : { ...room, phase: 'playing', seq: firstDraw, game: replayTo(journal, firstDraw)! };
+    expect(atDraw.game!.drawnStackIndex).not.toBeNull();
+    for (const r of [room, atDraw]) {
       const link = await packLink(toSave(r, { savedAt: 1, app: 'test' }, { forLink: true }));
       expect(link.length).toBeLessThan(MAX_LINK_CHARS);
       expect(link.length).toBeLessThan(6000);

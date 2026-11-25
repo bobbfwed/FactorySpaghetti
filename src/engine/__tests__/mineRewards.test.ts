@@ -18,14 +18,17 @@ function threeMines(): GameState {
 }
 
 describe('mineSlotReward', () => {
-  it('the resource point gives 2 Ore, 1 Plate, 1 Sphere by Mine order; the upgrade point Mines + 1 credits', () => {
+  it('the resource point gives 2 Ore, 1 Plate, 1 Sphere by Mine order; the upgrade point the number on the Mine', () => {
     const s = threeMines();
     const [m1, m2, m3] = s.board.filter(p => p.type === 'mine');
     expect(mineSlotReward(s, m1!.id, 0)).toEqual({ kind: 'material', material: 'ore', amount: 2 });
     expect(mineSlotReward(s, m2!.id, 0)).toEqual({ kind: 'material', material: 'plate', amount: 1 });
     expect(mineSlotReward(s, m3!.id, 0)).toEqual({ kind: 'material', material: 'sphere', amount: 1 });
-    expect(mineSlotReward(s, m2!.id, 1)).toEqual({ kind: 'credits', amount: 4 });
-    expect(mineSlotReward({ ...s, mineCount: 1 }, m1!.id, 1)).toEqual({ kind: 'credits', amount: 2 });
+    // The upgrade point: 2 on Mine 1, 3 on Mine 2, 4 on Mine 3, however many Mines are in play (#49).
+    expect(mineSlotReward(s, m1!.id, 1)).toEqual({ kind: 'credits', amount: 2 });
+    expect(mineSlotReward(s, m2!.id, 1)).toEqual({ kind: 'credits', amount: 3 });
+    expect(mineSlotReward(s, m3!.id, 1)).toEqual({ kind: 'credits', amount: 4 });
+    expect(mineSlotReward({ ...s, mineCount: 1 }, m3!.id, 1)).toEqual({ kind: 'credits', amount: 4 });
   });
 
   it('is null for a piece that is not a Mine, or a slot that does not exist', () => {

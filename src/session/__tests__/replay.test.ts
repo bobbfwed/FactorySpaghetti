@@ -170,9 +170,12 @@ describe('a replay file', () => {
 });
 
 describe('a rules-problem report', () => {
-  const mid = replayTo(finished.journal, 200)!;
-  const room = roomFor(mid, 200);
-  const journal: JournalData = { ...finished.journal, moves: finished.journal.moves.slice(0, 200) };
+  // A position in the actions step, so the report has legal moves to hold (the roll step lists
+  // none unless a Leverage card can be played).
+  const AT = 201;
+  const mid = replayTo(finished.journal, AT)!;
+  const room = roomFor(mid, AT);
+  const journal: JournalData = { ...finished.journal, moves: finished.journal.moves.slice(0, AT) };
   const seat = activeSeat(mid)!;
   const refusedMove = { action: { type: 'BUY_MINE', coord: { q: 9, r: 9 } } as Action, error: { code: 'CANT_AFFORD', message: 'Not enough ore.' }, seq: 199 };
 
@@ -199,7 +202,7 @@ describe('a rules-problem report', () => {
     expect(opened.report!.room.room.game).toEqual(mid);
     const cursor = await verifyReplay(opened.replay, { yieldEvery: 0 });
     expect(cursor.refused).toBeNull();
-    expect(cursor.seqAt(cursor.length)).toBe(200);
+    expect(cursor.seqAt(cursor.length)).toBe(AT);
     expect(cursor.stateAt(cursor.length)).toEqual(mid);
   });
 
@@ -207,7 +210,7 @@ describe('a rules-problem report', () => {
     const report = makeReport({ room, journal: null, seat, note: 'x', lastRefused: null, now: 5, app: 'v-test' });
     const cursor = await verifyReplay(openPlaytestText(serializeReport(report)).replay, { yieldEvery: 0 });
     expect(cursor.partial).toBe(true);
-    expect(cursor.firstSeq).toBe(200);
+    expect(cursor.firstSeq).toBe(AT);
     expect(cursor.stateAt(0)).toEqual(mid);
   });
 

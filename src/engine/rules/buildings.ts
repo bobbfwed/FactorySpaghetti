@@ -18,7 +18,7 @@ import type {
 } from '../actions';
 import { MINE_COSTS, MAX_CLAIMS_PER_BUILDING } from '../config';
 import { payMaterials } from './flow';
-import { isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord, validRotation } from './pieces';
+import { isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord, validRotation, OWN_TURN_STEPS } from './pieces';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -73,8 +73,9 @@ export function applyClaimBuilding(
     if (state.phase !== 'roundEnd') {
       return err('WRONG_PHASE', 'Free claim only usable in roundEnd phase');
     }
-  } else if (state.phase !== 'actions') {
-    return err('WRONG_PHASE', `Expected actions phase, got ${state.phase}`);
+  } else if (!OWN_TURN_STEPS.has(state.phase)) {
+    // Production Increase is spent in any step of the turn it is played in (RULES_CHANGES.md #50).
+    return err('WRONG_PHASE', `A Production Increase claim is made on your own turn, not in ${state.phase}`);
   }
 
   const activeId = state.turnOrder[state.activePlayerIndex];
@@ -180,8 +181,13 @@ export function applyUpgradeBuilding(
   state: GameState,
   action: UpgradeBuildingAction,
 ): ActionResult {
-  if (state.phase !== 'actions' && state.phase !== 'roundEnd') {
-    return err('WRONG_PHASE', `Expected actions or roundEnd phase, got ${state.phase}`);
+  // A Production Increase is spent in any step of the player's own turn (RULES_CHANGES.md #50);
+  // the other upgrade credits as before, in the actions step or the round-end turn.
+  const phaseOk = action.fromProductionIncrease === true && action.fromMineCredit !== true
+    ? OWN_TURN_STEPS.has(state.phase)
+    : state.phase === 'actions' || state.phase === 'roundEnd';
+  if (!phaseOk) {
+    return err('WRONG_PHASE', `That upgrade cannot be made in the ${state.phase} step`);
   }
 
   const activeId = state.turnOrder[state.activePlayerIndex];
@@ -289,10 +295,10 @@ export function applyUpgradeBuilding(
 // ── Where a Mine may go ───────────────────────────────────────────────────────
 
 // Why a Mine may not be put down with its rich hex at `coord` and its lean hex in direction
-// `rotation`, or null when it may: both hexes free, and the rich hex next to the board. (The
-// rich hex must touch the board; a Mine touching it only with its lean hex used to be accepted
-// although the move list never offered it — RULES_CHANGES.md #43.)
-function minePlacementError(state: GameState, coord: BoardPiece['coord'], rotation: number): { ok: false; error: RulesError } | null {
+// `rotation`, or null when it may: both hexes free, and at least one of the two next to the
+// board — either half may touch it (designer's decision, RULES_CHANGES.md #47; #43 had required
+// the rich hex). legalActions lists exactly these placements (minePlacements).
+export function minePlacementError(state: GameState, coord: BoardPiece['coord'], rotation: number): { ok: false; error: RulesError } | null {
   if (!validRotation(rotation)) return err('INVALID_ROTATION', `Rotation ${rotation} is not 0–5`);
   const secondary = mineSecondaryCoord(coord, rotation);
   if (isCoordsOccupied(coord, state.board)) {
@@ -301,8 +307,8 @@ function minePlacementError(state: GameState, coord: BoardPiece['coord'], rotati
   if (isCoordsOccupied(secondary, state.board)) {
     return err('COORD_OCCUPIED', `secondary mine hex ${secondary.q},${secondary.r} is already occupied`);
   }
-  if (!isAdjacentToBoard(coord, state.board)) {
-    return err('NOT_ADJACENT', "the Mine's rich hex is not adjacent to any board piece");
+  if (!isAdjacentToBoard(coord, state.board) && !isAdjacentToBoard(secondary, state.board)) {
+    return err('NOT_ADJACENT', 'neither hex of the Mine is adjacent to a board piece');
   }
   return null;
 }

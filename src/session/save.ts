@@ -100,7 +100,12 @@ function stable(x: unknown): unknown {
  *      Mine-belt limit counts ore exits only, a pending factory decision blocks other moves,
  *      Scouting Drone takes any piece by type, payment keeps the highest materials, and the
  *      engine refuses the moves the move list never offered (unfunded claims, re-placing the
- *      meeple, ending the turn without placing it, a Mine touching the board only by its lean hex).
+ *      meeple, ending the turn without placing it, a Mine touching the board only by its lean hex);
+ *      and, not yet released either, the designer's second set (#44–#50): the round is finished
+ *      when the pieces run out, input teleporters supply only what their owner names (and Power
+ *      Plants with one become a decision), Short Sale and Changing Priorities only onto unclaimed
+ *      or own buildings, a Mine may touch the board with either hex, the discard pile is
+ *      reshuffled, a Mine's upgrade point gives its printed number, and cards in every step.
  */
 export const RULES_REVISION = 3;
 

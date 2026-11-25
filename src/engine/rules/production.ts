@@ -9,6 +9,8 @@ import {
   POWER_PLANT_MATERIAL_YIELD,
   POWER_TOKEN_CAP,
   INVENTORY_CAP,
+  MATERIAL_ORDER,
+  POWER_PLANT_INPUTS,
 } from '../config';
 import { resolveDirectAdjacency, fillInputsFromAdjacentMines } from './flow';
 import { factoryProduct, canLoadMaterial } from './recipes';
@@ -42,12 +44,12 @@ function mapPiece(
 
 // ── Input-teleporter supplement ───────────────────────────────────────────────
 
-// Try to fill empty input slots from the owner's inventory to complete a valid recipe.
-// Searches unique material multisets (cheapest first) so the first result is
-// the most ore-efficient completion — sufficient for deterministic engine behaviour.
-// Returns { newSlots, newInventory } on success, null if no valid completion exists.
-// Exported so the smart bot can plan the same load-from-inventory completion the engine
-// uses for input teleporters (single source of truth for recipe completion).
+// One way to fill empty input slots from an inventory so that a valid recipe is complete:
+// searches unique material multisets (cheapest first), so the first result is the most
+// ore-efficient completion. Returns { newSlots, newInventory } on success, null if none exists.
+// The engine no longer uses this: what goes through an input teleporter is the owner's choice
+// (OPERATE_BUILDING `supply`, RULES_CHANGES.md #45; the choices are listed by operateSupplies).
+// Kept for the bots and the interface, which use it to plan loading a building from inventory.
 export function findInputCompletion(
   type: BoardPiece['type'],
   bufferedSlots: ReadonlyArray<Material | null>,
@@ -107,44 +109,122 @@ function powerCostOf(mat: Material): number {
 // it without a circular import. Re-exported for existing importers (legalActions, UI).
 export { canLoadMaterial };
 
-// Attempt to operate a factory building. Returns updated state or null (silently skip).
-// Teleporter rules:
-//   Input teleporter (input.teleporterOwner === ownerId): empty input slots may be
-//     filled from the owner's inventory at any time (including on an opponent's turn).
-//   Output teleporter (output.teleporterOwner set): produced material is diverted
-//     directly to that player's inventory (capped at INVENTORY_CAP); overflow stays
-//     in the output buffer and blocks future production normally.
-function tryOperateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerId): GameState | null {
-  const { input, output } = piece;
-  if (!input || !output) return null;
+// ── Supplying a building through its input teleporter ────────────────────────
 
-  // Output buffer full → can't produce (teleporter would have cleared it on success)
-  if (output.slots.some(slot => slot !== null)) return null;
-
-  const owner = state.players[ownerId];
-  if (!owner) return null;
-
-  // Attempt to supplement empty input slots from inventory via input teleporter.
-  let effectiveSlots: ReadonlyArray<Material | null> = input.slots;
-  let preInventory: Readonly<Record<Material, number>> = owner.inventory;
-
-  if (input.teleporterOwner === ownerId && input.slots.some(s => s === null)) {
-    const completion = findInputCompletion(piece.type, input.slots, owner.inventory);
-    if (completion) {
-      effectiveSlots = completion.newSlots;
-      preInventory = completion.newInventory;
+// Why `supply` (materials from the operator's inventory, through the input teleporter) may not
+// go into `piece`'s input as `operatorId` runs it, or null when it may (or there is none). The
+// supply fills empty input slots only, from whole units the operator holds, through a teleporter
+// of the operator's own; it is never taken without being named (RULES_CHANGES.md #45).
+function supplyError(piece: BoardPiece, operator: Player, supply: ReadonlyArray<Material>): ActionResult | null {
+  if (supply.length === 0) return null;
+  if (!piece.input || piece.input.teleporterOwner !== operator.id) {
+    return err('NO_INPUT_TELEPORTER', 'Materials can be supplied from your inventory only through your teleporter on the input');
+  }
+  const empty = piece.input.slots.filter(s => s === null).length;
+  if (supply.length !== empty) {
+    return err('INVALID_SUPPLY', `Supply exactly one material for each of the ${empty} empty input slot(s)`);
+  }
+  const need = new Map<Material, number>();
+  for (const m of supply) need.set(m, (need.get(m) ?? 0) + 1);
+  for (const [m, n] of need) {
+    if (!(m in operator.inventory) || operator.inventory[m] < n) {
+      return err('INSUFFICIENT_MATERIAL', `You do not hold ${n} ${m}`);
     }
   }
+  return null;
+}
 
-  // All input slots must now be filled (buffer + any teleporter supplement)
-  if (effectiveSlots.some(slot => slot === null)) return null;
+// The input slots with their empty slots filled, in order, by `supply`.
+function withSupply(slots: ReadonlyArray<Material | null>, supply: ReadonlyArray<Material>): Array<Material | null> {
+  let i = 0;
+  return slots.map(s => (s === null && i < supply.length ? supply[i++]! : s));
+}
+
+// `inventory` less the supplied materials.
+function lessSupply(inventory: Readonly<Record<Material, number>>, supply: ReadonlyArray<Material>): Record<Material, number> {
+  const out = { ...inventory } as Record<Material, number>;
+  for (const m of supply) out[m] -= 1;
+  return out;
+}
+
+// True when an activation of this Power Plant for `ownerId` is a decision rather than an
+// automatic run: the owner's own teleporter sits on its input and the input is empty, so they
+// choose what (if anything) to supply from their inventory (RULES_CHANGES.md #45).
+export function isPowerPlantDecision(piece: BoardPiece, ownerId: PlayerId): boolean {
+  return piece.type === 'powerPlant' && piece.input !== null &&
+    piece.input.teleporterOwner === ownerId && piece.input.slots.some(s => s === null);
+}
+
+// Every supply with which `ownerId` could run `pieceId` right now, as its operator: [] (nothing
+// supplied, run from the building's own input) first when that works, then each distinct
+// multiset of materials they hold that fills the empty input slots through their input
+// teleporter and runs, in the fixed material order. Empty when the building cannot run at all.
+// Pure; shared by roll resolution (is an activation a decision?), legalActions and the interface.
+export function operateSupplies(state: GameState, pieceId: string, ownerId: PlayerId): Array<Material[]> {
+  const piece = state.board.find(p => p.id === pieceId);
+  const owner = state.players[ownerId];
+  if (!piece || !owner || (!piece.input && piece.type !== 'powerPlant')) return [];
+  const out: Array<Material[]> = [];
+  const runs = (supply: Material[]): boolean => runBuilding(state, piece, ownerId, supply).ok;
+  if (runs([])) out.push([]);
+  if (!piece.input || piece.input.teleporterOwner !== ownerId) return out;
+  const empty = piece.input.slots.filter(s => s === null).length;
+  if (empty === 0) return out;
+  const choose = (k: number, from: number, left: Record<Material, number>, chosen: Material[]): void => {
+    if (k === 0) { if (runs(chosen)) out.push(chosen); return; }
+    for (let i = from; i < MATERIAL_ORDER.length; i++) {
+      const m = MATERIAL_ORDER[i]!;
+      if ((left[m] ?? 0) <= 0) continue;
+      choose(k - 1, i, { ...left, [m]: left[m] - 1 }, [...chosen, m]);
+    }
+  };
+  choose(empty, 0, { ...owner.inventory }, []);
+  return out;
+}
+
+// Run `piece` for `ownerId` (the operator), with `supply` from their inventory through their
+// input teleporter. Power Plants and factories alike; the result says why it cannot run.
+function runBuilding(state: GameState, piece: BoardPiece, ownerId: PlayerId, supply: ReadonlyArray<Material>): ActionResult {
+  return piece.type === 'powerPlant'
+    ? operatePowerPlant(state, piece, ownerId, supply)
+    : operateFactory(state, piece, ownerId, supply);
+}
+
+// Operate a factory building for `ownerId`, with `supply` (possibly empty) going into its empty
+// input slots from their inventory through their input teleporter. Nothing else is taken from
+// the inventory: without a supply the factory runs only from what lies in its input.
+// Output teleporter (output.teleporterOwner set): the product is diverted directly to that
+// player's inventory (capped at INVENTORY_CAP); overflow stays in the output buffer and blocks
+// future production normally.
+function operateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerId, supply: ReadonlyArray<Material>): ActionResult {
+  const { input, output } = piece;
+  const cannot = err('CANNOT_OPERATE', 'Building cannot operate: check inputs form a valid recipe, output is empty, and you have enough power');
+  if (!input || !output) return cannot;
+
+  const owner = state.players[ownerId];
+  if (!owner) return err('INTERNAL', 'Player not found');
+  const refused = supplyError(piece, owner, supply);
+  if (refused) return refused;
+
+  // Output buffer full → can't produce (teleporter would have cleared it on success)
+  if (output.slots.some(slot => slot !== null)) return cannot;
+
+  const effectiveSlots = withSupply(input.slots, supply);
+  const preInventory = lessSupply(owner.inventory, supply);
+
+  // All input slots must now be filled (buffer + the supply)
+  if (effectiveSlots.some(slot => slot === null)) return cannot;
 
   const product = factoryProduct(piece.type, effectiveSlots);
-  if (!product) return null;
+  if (!product) {
+    return supply.length > 0
+      ? err('INVALID_RECIPE', 'Those materials do not complete a recipe of this building')
+      : cannot;
+  }
 
   // Power cost is fixed per OUTPUT type: plate=1, sphere=2, tesseract=3.
   const cost = powerCostOf(product);
-  if (owner.powerTokens < cost) return null;
+  if (owner.powerTokens < cost) return cannot;
 
   // Consume inputs, deduct power, fill output buffer
   const clearedSlots = input.slots.map(() => null as Material | null);
@@ -159,7 +239,7 @@ function tryOperateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerI
   let newPlayers = mapPlayer(state.players, ownerId, p => ({
     ...p,
     powerTokens: p.powerTokens - cost,
-    inventory: preInventory, // may have had materials deducted by input teleporter
+    inventory: preInventory, // less the materials supplied through the input teleporter
   }));
 
   // If an output teleporter is present, divert the produced material to that
@@ -183,20 +263,30 @@ function tryOperateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerI
     // else: inventory at cap — product stays in output buffer (overflow)
   }
 
-  return { ...state, board: newBoard, players: newPlayers };
+  return { ok: true, state: { ...state, board: newBoard, players: newPlayers } };
 }
 
-// Attempt to operate a power plant. Returns updated state or null (silently skip).
-function tryOperatePowerPlant(state: GameState, piece: BoardPiece, ownerId: PlayerId): GameState | null {
+// Operate a Power Plant for `ownerId`: no power cost; yields POWER_PLANT_BASE_YIELD tokens, or
+// the chart's tokens for the one Ore, Plate or Sphere it burns — the one lying in its input, or
+// else the one supplied from the owner's inventory through their input teleporter (never a
+// Tesseract). Refused when the owner already holds the Power Token cap.
+function operatePowerPlant(state: GameState, piece: BoardPiece, ownerId: PlayerId, supply: ReadonlyArray<Material>): ActionResult {
   const owner = state.players[ownerId];
-  if (!owner) return null;
-  if (owner.powerTokens >= POWER_TOKEN_CAP) return null; // already capped — skip silently
+  if (!owner) return err('INTERNAL', 'Player not found');
+  const refused = supplyError(piece, owner, supply);
+  if (refused) return refused;
+  if (supply.some(m => !POWER_PLANT_INPUTS.includes(m))) {
+    return err('INVALID_RECIPE', 'A Power Plant burns only Ore, a Plate or a Sphere');
+  }
+  if (owner.powerTokens >= POWER_TOKEN_CAP) {
+    return err('CANNOT_OPERATE', 'You already hold the most Power Tokens you may');
+  }
 
   // Determine yield and whether to consume input material
   let tokensToAdd: number;
   let newInput = piece.input;
 
-  const inputMat = piece.input?.slots[0] ?? null;
+  const inputMat = piece.input?.slots[0] ?? supply[0] ?? null;
   if (inputMat !== null && inputMat !== 'tesseract') {
     // Consume the material for total yield from chart
     tokensToAdd = POWER_PLANT_MATERIAL_YIELD[inputMat as Exclude<Material, 'tesseract'>];
@@ -208,9 +298,11 @@ function tryOperatePowerPlant(state: GameState, piece: BoardPiece, ownerId: Play
   const newTokens = Math.min(owner.powerTokens + tokensToAdd, POWER_TOKEN_CAP);
 
   const newBoard = mapPiece(state.board, piece.id, p => ({ ...p, input: newInput }));
-  const newPlayers = mapPlayer(state.players, ownerId, p => ({ ...p, powerTokens: newTokens }));
+  const newPlayers = mapPlayer(state.players, ownerId, p => ({
+    ...p, powerTokens: newTokens, inventory: lessSupply(p.inventory, supply),
+  }));
 
-  return { ...state, board: newBoard, players: newPlayers };
+  return { ok: true, state: { ...state, board: newBoard, players: newPlayers } };
 }
 
 // Check whether a building can currently produce (used by legalActions to filter).
@@ -245,13 +337,16 @@ export function factoryExpectedProduct(piece: BoardPiece): Material | null {
 // ── Roll resolution ───────────────────────────────────────────────────────────
 
 // Resolve production for all buildings that match diceSum.
-// Power Plants (any owner) auto-operate — there's no downside to generating tokens.
+// Power Plants (any owner) auto-operate — there's no downside to generating tokens — except
+// one with the owner's own teleporter on its empty input: then the owner chooses what to supply
+// from their inventory (isPowerPlantDecision, RULES_CHANGES.md #45), so it becomes a pending
+// decision like a factory (while they are below the Power Token cap).
 // FACTORIES of ANY owner are deferred to pendingOps: each factory that COULD operate
-// (inputs completable, enough power) becomes a pending decision for its owner to
-// OPERATE_BUILDING or SKIP_FACTORY_ROLL. This means a roll on anyone's turn never spends
-// your power/materials without your consent (RULES_CHANGES.md #25: everyone activates, but the
-// owner always chooses). For multiple matching claims on one building, each distinct owner
-// gets a pending entry.
+// (from its input, or with a supply through the owner's input teleporter, and enough power)
+// becomes a pending decision for its owner to OPERATE_BUILDING or SKIP_FACTORY_ROLL. This means
+// a roll on anyone's turn never spends your power/materials without your consent
+// (RULES_CHANGES.md #25: everyone activates, but the owner always chooses). For multiple
+// matching claims on one building, each distinct owner gets a pending entry.
 function resolveProduction(state: GameState, diceSum: number): { state: GameState; pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> } {
   let current = state;
   const pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> = [];
@@ -270,15 +365,15 @@ function resolveProduction(state: GameState, diceSum: number): { state: GameStat
       const currentPiece = current.board.find(p => p.id === piece.id);
       if (!currentPiece) continue;
 
-      if (currentPiece.type === 'powerPlant') {
-        const next = tryOperatePowerPlant(current, currentPiece, ownerId);
-        if (next) current = next;
+      if (currentPiece.type === 'powerPlant' && !isPowerPlantDecision(currentPiece, ownerId)) {
+        const next = operatePowerPlant(current, currentPiece, ownerId, []);
+        if (next.ok) current = next.state;
         continue;
       }
 
-      // Factory: defer to the owner's decision if it could actually operate now.
-      // tryOperateFactory (on a probe) accounts for input-teleporter completion and power.
-      if (tryOperateFactory(current, currentPiece, ownerId) !== null) {
+      // A factory, or a Power Plant whose supply is the owner's choice: defer to the owner's
+      // decision if it could actually operate now (from its input or with some supply).
+      if (operateSupplies(current, currentPiece.id, ownerId).length > 0) {
         pendingOps.push({ pieceId: piece.id, ownerId });
       }
     }
@@ -457,8 +552,8 @@ function collectMeepleBenefits(state: GameState): GameState {
     if (!piece) return player;
 
     if (piece.type === 'mine' && player.meepleSlotIndex !== null) {
-      // Resource point: 1st mine → 2 ore, 2nd → 1 plate, 3rd → 1 sphere; upgrade point: mines + 1
-      // credits (mineRewards.ts).
+      // Resource point: Mine 1 → 2 ore, Mine 2 → 1 plate, Mine 3 → 1 sphere; upgrade point: the
+      // credits printed on the Mine, 2 / 3 / 4 (mineRewards.ts).
       const r = mineSlotReward(state, piece.id, player.meepleSlotIndex);
       if (r?.kind === 'material') {
         const inv = player.inventory;
@@ -575,19 +670,11 @@ export function applyOperateBuilding(
   const piece = state.board.find(p => p.id === action.pieceId);
   if (!piece) return err('PIECE_NOT_FOUND', `No piece with id ${action.pieceId}`);
 
-  let operated: GameState | null;
-  if (piece.type === 'powerPlant') {
-    operated = tryOperatePowerPlant(state, piece, operatorId);
-  } else {
-    operated = tryOperateFactory(state, piece, operatorId);
-  }
-
-  if (!operated) {
-    return err(
-      'CANNOT_OPERATE',
-      'Building cannot operate: check inputs form a valid recipe, output is empty, and you have enough power',
-    );
-  }
+  // What the operator supplies from their inventory through their input teleporter (nothing is
+  // taken unless named here; RULES_CHANGES.md #45).
+  const ran = runBuilding(state, piece, operatorId, action.supply ?? []);
+  if (!ran.ok) return ran;
+  const operated = ran.state;
 
   // Remove the resolved factory (by owner) from pendingFactoryOps in the actions phase.
   const newPending = state.phase === 'actions'
@@ -776,6 +863,12 @@ export function applySkipFactoryRoll(state: GameState, action: SkipFactoryRollAc
   );
   if (!entry) {
     return err('NOT_PENDING', `${action.pieceId} is not in pendingFactoryOps`);
+  }
+  // A Power Plant always runs (its tokens are free): its decision is only what to supply. It may
+  // be skipped only when it cannot run any more (its owner reached the Power Token cap since).
+  const piece = state.board.find(p => p.id === action.pieceId);
+  if (piece?.type === 'powerPlant' && operateSupplies(state, piece.id, entry.ownerId).length > 0) {
+    return err('MUST_RUN', 'A Power Plant always runs; choose what to supply to it, if anything');
   }
   return {
     ok: true,

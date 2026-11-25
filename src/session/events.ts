@@ -6,6 +6,7 @@ import type { GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
 import { factoryOperatePowerCost } from '../engine/rules/production';
+import { nextCardDrawn } from '../engine/rules/cards';
 import type { TableEvent } from './room';
 
 const MATS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
@@ -32,7 +33,7 @@ export function moveEvents(before: GameState, after: GameState, action: Action, 
       return top ? [{ kind: 'pieceDrawn', seat, stack: action.stackIndex, pieceId: top.id, building: top.type }] : [];
     }
     case 'BUY_CARD': {
-      const card = before.cardDeck[0] ?? null;
+      const card = nextCardDrawn(before);
       return [{ kind: 'cardBought', seat, card, playedOnDraw: card !== null && PLAY_ON_DRAW_CARDS.has(card) }];
     }
     case 'OPERATE_BUILDING':
@@ -89,6 +90,12 @@ function rollEvents(before: GameState, after: GameState, rolls: readonly number[
 
     for (const owner of owners) {
       const base = { kind: 'activated' as const, seat: owner, pieceId: beforePiece.id, building: beforePiece.type };
+      const awaiting = after.pendingFactoryOps.some(e => e.pieceId === beforePiece.id && e.ownerId === owner);
+      if (beforePiece.type === 'powerPlant' && awaiting) {
+        // A Power Plant with its owner's teleporter on an empty input: they choose what to supply.
+        out.push({ ...base, outcome: 'awaiting-choice', amount: 0 });
+        continue;
+      }
       if (beforePiece.type === 'powerPlant') {
         const gained = (after.players[owner]?.powerTokens ?? 0) - (before.players[owner]?.powerTokens ?? 0);
         out.push(gained > 0
@@ -97,7 +104,7 @@ function rollEvents(before: GameState, after: GameState, rolls: readonly number[
         continue;
       }
       if (!beforePiece.output) continue;
-      if (after.pendingFactoryOps.some(e => e.pieceId === beforePiece.id && e.ownerId === owner)) {
+      if (awaiting) {
         out.push({ ...base, outcome: 'awaiting-choice', amount: factoryOperatePowerCost(afterPiece) });
       } else if (beforePiece.output.slots.some(s => s !== null)) {
         out.push({ ...base, outcome: 'output-full', amount: 0 });
