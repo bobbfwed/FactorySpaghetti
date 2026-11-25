@@ -96,8 +96,9 @@ The printed game is the visual reference. The designer's files are outside the r
   Whatever remains in stack 1 after this removal is the active draw pile for turn 1.
 - **S6 — Determine the starting player.** Derive deterministically from the seed (model the "roll dice to see who starts" as a seeded roll). Set startingPlayerIndex and the starting-player marker.
 - **S7 — Initial building claims (two phases, opposite directions).** This is a special setup-only claim: it uses fixed Control Modules, not the normal "initial = mine count" rule. No power/material cost.
-  Phase A — Plate Factories (reverse order). Order = the normal turn order reversed, i.e. begins with the player immediately counter-clockwise of the starting player and proceeds counter-clockwise, ending on the starting player. Each player in turn claims one of the placed Plate Factories by placing their "3" Control Module on it.
-  Phase B — Power Plants (forward order). Order = normal turn order, beginning with the starting player, clockwise. Each player claims one placed Power Plant with their "2" Control Module.
+  Phase A — Plate Factories (forward order). Order = normal turn order, beginning with the starting player, clockwise. Each player in turn claims one of the placed Plate Factories by placing their "3" Control Module on it.
+  Phase B — Power Plants (reverse order). Order = the normal turn order reversed, i.e. begins with the last player and proceeds counter-clockwise, ending on the starting player. Each player claims one placed Power Plant with their "2" Control Module.
+  (Order confirmed by the owner on 2026-11-24: this is what the engine and `RULES.md` do; the printed rulebook has the two phases the other way round.)
 
 ## Smart Bot Creation (ordered)
 - **B0 — Bot scaffolding.** The chooseAction interface, a randomBot that picks uniformly from legalActions, and a way to run bot-vs-bot in the simulator. Tests: a full game completes start to finish with no engine errors. This is also your fuzzer — let it run thousands of games and shake out engine bugs before the smart bot exists.
