@@ -302,8 +302,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   // Engine: whose turn and which step
   WRONG_PHASE: 'That is not allowed at this step of the turn.',
   GAME_OVER: 'The game is over.',
-  PENDING_FACTORY_OPS: 'Every activated factory must be run or skipped first.',
-  DECISION_PENDING: 'First choose whether to run or skip your activated factory.',
+  PENDING_FACTORY_OPS: 'Every activated building must be run or skipped first.',
+  DECISION_PENDING: 'First decide on your activated building: run it (choosing what to supply, if anything) or skip it.',
   NOT_PENDING: 'That building was not activated by this roll.',
   OVERSTOCK_PENDING: 'Place the Overstock Supplies pieces first.',
   PENDING_MINE: 'Place the dropped Mine first.',

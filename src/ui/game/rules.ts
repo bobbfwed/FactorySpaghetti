@@ -8,6 +8,7 @@ import {
   PLAY_ON_DRAW_CARDS, PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT, TESSERACTS_TO_WIN, bonusesEnabled, cardCost, teleporterCost,
 } from '../../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../../session/describe';
+import { MINE_RESOURCE_REWARDS, MINE_UPGRADE_REWARDS } from '../../engine/rules/mineRewards';
 import { W } from '../../play/words';
 import type { Child } from '../dom';
 import { h } from '../dom';
@@ -56,10 +57,11 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-rules' },
     h('h3', { text: 'Your turn' }),
     h('ol', { class: 'tg-turnlist' },
-      h('li', null, h('b', { text: 'Place a piece' }), ' next to the board, from a stack that is open.'),
+      h('li', null, h('b', { text: 'Place a piece' }), ' next to the board, from a stack that is open. Once the pieces have run out, the turn starts at the roll.'),
       h('li', null, h('b', { text: 'Roll' }), ` one die per Mine (now ${plural(mines, 'die', 'dice')}). Every building whose Control Module matches the total may run, on anyone's turn.`),
-      h('li', null, h('b', { text: 'Actions' }), `: buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials, play up to ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards. A factory of yours the roll activated is run or skipped first.`),
+      h('li', null, h('b', { text: 'Actions' }), ': buy and lay belts, buy Leverage cards and Mines, place teleporters, exchange materials. A building of yours the roll activated is run or skipped first.'),
       h('li', null, h('b', { text: 'Place meeple' }), ' on one of your buildings or on a Mine point. If it has anywhere to go, it must be placed.')),
+    h('p', { class: 'muted', text: `Leverage cards: play up to ${MAX_CARDS_PLAYED_PER_TURN} per turn, in any of the four steps of your own turn (before or after your meeple is down), never in another player's turn or a round-end turn. Buy them in step 3. Scouting Drone in step 1 only before you draw.` }),
     h('p', { class: 'muted', text: `End of the round (after everyone has had a turn): each player in turn gets ${plural(mines, 'free upgrade', 'free upgrades')} (one per Mine) for one building, may spend Mine credits, may exchange materials, and may load, run and collect the building their meeple stands on. Doing nothing is fine.${ctx.room.settings.roundEndTimeoutMs > 0 ? ` A round-end turn with no move for ${Math.round(ctx.room.settings.roundEndTimeoutMs / 1000)} s ends by itself.` : ''}` }),
 
     h('h3', { text: 'Prices' }),
@@ -67,9 +69,11 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     row([icon('card'), 'Leverage card'], `Mines + 1 (now ${cardCost(mines)})`),
     h('p', { class: 'muted', text: W.playOnDrawRule([...PLAY_ON_DRAW_CARDS].map(c => CARD_NAME[c]))
       + (PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ` They count toward the ${MAX_CARDS_PLAYED_PER_TURN} cards played per turn, but always take effect.` : '') }),
-    row([icon('mine'), 'Mine'], `${MINE_COSTS.join(' then ')}; its rich hex must touch the board`),
+    h('p', { class: 'muted', text: `Leverage deck: ${plural(g.cardDeck.length, 'card', 'cards')}; discard pile: ${plural(g.cardDiscard.length, 'card', 'cards')}. When the deck is empty, the discard pile is shuffled into a new deck; cards run out only when both are empty.` }),
+    row([icon('mine'), 'Mine'], `${MINE_COSTS.join(' then ')}; either half may touch the board`),
+    row('Meeple on a Mine', `resource point: ${MINE_RESOURCE_REWARDS.map(r => `${r.amount} ${MATERIAL_NAME[r.material]}`).join(' / ')}; upgrade point: ${MINE_UPGRADE_REWARDS.join(' / ')} upgrades (Mine 1 / 2 / 3)`),
     row([icon('teleporter'), 'Teleporter'], `teleporters on the board + 1 (now ${teleporterCost(g.globalTeleporterCount)})`),
-    h('p', { class: 'muted', text: 'A teleporter cannot be taken back. It returns to its owner (and the price drops) only when they lose their last claim on its building.' }),
+    h('p', { class: 'muted', text: 'A teleporter cannot be taken back. It returns to its owner (and the price drops) only when they lose their last claim on its building. On an input, it lets you hand over materials of your own when the building runs: you choose which, and nothing is ever taken unless you choose it. If you do not answer in time on another player\'s turn, the building runs only if it can without your materials.' }),
     row('Claim with Control Module M', `M − Mines + 1 upgrades (now M − ${mines - 1})`),
     row('Upgrade', 'new − old Control Module, in upgrades'),
     row('Production Increase', `${PRODUCTION_INCREASE_BUDGET} upgrades`),
@@ -94,6 +98,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
     row('Nothing in its input', `+${POWER_PLANT_BASE_YIELD}`),
     (Object.keys(POWER_PLANT_MATERIAL_YIELD) as (keyof typeof POWER_PLANT_MATERIAL_YIELD)[]).map(m =>
       row([icon(MATERIAL_ICON[m], undefined, 'ic small'), MATERIAL_NAME[m]], `+${POWER_PLANT_MATERIAL_YIELD[m]}`)),
+    h('p', { class: 'muted', text: 'A Power Plant runs by itself when its number is rolled, except one with your teleporter on its empty input: then you choose to run it as it is or to provide one material for more Power Tokens.' }),
 
     h('h3', { text: 'Limits' }),
     row('Each material', `${INVENTORY_CAP}`),

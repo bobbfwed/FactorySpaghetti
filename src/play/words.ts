@@ -50,12 +50,12 @@ export function supplyWords(mats: readonly Material[]): string {
 
 export const CARD_TEXT: Record<CardType, string> = {
   scoutingDrone: 'Look through the stacks, choose a piece and place it on the board now.',
-  shortSale: 'Claim a building with your lowest Control Module that is not below the number of mines.',
+  shortSale: 'Claim an unclaimed building (or add to one you hold a claim on) with your lowest Control Module that is not below the number of Mines.',
   embezzlement: 'Take 1 Sphere from the bank.',
   sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to their owners.',
   overstockSupplies: 'Draw 3 pieces and place them next to the board. Played as soon as it is drawn.',
   netSurplusSellOff: 'Each other player gives you 3 Power Tokens (or all they have), until you reach 10.',
-  changingPriorities: 'Move one of your Control Modules from one building to another.',
+  changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on.',
   productionIncrease: 'Spend 4 upgrades this turn on claims and upgrades (at most one claim).',
   mineInspection: 'Take 1 Plate from the bank for each Mine in play. Played as soon as it is drawn.',
   personalJetPack: 'Collect the output of all your factories into your materials.',
@@ -129,8 +129,8 @@ export const W = {
   actionsIdle: 'Take any actions you want, then press Done with actions.',
   actionsDone: 'Done with actions',
   overstockPlace: (i: number, n: number, what: string): string => `Overstock Supplies: place piece ${i} of ${n} (a ${what}) next to the board.`,
-  pendingMine: 'Decide whether to run your activated factory.',
-  pendingMineMany: (n: number): string => `Decide whether to run your ${n} activated factories.`,
+  pendingMine: 'Decide how to run your activated building (or whether to skip it).',
+  pendingMineMany: (n: number): string => `Decide on your ${n} activated buildings.`,
 
   // Step 4
   meeplePlace: 'Place your meeple: tap one of your glowing buildings or a Mine point. Every turn ends with this step.',
@@ -159,8 +159,8 @@ export const W = {
   confirmHint: 'Confirm to place it.',
 
   // Primary button reasons
-  decideFirst: 'First decide whether to run your activated factory.',
-  othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated factory.`,
+  decideFirst: 'First decide on your activated building.',
+  othersDeciding: (names: string): string => `Waiting for ${names} to decide on an activated building.`,
   overstockFirst: 'Place the Overstock Supplies pieces first.',
   meepleFirst: 'Place your meeple first: tap a glowing building or Mine point.',
   unspentPI: (n: number): string => `You still have ${units(n)} from Production Increase; they can be spent until your turn ends.`,
@@ -327,7 +327,7 @@ export const W = {
   promptSkipDetail: 'Keep your Power Tokens and materials',
   promptRunUnknown: 'Run it with what is in its input',
   promptCannotRun: 'Its output buffer is already full, so it cannot run now; skip it.',
-  promptHint: 'Decide on your activated factory.',
+  promptHint: 'Decide on your activated building.',
   /** What the host does when an off-turn decision is not answered in time (it never supplies anything). */
   promptTimeout: 'When the time runs out, it runs only if it can without your materials; otherwise it is skipped.',
 
