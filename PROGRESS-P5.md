@@ -14,7 +14,7 @@
 ## Left
 1. ~~Re-run the study~~ done: all ten runs finished (reports in docs/bot-study/, one commit each).
 2. ~~Rewrite docs/BOT_FINDINGS.md~~ done.
-3. Full checks (npm test, typecheck, lint, build), then final commit and report.
+3. ~~Full checks~~ done: npm test 104 files / 969 tests passed; typecheck exit 0; lint 0 errors (47 old warnings); build ok. Final commit made; report sent.
 
 ## Runs
 All ten runs are chained in one background job (script: scratchpad chain2.sh, 4 processes). Each finished run writes its report to `docs/bot-study/<run>.txt` and is committed on its own ("WIP: bot study run <run>"). Full per-game JSON is kept outside the repo (scratchpad runs2/). The throw-away scripted lines and config variants are in `docs/bot-study/scripts/` (loaded with `--import`).
