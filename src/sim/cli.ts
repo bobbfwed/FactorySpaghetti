@@ -2,7 +2,8 @@
 // tournament.ts, prints a table per player count and can write every game to a JSON file.
 //
 //   --mode field|all     field: each bot alone against a table of --baseline bots (default);
-//                        all: every table of distinct bots ("everyone against everyone")
+//                        all: every table of distinct bots ("everyone against everyone");
+//                        mirror: tables of one bot only, one game per seed (seat effects)
 //   --bots a,b,c         bot ids (default: every registry bot except Random Bot)
 //   --baseline id        the field's bot (default greedy = Smart Bot)
 //   --players 2,3,4      player counts (default 2,3,4)
@@ -27,10 +28,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { BOT_TYPES } from '../bots/registry';
 import type { BotFn } from '../bots/botInterface';
 import type { Entrant, GameRecord, GameSpec, PlayerCount } from './tournament';
-import { aggregate, fieldSchedule, formatReport, playGame, roundRobinSchedule } from './tournament';
+import { aggregate, fieldSchedule, formatReport, mirrorSchedule, playGame, roundRobinSchedule } from './tournament';
 
 interface Opts {
-  mode: 'field' | 'all';
+  mode: 'field' | 'all' | 'mirror';
   bots: string[];
   baseline: string;
   players: PlayerCount[];
@@ -57,7 +58,7 @@ function parse(argv: readonly string[]): Opts {
       return x;
     };
     switch (k) {
-      case '--mode': { const m = v(); if (m !== 'field' && m !== 'all') throw new Error('--mode is field or all'); o.mode = m; break; }
+      case '--mode': { const m = v(); if (m !== 'field' && m !== 'all' && m !== 'mirror') throw new Error('--mode is field, all or mirror'); o.mode = m; break; }
       case '--bots': o.bots = v().split(',').filter(Boolean); break;
       case '--baseline': o.baseline = v(); break;
       case '--players': o.players = v().split(',').map(Number).filter((n): n is PlayerCount => n === 2 || n === 3 || n === 4); break;
@@ -92,6 +93,7 @@ function schedule(o: Opts): GameSpec[] {
   const specs: GameSpec[] = [];
   for (const pc of o.players) {
     if (o.mode === 'all') specs.push(...roundRobinSchedule(ids, pc, o.seeds, o.start));
+    else if (o.mode === 'mirror') specs.push(...mirrorSchedule(ids, pc, o.seeds, o.start));
     else specs.push(...fieldSchedule(ids.filter(id => id !== o.baseline), o.baseline, pc, o.seeds, o.start));
   }
   return specs;

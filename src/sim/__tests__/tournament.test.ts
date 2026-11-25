@@ -63,6 +63,12 @@ function rec(over: Partial<GameRecord>): GameRecord {
     seed: 1, playerCount: 2, seats: ['a', 'b'], turnPosition: [0, 1], winners: [0], ending: 'tesseracts',
     rounds: 10, actions: 100, points: [10, 20], tesseracts: [4, 0], bonuses: [0, 1],
     bonusHolders: { investor: -1, beltWeaver: 1, factoryEmpire: -1 },
+    bonusFirst: { investor: null, beltWeaver: { round: 3, seat: 1 }, factoryEmpire: null },
+    bonusMoves: { investor: 0, beltWeaver: 0, factoryEmpire: 0 },
+    firstTesseractRound: [5, -1],
+    mines: [{ round: 4, boughtBy: 0 }, { round: 8, boughtBy: -1 }],
+    cardsBought: [2, 0],
+    coClaims: [0, 1],
     ...over,
   };
 }
@@ -72,10 +78,17 @@ describe('aggregation', () => {
     const records = [
       rec({}),
       rec({ seats: ['b', 'a'], turnPosition: [1, 0], winners: [1], points: [5, 7], tesseracts: [0, 4] }),
-      rec({ winners: [0, 1], ending: 'boardExhausted', points: [30, 30], tesseracts: [0, 0], bonuses: [0, 0], bonusHolders: { investor: 0, beltWeaver: -1, factoryEmpire: -1 } }),
+      rec({
+        winners: [0, 1], ending: 'boardExhausted', points: [30, 30], tesseracts: [0, 0], bonuses: [0, 0],
+        bonusHolders: { investor: 0, beltWeaver: -1, factoryEmpire: -1 },
+        bonusFirst: { investor: { round: 6, seat: 1 }, beltWeaver: { round: 3, seat: 1 }, factoryEmpire: null },
+        bonusMoves: { investor: 1, beltWeaver: 0, factoryEmpire: 0 },
+        firstTesseractRound: [-1, -1],
+      }),
       rec({ winners: [], ending: 'actionLimit', rounds: 40 }),
     ];
-    const { bots, seats } = aggregate(records);
+    const summary = aggregate(records);
+    const { bots, seats } = summary;
     const a = bots.find(b => b.id === 'a')!;
     const b = bots.find(b => b.id === 'b')!;
     expect(a.games).toBe(4);
@@ -96,12 +109,29 @@ describe('aggregation', () => {
     expect(seats).toHaveLength(1);
     expect(seats[0]!.games).toBe(4);
     expect(seats[0]!.byPosition.map(p => p.wins)).toEqual([2.5, 0.5]);
-    expect(formatReport({ bots, seats })).toContain('2 players');
+    // Per-bot facts: cards, Mines bought, claims onto others' buildings, first Tesseract.
+    expect(a.avgCardsBought).toBeCloseTo((2 + 0 + 2 + 2) / 4);
+    expect(a.minesBought).toBeCloseTo(0.75);
+    expect(b.avgCoClaims).toBeCloseTo(0.75);
+    expect(a.avgFirstTesseractRound).toBeCloseTo(5);
+    expect(Number.isNaN(b.avgFirstTesseractRound)).toBe(false);
+    // Bonus Tesseracts: Belt Weaver taken in round 3 in three games and kept; the Investor changed hands once.
+    const weaver = summary.bonuses.find(x => x.kind === 'beltWeaver')!;
+    expect(weaver.heldAtEnd).toBeCloseTo(0.75);
+    expect(weaver.avgFirstRound).toBeCloseTo(3);
+    expect(weaver.keptByFirst).toBeCloseTo(0.75);
+    const investor = summary.bonuses.find(x => x.kind === 'investor')!;
+    expect(investor.avgMoves).toBeCloseTo(0.25);
+    expect(investor.keptByFirst).toBe(0);
+    expect(investor.holderWinRate).toBeCloseTo(0.5);
+    const text = formatReport(summary);
+    expect(text).toContain('2 players');
+    expect(text).toContain('Bonus Tesseracts');
   });
 });
 
 function strip(r: GameRecord): Omit<GameRecord, 'ms'> {
-  const rest: Partial<GameRecord> = { ...r };
+  const rest: { -readonly [K in keyof GameRecord]?: GameRecord[K] } = { ...r };
   delete rest.ms;
   return rest as Omit<GameRecord, 'ms'>;
 }

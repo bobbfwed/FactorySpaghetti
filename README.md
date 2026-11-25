@@ -67,8 +67,8 @@ These were drawn before the game was built, as the target for its look. They are
 | Part | State |
 |---|---|
 | Rules engine (`src/engine`) | Complete. One pure function, `applyAction`, enforces every rule. |
-| Bots (`src/bots`) | A random bot and a one-move-lookahead "Smart Bot". |
-| Simulator (`src/sim`) | Runs many bot games for balance statistics. |
+| Bots (`src/bots`) | A random bot, a one-move-lookahead "Smart Bot", and six play-style bots (Planner, Mine Rusher, Card Shark, Bonus Hunter, Hoarder, Teleporter), all chosen per seat in the lobby. |
+| Simulator (`src/sim`) | Seeded bot tournaments from the command line (`npm run sim`) with win rates, confidence intervals and seat effects; findings in [docs/BOT_FINDINGS.md](docs/BOT_FINDINGS.md). |
 | Sessions and saves (`src/session`) | The host's browser runs the engine and rolls seeded dice; clients send move requests. Bots, stand-in bots for players who are away, timers, host take-over, save links and save files. |
 | Network (`src/net`, `src/online`) | Browser-to-browser connections through PeerJS with 5-letter room codes, automatic host hand-over under the same code, a same-browser transport for testing, and a network check page (`net-check.html`). |
 | Menu, lobby, resume (`src/app`, `src/ui`) | Host, join, solo, invite link, seats, colours, settings; resume from this device, a save link or a save file. |
@@ -107,6 +107,7 @@ npm run build      # static site into dist/ (what GitHub Pages serves)
 npm run preview    # serve dist/ at http://localhost:4173 (service worker and install work here)
 npm run typecheck
 npm run lint
+npm run sim -- --players 2,3,4 --seeds 10 --jobs 4   # bot tournament; options at the top of src/sim/cli.ts
 ```
 
 ## Branches
