@@ -16,5 +16,6 @@ export { PlayController, targetKey } from './controller';
 export type { PlayControllerOptions } from './controller';
 export type { Item, PlayView, Prompt, Selection, SupplyView, TrayEntry } from './types';
 export { turnQueue } from './queue';
+export { reshuffledBy } from './info';
 export type { QueueItem, TurnQueue, ChipStatus } from './queue';
 export type { RouteSeg, Seg, Tier } from './route';

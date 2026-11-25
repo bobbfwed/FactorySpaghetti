@@ -244,3 +244,13 @@ export const EXCHANGE_GETS: Readonly<Record<'plate' | 'sphere' | 'tesseract', Pa
   sphere: { plate: 2, ore: 1 },
   tesseract: { sphere: 3, ore: 2 },
 };
+
+// ── The Leverage deck ─────────────────────────────────────────────────────────
+
+/**
+ * How many cards of the discard pile were shuffled into a new Leverage deck by a move (RULES_CHANGES.md
+ * #48): a card bought (a `cardBought` event) while the deck was empty. 0 when there was no reshuffle.
+ */
+export function reshuffledBy(before: GameState, events: readonly { kind: string }[]): number {
+  return events.some(e => e.kind === 'cardBought') && before.cardDeck.length === 0 ? before.cardDiscard.length : 0;
+}

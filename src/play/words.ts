@@ -70,8 +70,14 @@ export const W = {
   // Inert / over
   spectating: 'You are watching this game.',
   noGame: 'No game in progress.',
-  gameOverWinner: (name: string): string => `The game is over. ${name} wins.`,
-  gameOverTie: (names: string): string => `The game is over. Shared win: ${names}.`,
+  gameOverWinner: (name: string, how: string): string => `The game is over. ${name} wins${how}.`,
+  gameOverTie: (names: string, how: string): string => `The game is over. Shared win${how}: ${names}.`,
+  /** How the game ended, after the winner's name. */
+  gameOverHow: (reason: 'tesseracts' | 'boardExhausted' | null): string => (reason === 'tesseracts' ? ' with 4 Tesseracts'
+    : reason === 'boardExhausted' ? ' on points (the pieces ran out, the last round was finished and material value was counted)' : ''),
+  /** Shown all through the last round, once no piece is left to draw. */
+  finalRound: 'The pieces have run out: this is the final round.',
+  noPiecesLeft: 'none left',
   gameOverNone: 'The game is over.',
 
   // Waiting (someone else's turn)
@@ -192,6 +198,8 @@ export const W = {
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,
   deckEmpty: 'No Leverage cards are left: the deck and the discard pile are both empty.',
+  /** The deck was empty when a card was bought: the discard pile became a new deck. */
+  reshuffled: (n: number): string => `The Leverage deck was empty, so the discard pile (${n} ${n === 1 ? 'card' : 'cards'}) was shuffled into a new deck.`,
   deckFinishFirst: 'Confirm or cancel what you are doing first, then tap the deck to buy a Leverage card.',
   allMinesIn: 'All Mines are already in play.',
   mineDropPending: 'A dropped Mine must be placed first.',

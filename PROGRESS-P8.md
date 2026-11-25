@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: A, B, C, F done; next D (final-round notice, game-over words, reshuffle announcement), then E (texts, Rules tab, guide).
+Status: A, B, C, D, F done; next E (texts in words.ts/gameText.ts, Rules tab rules.ts, Game guide).
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -31,3 +31,4 @@ Baseline `npx vitest run` on the untouched branch: running.
   step says when pieces ran out (`rollNoPieces`).
 - C: Mine placement: already reachable (lit cell = larger half, rotations); test src/play/__tests__/mines.test.ts covers every listed BUY_MINE / PLACE_MINE incl. smaller-half-only ones. Instruction W.mineDropped / W.minePick say either half may touch.
 - F: right after a purchase paid with change the controller's hint (shown as the table toast) says "Paid 3. You keep 1 Plate and 2 Ore." (controller `purchaseHint`, route buys in `layPlan`). Chips keep the tooltip. Test: paidKeep.test.ts.
+- D: final-round note (`finalRoundNote` in turnBar.ts, desktop turn bar + phone step line; text view header), step 1 shown struck through "(none left)" when piecesExhausted, roll instruction `rollNoPieces`, phaseWords for the roll; game-over words say how it ended (controller + gameOverWords); reshuffle announced on the table (`reshuffledBy` in info.ts + announce strip in tableGameView.ts; the log line already existed in session/describe.ts). Bank card detail shows deck + discard counts. Tests: lastRound.test.ts.

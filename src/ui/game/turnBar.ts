@@ -8,6 +8,14 @@ import { icon } from '../icons';
 import type { Ctx } from './context';
 import { activePlayer, seatHex, seatName } from './context';
 import { countdownText } from './pieces';
+import { piecesExhausted } from '../../engine';
+import { W } from '../../play/words';
+
+/** Once no piece is left to draw, until the game ends: the round being played is the last. */
+export function finalRoundNote(ctx: Ctx, cls = 'tg-final'): HTMLElement | null {
+  if (ctx.game.gameOver || !piecesExhausted(ctx.game)) return null;
+  return h('span', { class: cls, attrs: { role: 'note' } }, icon('flag', undefined, 'ic small'), h('span', { text: W.finalRound }));
+}
 
 const STEPS = ['Place a piece', 'Roll', 'Actions', 'Place meeple'] as const;
 
@@ -40,12 +48,17 @@ function steps(ctx: Ctx, compact: boolean): HTMLElement {
     return h('div', { class: 'tg-steps' }, h('span', { class: `tg-step now${other ? ' other' : ''}`, style: `--seat:${color}` }, chip));
   }
   const idx = ctx.view.stepIndex ?? 0;
+  // With the pieces gone, step 1 has nothing to place: the turn starts at the roll.
+  const noPieces = piecesExhausted(ctx.game);
   return h('div', { class: 'tg-steps', attrs: { 'aria-label': `Step ${idx} of 4` } }, STEPS.map((label, i) => {
     const n = i + 1;
-    const cls = n < idx ? ' done' : n === idx ? ` now${other ? ' other' : ''}` : '';
+    const skipped = n === 1 && noPieces && idx !== 1;
+    const cls = skipped ? ' skipped' : n < idx ? ' done' : n === idx ? ` now${other ? ' other' : ''}` : '';
     if (compact && n !== idx) return null;
-    return h('span', { class: `tg-step${cls}`, style: `--seat:${color}`, attrs: n === idx ? { 'aria-current': 'step' } : {} },
-      h('span', { class: 'n', text: String(n) }), label);
+    return h('span', {
+      class: `tg-step${cls}`, style: `--seat:${color}`,
+      attrs: n === idx ? { 'aria-current': 'step' } : skipped ? { title: `${label}: ${W.noPiecesLeft}` } : {},
+    }, h('span', { class: 'n', text: String(n) }), skipped ? `${label} (${W.noPiecesLeft})` : label);
   }));
 }
 
@@ -62,6 +75,7 @@ export function turnBar(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tray tg-turnbar', attrs: { role: 'status', 'aria-live': 'polite' } },
     whose(ctx),
     steps(ctx, false),
+    finalRoundNote(ctx),
     h('span', { class: 'tg-instr', text: ctx.view.instruction, title: ctx.view.instruction }),
     roundEndClock(ctx),
     h('span', { class: 'tg-round' }, 'Round ', h('span', { class: 'num', text: String(ctx.game.round) })));
@@ -75,6 +89,7 @@ export function stepLine(ctx: Ctx): Child[] {
   return [
     h('div', { class: 'tg-stepline' }, steps(ctx, true), dots,
       h('span', { class: 'tg-round' }, 'Round ', h('b', { text: String(ctx.game.round) }))),
+    finalRoundNote(ctx, 'tg-final phone'),
     h('div', { class: 'tg-instr2', attrs: { role: 'status', 'aria-live': 'polite' } },
       whose(ctx), h('span', { text: ctx.view.instruction }), roundEndClock(ctx)),
   ];

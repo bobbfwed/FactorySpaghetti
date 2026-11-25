@@ -5,7 +5,7 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
-import { legalActions, revealedStack } from '../engine';
+import { legalActions, piecesExhausted, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
@@ -21,7 +21,7 @@ export function phaseWords(game: GameState): string {
     case 'placePiece':
       if (game.pendingMineIds.length > 0) return 'Step 1: place the dropped Mine';
       return revealedStack(game) === null ? 'Step 1: draw a board piece' : 'Step 1: place a board piece';
-    case 'roll': return 'Step 2: roll the dice';
+    case 'roll': return piecesExhausted(game) ? 'Step 2: roll the dice (no pieces are left to place)' : 'Step 2: roll the dice';
     case 'actions': return 'Step 3: actions';
     case 'placeMeeple': return 'Step 4: place your meeple';
     case 'roundEnd': return 'Round end: operate and upgrade';
@@ -285,7 +285,7 @@ export function gameOverWords(room: Room): string {
   if (!g || !g.gameOver) return '';
   const name = (i: number): string => room.seats[i]?.name || `Seat ${i + 1}`;
   const how = g.gameOverReason === 'tesseracts' ? 'with 4 Tesseracts' : g.gameOverReason === 'boardExhausted'
-    ? 'on points (the board pieces ran out)' : '';
+    ? 'on points (the pieces ran out, the last round was finished and material value was counted)' : '';
   if (g.winner !== null) return `${name(g.winner)} wins ${how}.`.replace(' .', '.');
   if (g.tiedWinners.length > 0) return `${g.tiedWinners.map(name).join(' and ')} share the win ${how}.`.replace(' .', '.');
   return 'The game is over.';

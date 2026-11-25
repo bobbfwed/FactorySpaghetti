@@ -864,3 +864,9 @@ button.tg-mat { width: 100%; text-align: left; }
 /* Spend Production Increase (any step of the turn it was played in). */
 .tg-pibtn { min-height: 44px; display: inline-flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 1px; padding: 4px 12px; margin: 4px 0; }
 .tg-pibtn small { font-size: 11.5px; color: var(--text-2); font-weight: 600; }
+
+/* The last round (the pieces have run out): a lasting note in the turn bar and on the phone's step line. */
+.tg-final { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px; border-radius: 8px; background: rgba(232, 183, 48, 0.16); box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.6); color: var(--gold-hi); font-weight: 750; font-size: 13px; white-space: nowrap; }
+.tg-final.phone { display: flex; white-space: normal; margin: 4px 0; font-size: 12.5px; }
+.tg-step.skipped { color: var(--text-3); text-decoration: line-through; }
+.tg-step.skipped .n { background: #222225; color: var(--text-3); }

@@ -10,7 +10,8 @@ import type { PlayerId } from '../engine/state';
 import { tesseractCount } from '../engine/rules/scoring';
 import type { Room, Seat } from '../session/room';
 import { activeSeat } from '../session/room';
-import { CARD_NAME, CARD_TEXT } from '../play/words';
+import { CARD_NAME, CARD_TEXT, W } from '../play/words';
+import { piecesExhausted } from '../engine';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import type { IconName } from './icons';
@@ -76,7 +77,8 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     h('div', { class: 'gb-phase' },
       h('div', { class: `gb-turn${myTurn ? ' mine' : ''}`, style: turn !== null ? `--seat:${COLORS[room.seats[turn]!.color]}` : '' },
         turn !== null && !g.gameOver ? h('span', { class: 'sw' }) : null, turnText),
-      h('div', { class: 'muted', text: g.gameOver ? '' : phaseWords(g) })),
+      h('div', { class: 'muted', text: g.gameOver ? '' : phaseWords(g) }),
+      !g.gameOver && piecesExhausted(g) ? h('div', { class: 'final-round', attrs: { role: 'note' }, text: W.finalRound }) : null),
     h('button', {
       class: 'btn btn-quiet icon-only', title: 'Game menu',
       attrs: { 'aria-label': 'Game menu', 'aria-expanded': String(ui.menuOpen) },

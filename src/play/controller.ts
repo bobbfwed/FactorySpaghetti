@@ -424,8 +424,9 @@ export class PlayController {
       v.stepIndex = null;
       v.tray = baseTray(player);
       v.totalValue = inventoryValue(player);
-      v.instruction = g.winner !== null ? W.gameOverWinner(this.nameOf(g.winner))
-        : g.tiedWinners.length ? W.gameOverTie(g.tiedWinners.map(id => this.nameOf(id)).join(', '))
+      const how = W.gameOverHow(g.gameOverReason);
+      v.instruction = g.winner !== null ? W.gameOverWinner(this.nameOf(g.winner), how)
+        : g.tiedWinners.length ? W.gameOverTie(g.tiedWinners.map(id => this.nameOf(id)).join(', '), how)
           : W.gameOverNone;
       return true;
     }
