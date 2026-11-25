@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: reading done, no code changed yet.
+Status: A done (commit "Supply chooser"), next B.
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -15,7 +15,7 @@ Status: reading done, no code changed yet.
 - F "You keep ..." visible after a purchase.
 
 ## Done
-(nothing yet)
+- A: supply chooser (controller promptsFor/supplyView/supplyOptions, round-end menu, ui/game/supply.ts, prompts.ts, popovers.ts, CSS, gameText operatePrompts/runLabel, gameView prompts). Tests: src/play/__tests__/supply.test.ts. awaitingInterface no longer hides supplied runs.
 
 ## Tests
 Baseline `npx vitest run` on the untouched branch: running.

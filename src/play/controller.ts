@@ -11,7 +11,7 @@ import type {
   UpgradeBuildingAction,
 } from '../engine/actions';
 import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../engine/state';
-import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
+import { BELT_COST, CONTROL_MODULE_MAX, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MINE_COSTS, POWER_TOKEN_CAP, cardCost, pieceTemplate, teleporterCost } from '../engine/config';
 import { applyAction } from '../engine/reducer';
 import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
 import { revealedStack as revealedStackOf } from '../engine/rules/pieces';
@@ -19,13 +19,13 @@ import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
 import type { Ghost, Target } from '../table/types';
-import type { Item, PlayView, Prompt, Selection, TrayEntry } from './types';
+import type { Item, PlayView, Prompt, Selection, SupplyView, TrayEntry } from './types';
 import {
-  EXCHANGE_GETS, MATERIALS, actionKey, activeId, collectable, exchangeOutcome, inventoryValue, isBuilding,
-  legalFor, nextMinePrice, paymentWithChange, pieceById, runBlock, runPreview, teleporterSpotFree,
+  EXCHANGE_GETS, MATERIALS, actionKey, activeId, canSupply, collectable, exchangeOutcome, factoryRunCost, inventoryValue, isBuilding,
+  legalFor, neededSets, nextMinePrice, paymentWithChange, pieceById, runBlock, runPreview, teleporterSpotFree,
 } from './info';
 import {
-  CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, amountOf, materialList, pieceName, playerName, selectionLabel,
+  CARD_NAME, CARD_TEXT, MATERIAL_NAME, W, amountOf, materialList, pieceName, playerName, selectionLabel, supplyWords,
 } from './words';
 
 // ── Modes (what is "picked up") ───────────────────────────────────────────────
@@ -454,15 +454,30 @@ export class PlayController {
 
   private promptsFor(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[]): Prompt[] {
     const total = g.lastRoll ? g.lastRoll.reduce((x, y) => x + y, 0) : 0;
+    const myTurn = activeId(g) === me;
     const out: Prompt[] = [];
     for (const e of g.pendingFactoryOps) {
       if (e.ownerId !== me) continue;
       const piece = pieceById(g, e.pieceId);
       if (!piece) continue;
-      const run = legal.find(a => a.type === 'OPERATE_BUILDING' && a.pieceId === e.pieceId && a.ownerId === me);
-      const skip = legal.find(a => a.type === 'SKIP_FACTORY_ROLL' && a.pieceId === e.pieceId && a.ownerId === me);
+      // Every listed way to run it: from its input, and with each supply through my input teleporter.
+      const runs = ofType(legal, 'OPERATE_BUILDING').filter(a => a.pieceId === e.pieceId && a.ownerId === me);
+      const skip = ofType(legal, 'SKIP_FACTORY_ROLL').find(a => a.pieceId === e.pieceId && a.ownerId === me);
       const mine = piece.claims.filter(c => c.ownerId === me).map(c => c.controlModule);
       const module = mine.find(m => m === total) ?? mine[0] ?? 0;
+      const anchor: Target = { kind: 'piece', pieceId: piece.id };
+      const title = W.promptTitle(pieceName(piece.type), module, total);
+      const timeout = myTurn ? null : W.promptTimeout;
+      if (canSupply(piece, me)) {
+        // My teleporter is on its input and a slot is empty: the supply chooser.
+        const supply = this.supplyView(piece, player, runs, false);
+        out.push({
+          id: `op:${piece.id}`, anchor, title, detail: supply.missing ? `${supply.heading} ${supply.missing}` : supply.heading,
+          options: this.supplyOptions(b, `op:${piece.id}`, piece, player, runs, skip), supply, timeout,
+        });
+        continue;
+      }
+      const run = runs[0];
       const pv = runPreview(piece, player);
       // legalActions keeps offering "run" even when the building can no longer run (e.g. a
       // co-owner ran it first and filled its output); the engine then refuses. Say so.
@@ -470,16 +485,60 @@ export class PlayController {
       const detail = outFull ? W.promptCannotRun
         : pv && pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product)
           : W.promptRunUnknown;
-      const anchor: Target = { kind: 'piece', pieceId: piece.id };
-      out.push({
-        id: `op:${piece.id}`,
-        anchor,
-        title: W.promptTitle(pieceName(piece.type), module, total),
-        detail,
-        options: this.opOptions(b, piece.id, run, skip, detail),
-      });
+      out.push({ id: `op:${piece.id}`, anchor, title, detail, options: this.opOptions(b, piece.id, run, skip, detail), supply: null, timeout });
     }
     return out;
+  }
+
+  /** The supply chooser's picture: what the building holds and needs, my materials, and why nothing can be supplied. */
+  private supplyView(piece: BoardPiece, player: Player, runs: readonly Of<'OPERATE_BUILDING'>[], roundEnd: boolean): SupplyView {
+    const name = pieceName(piece.type);
+    const sets = neededSets(piece);
+    const heading = piece.type === 'powerPlant' ? W.supplyPlantAsk
+      : sets.length === 0 ? W.badRecipe
+        : sets.length === 1 ? W.supplyNeeds(name, supplyWords(sets[0]!))
+          : W.supplyNeedsOneOf(name, sets.map(s => supplyWords(s)));
+    let missing: string | null = null;
+    if (!runs.some(a => (a.supply?.length ?? 0) > 0)) {
+      if (roundEnd && player.meepleOperatedThisRound) missing = W.alreadyRan;
+      else if (piece.type === 'powerPlant') missing = player.powerTokens >= POWER_TOKEN_CAP ? W.supplyPlantFull : W.supplyPlantNothing;
+      else if ((piece.output?.slots ?? []).some(x => x !== null)) missing = W.promptCannotRun;
+      else if (player.powerTokens < factoryRunCost(piece)) missing = W.supplyNoPower(factoryRunCost(piece), player.powerTokens);
+      else missing = W.supplyLacking;
+    }
+    return { heading, slots: [...(piece.input?.slots ?? [])], have: { ...player.inventory }, missing };
+  }
+
+  /**
+   * One item per listed way to run the building (ids `<prefix>:run` for the plain run and
+   * `<prefix>:run:<materials>` for a supplied one), then the skip when it is listed. Each item
+   * sends exactly its own listed move.
+   */
+  private supplyOptions(b: Builder, prefix: string, piece: BoardPiece, player: Player,
+    runs: readonly Of<'OPERATE_BUILDING'>[], skip: Action | undefined): Item[] {
+    const plant = piece.type === 'powerPlant';
+    const items: Item[] = [];
+    const plain = runs.find(a => (a.supply?.length ?? 0) === 0);
+    if (plain) {
+      const pv = runPreview(piece, player);
+      const detail = !pv ? undefined : plant ? W.runPowerPlant(pv.gain, materialList(pv.consumed))
+        : pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product) : undefined;
+      items.push(b.item({
+        id: `${prefix}:run`, label: plant ? W.runPlantAsIs(pv?.gain ?? 0) : W.runAsIs, ...(detail ? { detail } : {}), enabled: true, materials: [],
+      }, () => this.send(plain)));
+    }
+    for (const a of runs) {
+      const sup = a.supply ?? [];
+      if (sup.length === 0) continue;
+      const pv = runPreview(piece, player, sup);
+      const detail = !pv ? undefined : plant ? W.plantGain(pv.gain, pv.nominal)
+        : pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product) : undefined;
+      items.push(b.item({
+        id: `${prefix}:run:${sup.join(',')}`, label: W.provide(supplyWords(sup)), ...(detail ? { detail } : {}), enabled: true, materials: [...sup],
+      }, () => this.send(a)));
+    }
+    if (skip) items.push(b.item({ id: `${prefix}:skip`, label: W.promptSkip, detail: W.promptSkipDetail, enabled: true }, () => this.send(skip)));
+    return items;
   }
 
   private opOptions(b: Builder, pieceId: string, run: Action | undefined, skip: Action | undefined, detail: string): Item[] {
@@ -503,7 +562,7 @@ export class PlayController {
       const p = v.prompts.find(x => x.id === `op:${pieceId}`);
       if (!p) return false;
       const piece = pieceById(g, pieceId)!;
-      v.menu = { anchor: p.anchor, title: pieceName(piece.type), subtitle: p.title, items: p.options };
+      v.menu = { anchor: p.anchor, title: pieceName(piece.type), subtitle: p.title, items: p.options, supply: p.supply };
       v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
       v.confirmBar = { confirm: false, rotate: false, cancel: true };
       return true;
@@ -835,7 +894,12 @@ export class PlayController {
     const items = this.menuItems(b, g, player, legal, piece);
     if (items.length === 0) return false;
     const v = b.view;
-    v.menu = { anchor: { kind: 'piece', pieceId }, title: pieceName(piece.type), subtitle: this.pieceSummary(piece), items };
+    // The building my meeple stands on at round end, with my teleporter on its input: the supply chooser.
+    const supply = g.phase === 'roundEnd' && player.meepleOnPieceId === pieceId && player.meepleSlotIndex === null
+      && isBuilding(piece) && canSupply(piece, me)
+      ? this.supplyView(piece, player, ofType(legal, 'OPERATE_BUILDING').filter(a => a.pieceId === pieceId && a.ownerId === undefined), true)
+      : null;
+    v.menu = { anchor: { kind: 'piece', pieceId }, title: pieceName(piece.type), subtitle: this.pieceSummary(piece), items, supply };
     v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
     return true;
@@ -853,11 +917,17 @@ export class PlayController {
         const load = legal.find(a => a.type === 'LOAD_BUILDING_INPUT' && a.pieceId === id && a.material === mat);
         if (load) items.push(b.item({ id: `menu:load:${mat}`, label: W.menuLoad(mat), enabled: true }, () => this.send(load)));
       }
-      const run = legal.find(a => a.type === 'OPERATE_BUILDING' && a.pieceId === id && a.ownerId === undefined);
+      const runs = ofType(legal, 'OPERATE_BUILDING').filter(a => a.pieceId === id && a.ownerId === undefined);
+      const run = runs[0];
       const pv = runPreview(piece, player);
       const detail = pv ? (pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product)
         : W.runPowerPlant(pv.gain, materialList(pv.consumed))) : undefined;
-      if (run) {
+      if (canSupply(piece, player.id)) {
+        // My teleporter is on its input: one item per listed way to run it (the supply chooser).
+        const opts = this.supplyOptions(b, 'menu', piece, player, runs, undefined);
+        if (opts.length > 0) items.push(...opts);
+        else items.push(b.item({ id: 'menu:run', label: W.menuRun, enabled: false, reason: this.supplyView(piece, player, runs, true).missing ?? W.nothingHere }));
+      } else if (run) {
         items.push(b.item({ id: 'menu:run', label: W.menuRun, ...(detail ? { detail } : {}), enabled: true }, () => this.send(run)));
       } else {
         const blk = runBlock(piece, player);

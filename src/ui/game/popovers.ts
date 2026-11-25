@@ -7,6 +7,12 @@ import { icon } from '../icons';
 import type { Ctx } from './context';
 import { seatHex } from './context';
 import { cardFace } from './pieces';
+import { supplyBlock, supplyButtons } from './supply';
+
+/** A way to run the building (plain, supplied) or skip it: shown as supply buttons beside the chooser. */
+function isRun(it: { id: string }): boolean {
+  return /^(menu|op:[^:]+):(run|skip)(:|$)/.test(it.id);
+}
 
 /** The building menu: title, subtitle, items with detail; greyed items show their reason. */
 export function buildingMenu(ctx: Ctx): HTMLElement | null {
@@ -19,7 +25,10 @@ export function buildingMenu(ctx: Ctx): HTMLElement | null {
   h('div', { class: 'hd' },
     h('div', { class: 'tt' }, h('span', { class: 't', text: m.title }), m.subtitle ? h('span', { class: 'sub', text: m.subtitle }) : null),
     h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close', 'data-close': 'menu' }, onclick: () => ctx.play.cancel() }, icon('cross'))),
-  m.items.map(it => h('button', {
+  // Running a building through my input teleporter: the supply chooser, then the menu's other items.
+  m.supply ? supplyBlock(m.supply, ctx.phone) : null,
+  m.supply ? supplyButtons(m.items.filter(isRun), id => ctx.play.choose(id), JSON.stringify(m.anchor), 'none') : null,
+  (m.supply ? m.items.filter(it => !isRun(it)) : m.items).map(it => h('button', {
     class: `item${it.enabled ? '' : ' off'}${it.danger ? ' danger' : ''}`,
     title: it.enabled ? it.detail ?? it.label : it.reason ?? it.label,
     attrs: { role: 'menuitem', 'aria-disabled': String(!it.enabled), 'data-item': it.id, 'data-act': `${JSON.stringify(m.anchor)}|${it.id}` },

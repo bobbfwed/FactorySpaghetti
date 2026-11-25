@@ -1,6 +1,8 @@
-// Operate-or-skip prompts: a card anchored to each activated factory of mine (also on other
+// Operate-or-skip prompts: a card anchored to each activated building of mine (also on other
 // players' turns), with what running it costs and makes and a countdown ring while another
-// player's turn waits on me. The phone sheet lists them too, so they cannot be missed.
+// player's turn waits on me. A building with my teleporter on its input shows the supply chooser
+// (supply.ts): what it needs, my materials and one button per way to run it. The phone sheet
+// lists them too, so they cannot be missed.
 
 import type { Prompt } from '../../play';
 import type { Child } from '../dom';
@@ -8,6 +10,7 @@ import { h } from '../dom';
 import type { Ctx } from './context';
 import { activePlayer, seatHex, seatName } from './context';
 import { countdownRing } from './pieces';
+import { supplyBlock, supplyButtons } from './supply';
 
 function ring(ctx: Ctx): Child {
   const d = ctx.room.opDeadline;
@@ -16,7 +19,16 @@ function ring(ctx: Ctx): Child {
   return countdownRing(ctx.ctrl, d, ctx.room.settings.factoryOpTimeoutMs);
 }
 
+/** What happens when the time runs out, shown while the countdown runs. */
+function timeoutLine(ctx: Ctx, p: Prompt): Child {
+  if (!p.timeout || ctx.room.opDeadline === null || activePlayer(ctx.game) === ctx.me) return null;
+  return h('p', { class: 'tg-timeout muted', text: p.timeout });
+}
+
 function buttons(ctx: Ctx, p: Prompt): HTMLElement {
+  if (p.supply) {
+    return h('div', { class: 'tg-supplyrow' }, supplyButtons(p.options, id => ctx.play.choose(id), p.id), ring(ctx));
+  }
   return h('div', { class: 'tg-btnrow' },
     p.options.map((o, i) => h('button', {
       class: `btn ${i === 0 ? 'btn-gold' : 'btn-dark'}${o.enabled ? '' : ' is-disabled'}`,
@@ -38,13 +50,14 @@ function others(ctx: Ctx): Child {
 export function promptCards(ctx: Ctx): HTMLElement[] {
   const menuOn = ctx.view.menu ? JSON.stringify(ctx.view.menu.anchor) : null;
   return ctx.view.prompts.filter(p => JSON.stringify(p.anchor) !== menuOn).map(p => h('div', {
-    class: `tg-prompt tray${ctx.phone ? ' compact' : ''}`,
+    class: `tg-prompt tray${ctx.phone ? ' compact' : ''}${p.supply ? ' has-supply' : ''}`,
     attrs: { 'data-anchor': JSON.stringify(p.anchor), 'data-place': 'side', role: 'alertdialog', 'aria-label': p.title },
   },
   h('span', { class: 'tg-ptr' }),
   h('div', { class: 't', text: p.title }),
-  ctx.phone ? null : h('div', { class: 'recipe well', text: p.detail }),
+  p.supply ? supplyBlock(p.supply, ctx.phone) : ctx.phone ? null : h('div', { class: 'recipe well', text: p.detail }),
   buttons(ctx, p),
+  timeoutLine(ctx, p),
   ctx.phone ? null : others(ctx)));
 }
 
@@ -54,7 +67,8 @@ export function promptList(ctx: Ctx): HTMLElement | null {
   return h('div', { class: 'tg-promptlist', attrs: { role: 'group', 'aria-label': 'Decisions' } },
     ctx.view.prompts.map(p => h('div', { class: 'tg-pitem well' },
       h('div', { class: 't', text: p.title }),
-      h('div', { class: 'd muted', text: p.detail }),
-      buttons(ctx, p))),
+      p.supply ? supplyBlock(p.supply, true) : h('div', { class: 'd muted', text: p.detail }),
+      buttons(ctx, p),
+      timeoutLine(ctx, p))),
     others(ctx));
 }

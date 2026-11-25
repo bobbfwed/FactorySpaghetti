@@ -221,10 +221,13 @@ export function gesturesFor(c: PlayController, a: Action): void {
     }
     case 'LOAD_BUILDING_INPUT': tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, `menu:load:${a.material}`); return;
     case 'COLLECT_OUTPUT': tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, 'menu:collect'); return;
-    case 'OPERATE_BUILDING':
-      if (a.ownerId !== undefined) pick(c, `op:${a.pieceId}:run`);
-      else { tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, 'menu:run'); }
+    case 'OPERATE_BUILDING': {
+      // The plain run, or the button that provides exactly this supply (the supply chooser).
+      const sup = a.supply?.length ? `:${a.supply.join(',')}` : '';
+      if (a.ownerId !== undefined) pick(c, `op:${a.pieceId}:run${sup}`);
+      else { tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, `menu:run${sup}`); }
       return;
+    }
     case 'SKIP_FACTORY_ROLL': pick(c, `op:${a.pieceId}:skip`); return;
     case 'PLAY_CARD': {
       if (a.cardType === 'scoutingDrone') {
@@ -272,7 +275,6 @@ export function offered(s: GameState, p: PlayerId): Action[] {
  * Remove this filter when the interface offers them.
  */
 function awaitingInterface(s: GameState, a: Action): boolean {
-  if (a.type === 'OPERATE_BUILDING') return (a.supply?.length ?? 0) > 0;
   if (s.phase === 'actions') return false;
   if (a.type === 'PLAY_CARD') return true;
   return (a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') && a.fromProductionIncrease === true;

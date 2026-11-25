@@ -9,6 +9,7 @@ import { legalActions, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
+import { supplyWords } from '../play/words';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
 
@@ -144,7 +145,7 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
     case 'LOAD_BUILDING_INPUT':
       return { group: 'buildings', label: `Load 1 ${MATERIAL_NAME[a.material]} into the ${piece(a.pieceId)}` };
     case 'OPERATE_BUILDING':
-      return { group: 'buildings', label: `Run the ${piece(a.pieceId)}` };
+      return { group: 'buildings', label: runLabel(piece(a.pieceId), a.supply) };
     case 'COLLECT_OUTPUT':
       return { group: 'buildings', label: `Collect the output of the ${piece(a.pieceId)}` };
     case 'SKIP_FACTORY_ROLL':
@@ -224,8 +225,16 @@ export interface OperatePrompt {
   pieceId: string;
   label: string;
   cost: string;
-  operate: Action;
-  skip: Action;
+  /**
+   * Every way the owner may answer, as legalActions lists it: run it from its input, run it
+   * providing materials through their input teleporter (one option per supply), skip it.
+   */
+  options: { label: string; action: Action; skip: boolean }[];
+}
+
+/** "Run the Tesseract Factory, providing a Sphere and a Plate" (or plainly "Run the Plate Factory"). */
+export function runLabel(building: string, supply: readonly Material[] | undefined): string {
+  return supply && supply.length > 0 ? `Run the ${building}, providing ${supplyWords(supply)}` : `Run the ${building}`;
 }
 
 /** Every operate-or-skip decision still owed, by any seat (so everyone sees who is deciding). */
@@ -233,14 +242,22 @@ export function operatePrompts(room: Room): OperatePrompt[] {
   const game = room.game;
   if (!game || room.phase !== 'playing') return [];
   const names = room.seats.map(s => s.name);
-  return game.pendingFactoryOps.map(e => ({
-    seat: e.ownerId,
-    pieceId: e.pieceId,
-    label: pieceLabel(game, e.pieceId, names, null),
-    cost: operateCost(game, e.pieceId),
-    operate: { type: 'OPERATE_BUILDING', pieceId: e.pieceId, ownerId: e.ownerId },
-    skip: { type: 'SKIP_FACTORY_ROLL', pieceId: e.pieceId, ownerId: e.ownerId },
-  }));
+  return game.pendingFactoryOps.map(e => {
+    const piece = game.board.find(p => p.id === e.pieceId);
+    const building = piece ? BUILDING_NAME[piece.type] : 'building';
+    const options = legalActions(game, e.ownerId)
+      .filter(a => (a.type === 'OPERATE_BUILDING' || a.type === 'SKIP_FACTORY_ROLL') && a.pieceId === e.pieceId && a.ownerId === e.ownerId)
+      .map(a => (a.type === 'OPERATE_BUILDING'
+        ? { label: runLabel(building, a.supply), action: a, skip: false }
+        : { label: `Skip the ${building}`, action: a, skip: true }));
+    return {
+      seat: e.ownerId,
+      pieceId: e.pieceId,
+      label: pieceLabel(game, e.pieceId, names, null),
+      cost: operateCost(game, e.pieceId),
+      options,
+    };
+  });
 }
 
 export interface Standing { seat: number; won: boolean; tesseracts: number; points: number }

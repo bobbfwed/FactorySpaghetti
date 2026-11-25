@@ -3,7 +3,7 @@
 // Never put internal names here (phase names, action type names, piece or card ids).
 
 import type { CardType, Material, PieceType } from '../engine/config';
-import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN } from '../engine/config';
+import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, POWER_TOKEN_CAP } from '../engine/config';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 
 export { CARD_NAME, MATERIAL_NAME };
@@ -23,6 +23,27 @@ const tokens = (n: number): string => plural(n, 'Power Token', 'Power Tokens');
 
 export function materialList(mats: readonly Material[]): string {
   return mats.length === 0 ? 'nothing' : mats.map(m => MATERIAL_NAME[m]).join(' + ');
+}
+
+const VALUE_ORDER: readonly Material[] = ['tesseract', 'sphere', 'plate', 'ore'];
+
+/** "a Sphere", "an Ore", "2 Spheres". */
+export function someOf(n: number, m: Material): string {
+  if (n !== 1) return amountOf(n, m);
+  return m === 'ore' ? 'an Ore' : `a ${MATERIAL_NAME[m]}`;
+}
+
+/** "a, b and c". */
+export function andList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]!}`;
+}
+
+/** A handful of materials in words, largest first: "a Sphere and a Plate", "2 Spheres", "an Ore". */
+export function supplyWords(mats: readonly Material[]): string {
+  const n = new Map<Material, number>();
+  for (const m of mats) n.set(m, (n.get(m) ?? 0) + 1);
+  return andList(VALUE_ORDER.filter(m => n.has(m)).map(m => someOf(n.get(m)!, m)));
 }
 
 // ── Card rules text (from RULES.md; matches what the engine does) ─────────────
@@ -292,6 +313,30 @@ export const W = {
   promptRunUnknown: 'Run it with what is in its input',
   promptCannotRun: 'Its output buffer is already full, so it cannot run now; skip it.',
   promptHint: 'Decide on your activated factory.',
+  /** What the host does when an off-turn decision is not answered in time (it never supplies anything). */
+  promptTimeout: 'When the time runs out, it runs only if it can without your materials; otherwise it is skipped.',
+
+  // Supplying a building through your teleporter on its input
+  /** "The Tesseract Factory needs a Sphere and a Plate to run." */
+  supplyNeeds: (building: string, needs: string): string => `The ${building} needs ${needs} to run.`,
+  /** Several recipes fit: "needs one of: a Plate and an Ore; or 2 Plates." */
+  supplyNeedsOneOf: (building: string, options: readonly string[]): string =>
+    `The ${building} needs one of these to run: ${options.join('; or ')}.`,
+  supplyPlantAsk: 'Your Power Plant runs. Provide a material for more Power Tokens?',
+  /** "Provide a Sphere and a Plate". */
+  provide: (what: string): string => `Provide ${what}`,
+  runAsIs: 'Run it with what is in it',
+  /** A Power Plant's plain run: "Run it as it is (+1 Power Token)". */
+  runPlantAsIs: (gain: number): string => `Run it as it is (+${tokens(gain)})`,
+  plantGain: (gain: number, nominal: number): string =>
+    `+${tokens(gain)}${gain < nominal ? ` (your limit is ${POWER_TOKEN_CAP})` : ''}`,
+  supplyYouHold: 'Your materials',
+  supplyInput: 'Its input',
+  supplyLacking: 'You do not hold the materials for any of these.',
+  supplyPlantNothing: 'You hold no Ore, Plate or Sphere to provide, so it runs as it is.',
+  supplyPlantFull: `You already have ${POWER_TOKEN_CAP} Power Tokens, so it cannot run: skip it.`,
+  supplyNoPower: (need: number, have: number): string => `It needs ${tokens(need)} to run; you have ${have}. Skip it.`,
+  supplyHowTo: 'Your teleporter is on its input: choose what to hand over from your materials. Nothing is taken unless you choose it.',
 
   // Cards
   playCard: (name: string): string => `Play ${name}?`,

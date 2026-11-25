@@ -5,15 +5,17 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, Material, Player, PlayerId } from '../engine/state';
 import {
   FACTORY_POWER_COST,
+  FACTORY_RECIPES,
   INVENTORY_CAP,
   MATERIAL_VALUES,
   POWER_PLANT_BASE_YIELD,
+  POWER_PLANT_INPUTS,
   POWER_PLANT_MATERIAL_YIELD,
   POWER_TOKEN_CAP,
 } from '../engine/config';
 import { applyAction, legalActions } from '../engine/reducer';
 import { payMaterials } from '../engine/rules/flow';
-import { findInputCompletion, factoryExpectedProduct } from '../engine/rules/production';
+import { factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
 
 export const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
@@ -110,36 +112,75 @@ export function nextMinePrice(game: GameState, prices: readonly number[]): numbe
 
 export interface RunPreview {
   power: number;          // Power Tokens paid (factories) — 0 for a Power Plant
-  gain: number;           // Power Tokens gained (Power Plant) — 0 for a factory
+  gain: number;           // Power Tokens gained (Power Plant), as the limit lets them in — 0 for a factory
+  nominal: number;        // Power Tokens the chart gives (Power Plant), before the limit — 0 for a factory
   consumed: Material[];
   product: Material | null; // null for a Power Plant
 }
 
 /**
- * What running this building would cost and make for `player`, or null if it cannot run.
- * Mirrors the engine: an input teleporter owned by the player completes missing inputs
- * from their materials (cheapest completion first).
+ * What running this building would cost and make for `player`, with `supply` (materials they hand
+ * over through their input teleporter into its empty slots) — or null when that does not make a
+ * full recipe. Nothing is ever taken from the inventory unless it is named in `supply`
+ * (RULES_CHANGES.md #45). Whether the run is allowed at all is legalActions' business.
  */
-export function runPreview(piece: BoardPiece, player: Player): RunPreview | null {
+export function runPreview(piece: BoardPiece, player: Player, supply: readonly Material[] = []): RunPreview | null {
   if (piece.type === 'powerPlant') {
-    const inMat = piece.input?.slots[0] ?? null;
-    const gain = inMat && inMat !== 'tesseract'
+    const inMat = piece.input?.slots[0] ?? supply[0] ?? null;
+    const nominal = inMat && inMat !== 'tesseract'
       ? POWER_PLANT_MATERIAL_YIELD[inMat]
       : POWER_PLANT_BASE_YIELD;
-    return { power: 0, gain, consumed: inMat ? [inMat] : [], product: null };
+    const gain = Math.max(0, Math.min(nominal, POWER_TOKEN_CAP - player.powerTokens));
+    return { power: 0, gain, nominal, consumed: inMat ? [inMat] : [], product: null };
   }
   if (!piece.input || !piece.output) return null;
-  let slots: ReadonlyArray<Material | null> = piece.input.slots;
-  if (slots.some(s => s === null)) {
-    if (piece.input.teleporterOwner !== player.id) return null;
-    const c = findInputCompletion(piece.type, slots, player.inventory);
-    if (!c) return null;
-    slots = c.newSlots;
-  }
+  let i = 0;
+  const slots = piece.input.slots.map(s => (s === null && i < supply.length ? supply[i++]! : s));
+  if (slots.some(s => s === null)) return null;
   const product = factoryProduct(piece.type, slots);
   if (!product) return null;
   const power = product === 'ore' ? 0 : FACTORY_POWER_COST[product];
-  return { power, gain: 0, consumed: slots.filter((s): s is Material => s !== null), product };
+  return { power, gain: 0, nominal: 0, consumed: slots.filter((s): s is Material => s !== null), product };
+}
+
+/** The player's own teleporter sits on this building's input and an input slot is empty: they may supply it. */
+export function canSupply(piece: BoardPiece, player: PlayerId): boolean {
+  return !!piece.input && piece.input.teleporterOwner === player && piece.input.slots.some(s => s === null);
+}
+
+/**
+ * The materials that would complete one of this factory's recipes, given what lies in its input
+ * (the recipe table in config, for the words only): each distinct set, largest material first.
+ * A Power Plant: any one Ore, Plate or Sphere.
+ */
+export function neededSets(piece: BoardPiece): Material[][] {
+  if (piece.type === 'powerPlant') return POWER_PLANT_INPUTS.map(m => [m]);
+  const recipes = FACTORY_RECIPES[piece.type]?.inputs ?? [];
+  const filled = (piece.input?.slots ?? []).filter((s): s is Material => s !== null);
+  const out: Material[][] = [];
+  const seen = new Set<string>();
+  for (const r of recipes) {
+    const left = [...r];
+    let fits = true;
+    for (const m of filled) {
+      const k = left.indexOf(m);
+      if (k < 0) { fits = false; break; }
+      left.splice(k, 1);
+    }
+    if (!fits || left.length === 0) continue;
+    left.sort((a, b) => MATERIAL_VALUES[b] - MATERIAL_VALUES[a]);
+    const key = left.join(',');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(left);
+  }
+  return out;
+}
+
+/** The Power Tokens a factory pays to run (by its product), or 0. */
+export function factoryRunCost(piece: BoardPiece): number {
+  const product = FACTORY_RECIPES[piece.type]?.product;
+  return !product || product === 'ore' ? 0 : FACTORY_POWER_COST[product];
 }
 
 export type RunBlock = 'alreadyRan' | 'powerFull' | 'outputFull' | 'loadFirst' | 'badRecipe' | 'needPower';
