@@ -306,7 +306,24 @@ export class PlayController {
 
   private send(action: Action, next: Mode = IDLE): void {
     this.mode = next;
+    // A purchase paid with change: say what it leaves, right away (not only in a tooltip).
+    const paid = this.purchaseHint(action);
+    if (paid) this.hintText = paid;
     this.sendFn(action);
+  }
+
+  /** "Paid 3. You keep 1 Plate and 2 Ore." for a purchase that gives change; null otherwise. */
+  private purchaseHint(a: Action): string | null {
+    const g = this.game, me = this.me;
+    const player = g && me !== null ? g.players[me] : undefined;
+    if (!g || !player) return null;
+    const price = a.type === 'BUY_CARD' ? cardCost(g.mineCount)
+      : a.type === 'BUY_BELT' ? BELT_COST
+        : a.type === 'BUY_MINE' ? nextMinePrice(g, MINE_COSTS)
+          : a.type === 'PLACE_TELEPORTER' ? teleporterCost(g.globalTeleporterCount) : null;
+    if (price === null) return null;
+    const k = keptAfter(player, [price]);
+    return k ? W.paidKeep(price, k.kept, k.lost) : null;
   }
 
   private setMode(m: Mode): void { this.mode = m; }
@@ -1218,6 +1235,11 @@ export class PlayController {
       return;
     }
     this.mode = { k: 'route' };
+    // Belts bought for the route: what paying for them leaves.
+    const bought = r.actions.filter(x => x.type === 'BUY_BELT').length;
+    const player = g.players[me];
+    const k = bought > 0 && player ? keptAfter(player, new Array<number>(bought).fill(BELT_COST)) : null;
+    if (k) this.hintText = W.paidKeep(bought * BELT_COST, k.kept, k.lost);
     this.startQueue(r.actions);
     if (r.refusal) this.hintText = refusalText(r.refusal);
   }
@@ -1779,12 +1801,18 @@ function baseTray(player: Player): TrayEntry[] {
  * change back; empty when it is paid with exactly what is handed in, or cannot be paid.
  */
 export function keepText(player: Player, prices: readonly number[]): string {
+  const k = keptAfter(player, prices);
+  return k ? W.payKeep(k.kept, k.lost) : '';
+}
+
+/** What paying `prices` with change leaves, in words ("1 Plate and 2 Ore"); null when no change comes back. */
+function keptAfter(player: Player, prices: readonly number[]): { kept: string; lost: number } | null {
   const pay = paymentWithChange(player.inventory, prices);
-  if (!pay) return '';
+  if (!pay) return null;
   const held = [...MATERIALS].reverse().filter(m => pay.kept[m] > 0).map(m => amountOf(pay.kept[m], m));
   const kept = held.length === 0 ? 'nothing'
     : held.length === 1 ? held[0]! : `${held.slice(0, -1).join(', ')} and ${held[held.length - 1]!}`;
-  return W.payKeep(kept, pay.lost);
+  return { kept, lost: pay.lost };
 }
 
 function runBlockText(why: string, need: number, have: number): string {

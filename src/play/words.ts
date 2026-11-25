@@ -185,6 +185,9 @@ export const W = {
   /** What a purchase paid with change leaves (" · You keep 1 Plate and 2 Ore"); `lost`: change that did not fit under the limit. */
   payKeep: (kept: string, lost: number): string =>
     ` · You keep ${kept}${lost > 0 ? `; ${lost} of the change is lost (limit of ${INVENTORY_CAP} each)` : ''}`,
+  /** Right after a purchase paid with change: "Paid 3. You keep 1 Plate and 2 Ore." */
+  paidKeep: (price: number, kept: string, lost: number): string =>
+    `Paid ${price}. You keep ${kept}.${lost > 0 ? ` ${lost} of the change is lost (limit of ${INVENTORY_CAP} each).` : ''}`,
   noBelts: 'No belts in your supply. Buy one first.',
   noBeltPoint: 'There is no free connection point for a belt.',
   cantAfford: (cost: number, worth: number): string => `Costs ${cost}; your materials are worth ${worth}.`,

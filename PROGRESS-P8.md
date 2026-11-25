@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: A, B done; next C (mine placement), then D, F, E.
+Status: A, B, C, F done; next D (final-round notice, game-over words, reshuffle announcement), then E (texts, Rules tab, guide).
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -29,3 +29,5 @@ Baseline `npx vitest run` on the untouched branch: running.
   helpers.ts; completeness/soundness pass. Tests: src/play/__tests__/steps.test.ts.
 - D (part): bank Leverage card uses cardsLeftToDraw; detail shows deck and discard counts; roll
   step says when pieces ran out (`rollNoPieces`).
+- C: Mine placement: already reachable (lit cell = larger half, rotations); test src/play/__tests__/mines.test.ts covers every listed BUY_MINE / PLACE_MINE incl. smaller-half-only ones. Instruction W.mineDropped / W.minePick say either half may touch.
+- F: right after a purchase paid with change the controller's hint (shown as the table toast) says "Paid 3. You keep 1 Plate and 2 Ore." (controller `purchaseHint`, route buys in `layPlan`). Chips keep the tooltip. Test: paidKeep.test.ts.
