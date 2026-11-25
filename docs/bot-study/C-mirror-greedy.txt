@@ -1,0 +1,36 @@
+
+> factory-spaghetti@0.1.1 sim
+> vite-node src/sim/cli.ts -- --mode mirror --bots greedy --players 2,3,4 --seeds 60 --start 30000 --jobs 4 --out C:/Users/bnimo.BNIMONMAIN/AppData/Local/Temp/claude/bce9939815b905b6/***/scratchpad/p5/runs2/C-mirror-greedy.json
+
+(4 processes, 59 s wall clock)
+
+2 players (even share 50.0%)
+bot        games  wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv  Belt   Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Smart Bot    120  60.0     50.0%  41.2%–58.8%     1.00    27.8      30       30    51.9  1.76   20.9   0.50  50.0%  0.0%  0.0%    0.0   0.00   0.00      0      0              50.0% / 50.0%
+
+3 players (even share 33.3%)
+bot        games  wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv  Belt   Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Smart Bot    180  60.0     33.3%  26.9%–40.5%     1.00    24.5      27       33    52.9  1.64   18.1   0.33  33.3%  0.0%  0.0%    0.0   0.04   0.00      0      0      20.0% / 51.7% / 28.3%
+
+4 players (even share 25.0%)
+bot        games  wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv  Belt   Emp  cards  mines  co-cl  limit  error      win rate by turn position
+Smart Bot    240  60.0     25.0%  19.9%–30.8%     1.00    21.8      15       45    46.6  1.40   15.8   0.25  25.0%  0.0%  0.0%    0.0   0.03   0.00      0      0  23.3% / 53.3% / 10.0% / 13.3%
+
+Win rate by turn position (all bots; 1st = starting player)
+  2 players, 60 games: 1st 50.0% (37.7%–62.3%), 2nd 50.0% (37.7%–62.3%)
+  3 players, 60 games: 1st 20.0% (11.8%–31.8%), 2nd 51.7% (39.3%–63.8%), 3rd 28.3% (18.5%–40.8%)
+  4 players, 60 games: 1st 23.3% (14.4%–35.4%), 2nd 53.3% (40.9%–65.4%), 3rd 10.0% (4.7%–20.1%), 4th 13.3% (6.9%–24.2%)
+
+Bonus Tesseracts
+players          bonus  held at end  first taken (round)  kept by first holder  changes of hands  holder won
+2             investor       100.0%                  8.0                  0.0%              5.55       50.0%
+2           beltWeaver         0.0%                    -                     -              0.00           -
+2        factoryEmpire         0.0%                    -                     -              0.00           -
+3             investor       100.0%                  7.0                  1.7%              6.23       41.7%
+3           beltWeaver         0.0%                    -                     -              0.00           -
+3        factoryEmpire         0.0%                    -                     -              0.00           -
+4             investor       100.0%                  6.0                  0.0%              6.38        6.7%
+4           beltWeaver         0.0%                    -                     -              0.00           -
+4        factoryEmpire         0.0%                    -                     -              0.00           -
+
+180 games; 1.27 s per game on average (one process).
