@@ -121,3 +121,7 @@ The printed game is the visual reference. The designer's files are outside the r
 - **Version number:** the game's version is `version` in `package.json` (the start menu shows it, without the build's commit hash). Do not change it in ordinary commits. It goes up only when the owner asks, or once per push to `main` when every change is committed: bump the patch number in its own commit just before that push, and update the version named at the top of `README.md` in the same commit. Never bump it more than once between two pushes.
 - Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site, so commit locally after each round of changes but push only when the round is finished and checked.
 - Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.
+
+
+## Things to take care of next round of changes (by request of owner -- remove each task as they are accomplished, remove this section once it's empty):
+- Teleporters have a 3D model, which the owner will provide. Use it on the table in place of the current representative circle (convert it through `tools/` like the other pieces; do not commit the designer's source file).
