@@ -1,28 +1,41 @@
-# Bot findings: play styles, a tournament, and exploits
+# Bot findings: play styles, a tournament, and exploits (final rules)
 
-For the designer. Written 2026-11-24 from 4,827 seeded tournament games (plus 580 games for the end-of-game analysis). Every figure says how many games it rests on; "95% CI" is the range the true win rate very likely lies in. An even share is 50% at 2 players, 33% at 3, 25% at 4.
+This is for the designer. It was written 2026-11-24 on the rules as of `RULES_CHANGES.md` #50, from 4,935 seeded bot games. Every number below comes from those games, and each figure says how many games it rests on.
+
+- "95% CI" is the range the true win rate very likely lies in.
+- An even share is 50% at 2 players, 33% at 3 and 25% at 4.
+
+The reports behind every table are in [`docs/bot-study/`](bot-study/). The first study, run on the rules before #44–#50, is in this file's git history; what changed since is at the end.
 
 ## Summary
 
-1. **The Bonus Tesseracts decide the game.** Of the bots' four-Tesseract wins, 76–99% used at least one bonus. The usual winning hand is **2 real Tesseracts + The Investor + Factory Empire**.
-2. **Factory Empire goes to whoever aims for it.** When a player goes for it, someone holds it at the end of 93–100% of games. It is first taken around round 8–11, and once taken it almost never changes hands. Smart Bot ignores it and never once held it.
-3. **The Investor is a module race to 18.** A tie keeps the bonus with its holder, so the first player to put a Control Module on 18 keeps it for good. Before that it changes hands 3–7 times a game.
-4. **At 2 players the second seat wins about 60%.** In games between identical bots the second player wins 58–65%. Removing one piece from the 2-player stacks does not fix it.
-5. **Not exploits:** buying every Leverage card loses every game (0 wins in 324). Rushing the next Mine is ordinary (no better than the Planner). No line stalls the game: in 4,827 games there were no unfinished games and no refused moves.
+1. **The Bonus Tesseracts still decide the game.** 78–96% of the four-Tesseract wins in run B used at least one bonus. The usual winning hand is **2 real Tesseracts + The Investor + Factory Empire**. The style that goes for the bonuses, the Bonus Hunter, wins 1.6–1.8 times its share at 2 and 3 players, also against good opposition.
+2. **The upgrade point is the lever.** It now pays 2 / 3 / 4 on Mines 1 / 2 / 3. Tried at 1 / 2 / 3 instead, the bonus lines lost most of their edge against a table of Planners: the bonus rush fell from 71% / 56% / 35% to 54% / 25% / 6% at 2 / 3 / 4 players. Raising the Factory Empire threshold from 6 to 8 instead did little.
+3. **Factory Empire still comes easily.** When a style that wants it plays, someone holds it at the end of 92–100% of games. It is taken by round 8–12 and almost never changes hands.
+4. **The Investor is still a race to module 18.** It changes hands 3–7 times a game until somebody reaches 18. A tie keeps it with its holder.
+5. **The 2-player second-seat edge is smaller and only clear for one bot.** In Planner mirror games the second player wins 58.7% (150 games; 95% CI 51–66). In Smart Bot mirror games it is 50.0% (60 games).
+6. **Not exploits:** buying every Leverage card (2 wins in 198 games); rushing the next Mine (no better than the Planner); stalling (no unfinished game, no refused move, in 4,935 games).
 
 ## The bots
 
 | Bot (lobby label) | What it does |
 |---|---|
-| Smart Bot | The existing one-move look-ahead bot. Unchanged; it is the baseline. |
-| Planner Bot | Feeds its buildings from the Mines with belts. Buys output teleporters early, chooses Control Modules for the dice in play and the next Mine's dice, keeps the materials for its next Tesseract recipe, and meeples where the round end pays most. |
-| Mine Rusher Bot | Planner, but buys the next Mine whenever it can and sets its modules for the bigger dice sums early. |
-| Card Shark Bot | Planner, but buys a card whenever the deck's average card is worth the price, and plays two a turn. |
-| Bonus Hunter Bot | Planner that weighs each Bonus Tesseract at more than a real one. Uses the Mine upgrade point for claims, climbs one module towards 18, and tries long belt chains. |
-| Hoarder Bot | Keeps materials for points. Takes Mine resource points, and when ahead empties the shortest stack to end the game. |
+| Smart Bot | The existing one-move look-ahead bot, unchanged; the baseline. |
+| Planner Bot | Plans ahead. It feeds its buildings from the Mines with belts, buys output teleporters early, picks Control Modules for the dice in play and the next Mine's, keeps the materials for its next Tesseract recipe, and meeples where the round end pays most. |
+| Mine Rusher Bot | Planner that buys the next Mine whenever it can and plans for the bigger dice sums early. |
+| Card Shark Bot | Planner that buys a card whenever the cards left are worth the price on average, and plays two a turn. |
+| Bonus Hunter Bot | Planner that values each Bonus Tesseract above a real one. It uses Mine upgrade points to claim buildings, climbs one module towards 18, and tries long belt chains. |
+| Hoarder Bot | Keeps materials for points, takes Mine resource points, and when ahead empties the shortest stack. |
 | Teleporter Bot | Buys teleporters eagerly, so its meeple is free for the Mines. |
 
-All six share one decision procedure (`src/bots/styles/styleBot.ts`); a style is a short list of weights (`profiles.ts`). They read only what a player at the table knows: never the order of the face-down stacks or of the deck. A typical decision takes 0.3 ms; in six 4-player games the slowest was 53 ms.
+All six share one decision procedure (`src/bots/styles/styleBot.ts`). A style is a short list of weights (`profiles.ts`). They see only what a player at the table sees: never the order of the face-down stacks or of the deck.
+
+On the final rules, every listed run of a building names what it takes from the inventory. The style bots weigh each option against what it hands over; Power Tokens are worth less the more a bot already holds.
+
+- In 30 three-player style games, Tesseract Factories were fed from the inventory 80 times (for example Plate + Sphere).
+- Power Plants were run 220 times and never given a material.
+
+A decision typically takes well under a millisecond (the first study measured a median of 0.3 ms and a worst case of 53 ms in a 4-player game).
 
 ## Who wins
 
@@ -31,144 +44,174 @@ Run A: 864 games, seeds 10000–10015, every seat rotated.
 
 | Style | 2 players (32 games) | 3 players (48) | 4 players (64) |
 |---|---|---|---|
-| Bonus Hunter | **96.9%** (84–99) | 77.1% (64–87) | 20.3% (12–32) |
-| Planner | 93.8% (80–98) | **87.5%** (75–94) | 51.6% (40–63) |
-| Mine Rusher | 90.6% (76–97) | 68.8% (55–80) | **56.3%** (44–68) |
-| Teleporter | 90.6% (76–97) | 66.7% (53–78) | 40.6% (30–53) |
-| Card Shark | 87.5% (72–95) | 70.8% (57–82) | 43.8% (32–56) |
-| Hoarder | 75.0% (58–87) | 62.5% (48–75) | 43.8% (32–56) |
+| Bonus Hunter | **100%** (89–100) | 85.4% (73–93) | 42.2% (31–54) |
+| Teleporter | 96.9% (84–99) | 83.3% (70–91) | 56.3% (44–68) |
+| Mine Rusher | 93.8% (80–98) | 85.4% (73–93) | **68.8%** (57–79) |
+| Planner | 87.5% (72–95) | **87.5%** (75–94) | 67.2% (55–77) |
+| Card Shark | 81.3% (65–91) | 79.2% (66–88) | 64.1% (52–75) |
+| Hoarder | 75.0% (58–87) | 68.8% (55–80) | 53.1% (41–65) |
 
-Every style beats Smart Bot by a wide margin. Smart Bot does not build supply chains and never goes for Factory Empire. At 4 players it wins almost only on points when the board runs out (218 of its 220 wins). It is a weak baseline, so "beats Smart Bot" proves little on its own. The tables below pit the styles against each other.
+Smart Bot won 10.9% / 9.2% / 13.8% of its games here. It does not build supply chains and never goes for Factory Empire, so "beats Smart Bot" proves little. The next tables pit the styles against each other.
 
-### Everyone against everyone (all six styles and Smart Bot)
+### Everyone against everyone (six styles and Smart Bot)
 Run B: 861 games, seeds 20000–20002, every table of distinct bots, every seat rotated.
 
 | Bot | 2 players (36 games each) | 3 players (135) | 4 players (240) |
 |---|---|---|---|
-| Bonus Hunter | **72.2%** (56–84) | **50.4%** (42–59) | 24.6% (20–30) |
-| Planner | 55.6% (40–71) | 40.7% (33–49) | **30.0%** (25–36) |
-| Mine Rusher | 55.6% (40–71) | 37.0% (29–45) | 26.7% (22–33) |
-| Teleporter | 63.9% (48–78) | 34.1% (27–42) | 20.4% (16–26) |
-| Card Shark | 36.1% (23–52) | 31.1% (24–39) | 18.8% (14–24) |
-| Hoarder | 44.4% (30–60) | 23.7% (17–32) | 28.3% (23–34) |
-| Smart Bot | 22.2% (12–38) | 16.3% (11–23) | 26.3% (21–32) |
+| Bonus Hunter | **77.8%** (62–88) | **58.5%** (50–67) | 28.7% (23–35) |
+| Planner | 44.4% (30–60) | 40.7% (33–49) | 30.8% (25–37) |
+| Mine Rusher | 55.6% (40–71) | 40.0% (32–48) | 26.3% (21–32) |
+| Card Shark | 55.6% (40–71) | 39.3% (31–48) | 24.6% (20–30) |
+| Teleporter | 58.3% (42–73) | 25.2% (19–33) | 23.8% (19–30) |
+| Hoarder | 41.7% (27–58) | 25.2% (19–33) | **31.7%** (26–38) |
+| Smart Bot | 16.7% (8–32) | 4.4% (2–9) | 9.2% (6–14) |
 
-A second, independent run with the six styles only (run F: 600 games, seeds 60000–60003, 320 games per style) agrees: Bonus Hunter 85.0% (71–93) at 2 players and 55.0% (46–64) at 3, but 24.4% (18–32) at 4, where the Planner leads with 32.5% (26–40).
+Run F, with the six styles only (600 games, seeds 60000–60003, 320 games per style), agrees:
 
-- **At 2 and 3 players the Bonus Hunter wins about 1.5 times its share**, and the confidence interval stays above the even share. At 4 players its edge disappears: with more rivals the bonuses change hands more, and the game more often ends on points (52% of 4-player games), where the Bonus Hunter is weakest because it spends its materials.
-- At 4 players nothing stands out; every style is within a few points of 25%.
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| Bonus Hunter | 80.0% (65–90) | 49.2% (40–58) | 31.3% (25–39) |
+| Planner | 50.0% | 32.5% | 32.5% (26–40) |
 
-### The best styles against each other
-Run E2: each bot alone at a table of Planners (the strongest all-round style). 648 games, seeds 50000–50011.
+At 4 players no style stands clearly above 25%. With more rivals the bonuses change hands more, and 45% of 4-player games end on points (run B), where the Bonus Hunter, which spends its materials, is weakest.
+
+### The best lines against good opposition
+Run E2: each bot alone at a table of Planners. 648 games, seeds 50000–50011.
 
 | Bot | 2 players (24 games) | 3 players (36) | 4 players (48) |
 |---|---|---|---|
-| Bonus Hunter | 75.0% (55–88) | 47.2% (32–63) | 33.3% (22–48) |
-| Scripted "bonus rush" (below) | 75.0% (55–88) | 50.0% (35–66) | 37.5% (25–52) |
-| Scripted Empire rush | 66.7% (47–82) | 36.1% (23–52) | 25.0% (15–39) |
-| Scripted Investor lock | 62.5% (43–79) | 27.8% (16–44) | 20.8% (12–34) |
-| Smart Bot | 4.2% (1–20) | 16.7% (8–32) | 31.3% (20–45) |
+| Bonus Hunter | 75.0% (55–88) | **63.9%** (48–78) | 35.4% (23–50) |
+| Scripted bonus rush (below) | 70.8% (51–85) | 55.6% (40–71) | 35.4% (23–50) |
+| Scripted Empire rush | 75.0% (55–88) | 47.2% (32–63) | 25.0% (15–39) |
+| Scripted Investor lock | 62.5% (43–79) | 44.4% (30–60) | 25.0% (15–39) |
+| Smart Bot | 8.3% (2–26) | 5.6% (2–18) | 12.5% (6–25) |
 | Scripted "buy every card" | 0% (0–14) | 0% (0–10) | 0% (0–7) |
 
-The bonus lines still win about 1.5 times their share against good opposition at 2 and 3 players. So this is not just a weakness of Smart Bot.
+The bonus lines win 1.4–1.9 times their share against Planners at 2 and 3 players, so this is not only a weakness of Smart Bot.
 
 ## Things that look like exploits
 
 ### 1. Factory Empire comes too easily (strong)
-**The line.** Each round, put your meeple on a Mine's upgrade point. At the round end, use the credits to claim the cheapest unclaimed building with your lowest legal Control Module; one credit per claim at 1 Mine. You start with 2 buildings and need 4 more claims to reach 6. It does not matter whether those buildings ever produce anything.
+**The line.** Each round, put your meeple on a Mine's upgrade point, which pays 2 credits at Mine 1. At the round end, claim the cheapest unclaimed building with your lowest legal Control Module. You start with 2 buildings and need 4 more claims to reach 6. It does not matter whether those buildings ever produce anything.
 
 **The numbers.**
-- When style bots play, someone holds Factory Empire at the end of 93–100% of games.
-- It changes hands less than once a game on average (0.2–0.8 times, run B): only a player with more buildings can take it away.
-- Holding it at the end goes with winning 70% (2 players), 56% (3) and 31% (4) of the time (run B).
-- The scripted Empire rush alone won 100% (2 players), 60% (3) and 38% (4) against Smart Bots (run E1; 20/30/40 games, seeds 10000–10009).
+- When style bots play, someone holds Factory Empire at the end of 92–100% of games (runs A, B).
+- It is first taken around round 8–12.
+- It changes hands 0–0.6 times a game on average.
+- Holding it at the end goes with winning 76% / 63% / 36% of the time at 2 / 3 / 4 players (run B).
+- The scripted Empire rush alone won 100% / 93% / 63% against Smart Bots (run E1: 20 / 30 / 40 games, seeds 10000–10009).
+- It won 75% / 47% / 25% against Planners (run E2).
 
-**Can a human do it?** Easily. It needs no board reading: an upgrade point is open most rounds, and the cheapest claim always fits the credits. It is a cheap "free Tesseract".
+**Can a human do it?** Easily. It needs no board reading.
 
-### 2. The Investor is a race to module 18 (strong at 2–3 players, contested)
-**The line.** Pick your least useful building. Every round, put all free upgrades and all Mine-upgrade credits on it until it reaches 18. The building then never fires again, because no dice sum makes 13 or more with 2 Mines. A tie keeps the bonus with its holder, so the first to 18 owns it for the rest of the game.
+### 2. The Investor is a race to module 18 (strong against players who ignore it)
+**The line.** Pick your least useful building. Put every free upgrade and every upgrade-point credit on it until its module reaches 18. A tie keeps the bonus with its holder, so the first to reach 18 keeps it for the rest of the game.
 
 **The numbers.**
 - Someone held The Investor at the end of every game.
-- It is first taken around round 6 and changes hands 2.8 / 4.0 / 5.1 times a game at 2 / 3 / 4 players (run B, as bots out-bid each other).
-- The scripted Investor lock won 95% / 97% / 68% against Smart Bots (run E1).
-- Against Planners it won only 63% / 28% / 21% (run E2), because Planners also climb.
-
-**Can a human do it?** Yes. The cost is one building's production and the free upgrades. It is strongest when nobody else is racing.
+- It is first taken around round 6.
+- It changes hands 2.8 / 4.5 / 5.0 times a game at 2 / 3 / 4 players (run B).
+- The scripted Investor lock won 100% / 97% / 85% against Smart Bots (run E1), but 63% / 44% / 25% against Planners (run E2), who also climb.
 
 ### 3. Both bonuses plus two Tesseracts is the winning plan
 **The numbers.**
-- Of all four-Tesseract wins, the winner held **2 real + 2 bonus** in 58% (2 players), 49% (3) and 36% (4). Another 30% held 3 real + 1 bonus (run B).
-- A win on 4 real Tesseracts and no bonus happened in 7%, 16% and 24% of those wins.
-- The scripted "bonus rush" (both lines above, otherwise Planner) won 100% / 90% / 65% against Smart Bots, and 75% / 50% / 38% against Planners.
+- Of all four-Tesseract wins in run B, the winner held:
 
-**What it means.** Making real Tesseracts is the hard part of the game (the first one arrives around round 14–17), and two of the four can be replaced by bonuses that need no production.
+  | Hand | 2 players | 3 players | 4 players |
+  |---|---|---|---|
+  | 2 real + 2 bonus | 60% | 51% | 36% |
+  | 3 real + 1 bonus | 30% | 28% | 32% |
+  | 4 real, no bonus | 4% | 14% | 22% |
 
-### 4. The second seat at 2 players (moderate, real)
+- The first real Tesseract arrives around round 14–17.
+- The scripted bonus rush (both lines above, otherwise Planner) won 100% / 100% / 80% against Smart Bots (run E1) and 71% / 56% / 35% against Planners (run E2).
+
+**What it means.** Two of the four Tesseracts can be bought with the meeple and the free upgrades instead of production. The upgrade point pays for both bonus lines.
+
+### 4. Seat order
 Games between identical bots, so only the seat differs:
 
-| Table | Games | 1st player wins | 2nd player wins |
-|---|---|---|---|
-| Planner × 2, seeds 30000–30149 | 150 | 35.3% (28–43) | **64.7%** (57–72) |
-| Smart Bot × 2, seeds 30000–30119 | 120 | 42.5% (34–51) | 57.5% (49–66) |
-| Planner × 3, 1st / 2nd / 3rd | 150 | 28.0% | 34.0% / 38.0% |
-| Smart Bot × 3, 1st / 2nd / 3rd | 60 | 18.3% | 51.7% / 30.0% |
-| Planner × 4 | 150 | 28.7% / 23.3% / 25.3% / 22.7% (no clear effect) | |
+| Table | Games | Win rate by turn position (1st = starting player) |
+|---|---|---|
+| Planner × 2, seeds 30000–30149 | 150 | 41.3% / **58.7%** (51–66) |
+| Smart Bot × 2, seeds 30000–30059 | 60 | 50.0% / 50.0% |
+| Planner × 3 | 150 | 34.7% / 33.3% / 32.0% |
+| Smart Bot × 3 | 60 | 20.0% / **51.7%** (39–64) / 28.3% |
+| Planner × 4 | 150 | 20.0% / 28.7% / 26.0% / 25.3% |
+| Smart Bot × 4 | 60 | 23.3% / **53.3%** (41–65) / 10.0% / 13.3% |
 
-The starting player is at a disadvantage at 2 and 3 players.
+In mixed tables (runs A, B, E2, F) the 2-player second seat won 50.8–56.9%.
 
-I first suspected piece parity: 2-player stacks hold 63 pieces, which leaves 55 after setup, an odd number. Most 2-player Smart Bot games that run out of pieces end with the second player having had one more turn. But removing one blank from stack 3 (62 pieces) changed the Planner's figure only from 64.7% to 59.7% (300 games), within noise. So parity is not the main cause.
-
-The likely cause is the turn order itself. The second player takes the first round-end turn of the game, which means the first claim with Mine credits and the first chance to declare a win. They also pick the first Power Plant in setup. Bots cannot separate these causes. A human who knows it cannot exploit it, but it makes 2-player games unfair.
+The effect is small and depends on the bot. With Smart Bots at 3 and 4 players, the second seat stands out on only 60 games each, so it needs more games before acting on it. The starting player is never ahead.
 
 ### 5. Not exploits
-- **Buying every Leverage card.** The Planner that buys a card whenever it can afford one won 0 of 324 games. It bought 16–26 cards a game and ended with about 5 points. Single cards are good value (Mine Inspection and Embezzlement always are), but money spent on cards is not spent on Tesseracts.
-- **Rushing the next Mine.** Mine Rusher is about as strong as Planner. Bots bought Mine 2 in 0–50% of games depending on the table, and it arrived around rounds 4–7 either way.
-- **Stalling.** No game hit the action limit. Every game ends: each turn takes a piece from the stacks, and nothing puts pieces back.
-- **Belt Weaver** was rarely won (1–10% of games), even by the Bonus Hunter, which tries for it. An 8-belt chain needs a large board and several turns of belts. It looks hard enough as it is.
+- **Buying every Leverage card.** The Planner that buys a card whenever it can afford one won 2 of 198 games (runs E1, E2), ending with about 7 points.
+- **Rushing the next Mine.** The Mine Rusher is about as strong as the Planner (runs B, F).
+- **Stalling.** No game hit the action limit in 4,935 games. When the pieces run out, the round is now finished and every game ended.
+- **Belt Weaver** was won in 0–18% of games, mostly by the Bonus Hunter, which tries for it. An 8-belt chain is hard enough.
 
-## Suggestions to try (numbers in `src/engine/config.ts`)
+## Variants tried (same seeds as run E2, against a table of Planners)
 
-| Change | Measured effect |
-|---|---|
-| `BONUS_THRESHOLDS.factoryEmpire` 6 → 8 | Run D1 (324 games, same seeds as run E2). Empire is first taken about 4 rounds later (round 12–13 instead of 8–10). It is still held at the end of 76–94% of games. The Bonus Hunter's win rate did not change (83% / 47% / 31% vs 75% / 47% / 33%). **Not enough on its own.** |
-| `STACK_COMPOSITION[2]` stack 3 blank 10 → 9 | Run D2 (300 Planner + 120 Smart Bot games). The second-seat edge stays (59.7% / 58.3%). **Does not fix the 2-player seat effect.** |
+| Variant | Bonus Hunter (2p / 3p / 4p) | Scripted bonus rush (2p / 3p / 4p) | Planner (2p / 3p / 4p) |
+|---|---|---|---|
+| Final rules (run E2) | 75.0% / 63.9% / 35.4% | 70.8% / 55.6% / 35.4% | 51.4% / 31.9% / 25.9% |
+| `BONUS_THRESHOLDS.factoryEmpire` 6 → 8 (run D1) | 75.0% / 52.8% / 37.5% | 87.5% / 63.9% / 31.3% | 41.7% / 30.1% / 24.8% |
+| Upgrade point 2 / 3 / 4 → 1 / 2 / 3 (`MINE_UPGRADE_REWARDS`, run D3) | 62.5% / 33.3% / 20.8% | 54.2% / 25.0% / 6.3% | **58.3% / 39.4% / 29.9%** |
+| Both changes (run D4) | 62.5% / 25.0% / 22.9% | 45.8% / 13.9% / 8.3% | **59.7% / 42.6% / 28.9%** |
 
-Not testable from `config.ts` today, but likely to matter:
-- **What a Mine's upgrade point pays** (`UPGRADE_POINT_PER_MINE` and `UPGRADE_POINT_BONUS` in `src/engine/rules/mineRewards.ts`, outside `config.ts`). This point is the engine of both bonus lines. Moving these into `config.ts` would let the simulator test, for example, "claims cost one more credit".
-- **The Investor tie rule.** It is a rule, not a number. Something like "the bonus moves to whoever matches the highest module most recently", or "a module of 13+ does not count", would end the race to 18.
-- **`TESSERACTS_TO_WIN` 4 → 5,** so that two bonuses are not half the win. It is a plain number exported from config, so this simulator cannot change it at run time (see Method). It would need a code change to test.
+Games per cell: 24 / 36 / 48 for the challengers, 72 / 216 / 432 for the Planners. The scripted bonus rush is written for 7 buildings, so it does not fully adapt to the threshold of 8.
+
+- **Lowering the upgrade point by one** takes away most of the bonus lines' edge. At 3 players the Bonus Hunter drops from 1.9 to 1.0 times its share. The plain Planner, which builds production, gains.
+- **Factory Empire at 8 alone** changes little.
+- Both changes together are slightly stronger than the upgrade point alone.
 
 ## Engine problems found
-No refused move and no unfinished game in 4,827 tournament games (every listed move was accepted; the bots only send listed moves, checked in tests). Three places where the engine and the documents disagree:
-
-1. **Board exhaustion ends the game mid-round.** `RULES.md` says "if all pieces are played, finish the round". The engine instead ends the game at the end of the turn in which the last piece is placed (`src/engine/reducer.ts`, the END_TURN branch; its comment says this is on purpose, because the remaining players would have no piece to place). Players later in that round lose their last turn, and nobody gets that round's meeple payout. Measured (Planner tables, seeds 30000+): 55 of 76 board-exhaustion endings at 4 players ended mid-round, with 116 turns lost. At 3 players it was 20 of 32 with 30 turns lost. With Smart Bots at 2 players, all 45 of 80 games that ran out of pieces ended mid-round (seeds 30000–30079).
-2. **Setup claim order.** `CLAUDE.md` says plate factories are claimed in reverse turn order and Power Plants in forward order. `RULES.md` and the engine do the opposite. Documentation only.
-3. **Short Sale and Changing Priorities can put a module on a building another player has claimed.** That makes a co-owned building. A normal claim cannot do this ("only one player may own a building"). Bots did it 0.1–0.9 times a game. `RULES.md` does not say whether it is intended.
+- None. 4,935 games had no refused move and no unfinished game.
+- The bots send only listed moves, which the tests check.
+- The three points from the first study are settled: the game-end round is now finished (#44); Short Sale and Changing Priorities can no longer claim another player's building (#46; the bots made 0 such claims); and the setup claim order was confirmed.
 
 ## Limits of the study
-- All six styles share one decision procedure, so they differ in priorities, not in skill. A real human adapts to the table: blocks the opponent who is about to take Empire, or races The Investor only when needed. No bot does that. The exploit lines are probably weaker against alert humans than these numbers suggest, and stronger against beginners.
-- Smart Bot, the baseline, is weak. Its look-ahead also sees the top card of the deck when it considers buying one (it applies the purchase to judge it), which a human cannot do. The style bots never read hidden order.
-- Bots do not trade Power Tokens or talk, and they decide in fixed ways.
-- Game counts per cell are 24–240. Differences under about 10 percentage points are mostly within noise.
+- All six styles share one decision procedure, so they differ in priorities, not skill. Real players react to the table: they block the player about to take Factory Empire, and race The Investor only when needed.
+- **Smart Bot**, the baseline, is unchanged and weak. It got weaker on these rules: 4.4% at 3 players in run B, against 16.3% in the first study.
+  - It does not weigh what a run takes from its inventory.
+  - Its look-ahead also sees the top card of the deck when it considers buying one, which a human cannot do.
+- Bots do not trade Power Tokens or talk.
+- The style bots never supply a Power Plant from the inventory. That is safe, but a human who is short of power might sometimes do better.
+- Cells rest on 24–432 games. Differences under about 10 percentage points are mostly noise.
 
 ## Method and how to repeat it
-- `npm run sim -- …` (options at the top of `src/sim/cli.ts`):
-  - `--mode field` puts each bot alone against a table of `--baseline` bots.
-  - `--mode all` plays every table of distinct bots.
-  - `--mode mirror` plays tables of one bot, to measure what each seat is worth.
-  - `--jobs 4` splits a run over four processes.
-  - `--out` writes every game as JSON.
-- Each seating of a table replays the same seed: the same board, the same stacks and the same dice, which the runner rolls itself (a bot's own dice are ignored).
-- Speed: 0.4 s per game for style-only tables and about 1–4 s with Smart Bots, on one process. The whole study took about 35 minutes of wall-clock time on four processes.
-- Config variants and scripted lines are loaded with `--import file.ts`. A variant changes an object or array in `config.ts` in place, for that run only; plain numbers and functions exported from config cannot be changed this way. The scripted lines used here (Empire rush, Investor lock, bonus rush, buy every card) were throw-away files and are described above.
-- Runs:
+`npm run sim -- …`; the options are listed at the top of `src/sim/cli.ts`.
 
-| Run | Games | Command |
+| Option | What it does |
+|---|---|
+| `--mode field` | Each bot alone against a table of `--baseline` bots. |
+| `--mode all` | Every table of distinct bots. |
+| `--mode mirror` | Tables of one bot, to measure what each seat is worth. |
+| `--jobs 4` | Four processes. |
+| `--import file.ts` | Loads scripted lines or a variant. A variant changes an object or array tunable in place, for that run only. |
+
+- Each seating of a table replays the same seed: the same board, stacks and dice, which the runner rolls itself.
+- The whole study took about 25 minutes of wall-clock time on four processes.
+- The scripted lines and variants are in `docs/bot-study/scripts/`. Each report in `docs/bot-study/` starts with its exact command.
+
+| Run | Games | Report |
 |---|---|---|
-| A | 864 | `--mode field --baseline greedy --seeds 16 --start 10000` |
-| B | 861 | `--mode all --bots greedy,<six styles> --seeds 3 --start 20000` |
-| C | 450 + 180 | `--mode mirror`, Planner 150 seeds and Smart Bot 60 seeds, from 30000 |
-| D1 / D2 | variants | as described above |
-| E1 / E2 | 360 / 648 | scripted lines against Smart Bots from 10000; against Planners from 50000 |
-| F | 600 | `--mode all --bots <six styles> --seeds 4 --start 60000` |
+| A: styles against Smart Bots | 864 | `A-field.txt` |
+| B: everyone against everyone | 861 | `B-all.txt` |
+| C: mirror games, Planner 150 seeds and Smart Bot 60 seeds per player count | 450 + 180 | `C-mirror-*.txt` |
+| E1: scripted lines against Smart Bots | 360 | `E1-scripted-vs-smart.txt` |
+| E2: against Planners | 648 | `E2-vs-planners.txt` |
+| D1 / D3 / D4: variants | 324 each | `D1-emp8.txt`, `D3-up123.txt`, `D4-up123-emp8.txt` |
+| F: styles only | 600 | `F-styles.txt` |
+
+## What changed since the first study (rules before #44–#50)
+
+| Topic | First study | Final rules |
+|---|---|---|
+| Bonus lines | Bonus Hunter at 1.5 times its share at 2–3 players | Still the strongest, slightly more so: 1.6–1.8 times |
+| Factory Empire | Easy | Still easy; the new upgrade point (2 / 3 / 4) keeps it cheap |
+| The Investor race | A race to 18 | Unchanged |
+| 2-player second seat | 64.7% (Planner) and 57.5% (Smart Bot) | 58.7% and 50.0% |
+| Board exhaustion | Ended the game mid-round; up to 116 lost turns in 76 games | Fixed (#44): the round is finished |
+| Smart Bot | Weak | Weaker |
+| Upgrade-point variant | Could not be tested | Now testable; at 1 / 2 / 3 it is the change that most reduces the bonus lines |

@@ -12,9 +12,9 @@
 - `src/bots` and `src/sim` tests pass (58 tests); typecheck clean; lint 0 errors.
 
 ## Left
-1. Re-run the study (same method). Results go to `docs/bot-study/*.txt|json` (summaries only).
-2. Rewrite `docs/BOT_FINDINGS.md` from the new runs only.
-3. Full checks (`npm test`, `npm run typecheck`, `npm run lint`, `npm run build`), then commit.
+1. ~~Re-run the study~~ done: all ten runs finished (reports in docs/bot-study/, one commit each).
+2. ~~Rewrite docs/BOT_FINDINGS.md~~ done.
+3. Full checks (npm test, typecheck, lint, build), then final commit and report.
 
 ## Runs
 All ten runs are chained in one background job (script: scratchpad chain2.sh, 4 processes). Each finished run writes its report to `docs/bot-study/<run>.txt` and is committed on its own ("WIP: bot study run <run>"). Full per-game JSON is kept outside the repo (scratchpad runs2/). The throw-away scripted lines and config variants are in `docs/bot-study/scripts/` (loaded with `--import`).
