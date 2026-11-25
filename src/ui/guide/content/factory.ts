@@ -74,7 +74,7 @@ export const production: Topic = {
     { k: 'h', t: 'Power Plants', id: 'power-plants' },
     { k: 'p', t: 'A Power Plant runs by itself and gives its owner Power Tokens. If material sits in its input, it uses that up and gives more:' },
     { k: 'table', head: ['In its input', 'Power Tokens'], rows: powerRows() },
-    { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you already hold the most Power Tokens, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
+    { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you are already at the Power Token limit, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
     { k: 'p', t: `A Tesseract never goes into a Power Plant. You can hold up to ${POWER_TOKEN_CAP} Power Tokens.` },
     { k: 'h', t: 'Factories', id: 'factories' },
     { k: 'p', t: 'A factory activates only if it could run right now: its input holds a complete recipe (or, with your teleporter on its input, you hold materials that complete one), its output is empty, and you have the Power Tokens. The game then asks you:' },
@@ -281,7 +281,7 @@ export const teleporters: Topic = {
       ],
     },
     { k: 'p', t: 'If you do not hold the materials it needs (or lack the Power Tokens), the game says so and offers only Skip.' },
-    { k: 'p', t: 'A **Power Plant** with your teleporter on its empty input asks too: **Run it as it is** (+1 Power Token) or provide one Ore, Plate or Sphere for more tokens. It always runs, so there is no Skip unless you already hold the most Power Tokens.' },
+    { k: 'p', t: 'A **Power Plant** with your teleporter on its empty input asks too: **Run it as it is** (+1 Power Token) or provide one Ore, Plate or Sphere for more tokens. It always runs, so there is no Skip unless you are already at the Power Token limit.' },
     { k: 'p', t: 'The same choice appears in your round-end turn for the building your meeple stands on.' },
     {
       k: 'details', blocks: [

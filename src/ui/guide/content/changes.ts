@@ -86,7 +86,7 @@ export const RELEASES: readonly Release[] = [
       {
         title: 'Power Plants with a teleporter on their input ask you',
         before: 'A Power Plant always ran by itself, burning only what lay in its input.',
-        now: 'With your teleporter on its empty input it asks you: run it as it is, or provide one Ore, Plate or Sphere for more Power Tokens. It always runs, so there is no Skip unless you already hold the most Power Tokens.',
+        now: 'With your teleporter on its empty input it asks you: run it as it is, or provide one Ore, Plate or Sphere for more Power Tokens. It always runs, so there is no Skip unless you are already at the Power Token limit.',
         see: 'production#power-plants',
       },
       {
