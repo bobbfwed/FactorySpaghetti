@@ -4,6 +4,7 @@
 import type { BotFn } from './botInterface';
 import { chooseAction as greedyBot } from './greedyBot';
 import { chooseAction as randomBot } from './randomBot';
+import { STYLE_BOTS } from './styles/profiles';
 
 export interface BotType {
   readonly id: string;
@@ -15,6 +16,8 @@ export const BOT_TYPES: readonly BotType[] = [
   // Evaluation-driven bot (claim economy, credit-banking, power management, round-end
   // produce/convert) — the strong opponent. id kept as 'greedy' for lobby-default stability.
   { id: 'greedy', label: 'Smart Bot', fn: greedyBot },
+  // Play-style bots (styles/): one shared plan-following procedure, each with its own priorities.
+  ...STYLE_BOTS.map(({ style, fn }) => ({ id: style.id, label: style.label, fn })),
   { id: 'random', label: 'Random Bot', fn: randomBot },
 ];
 
