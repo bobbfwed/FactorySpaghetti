@@ -1,6 +1,6 @@
 # P8 progress (interface for RULES_CHANGES #44-#50)
 
-Status: A-F done; running the four checks.
+Status: all items A-F done; npm test (109 files, 1012 tests), typecheck, lint (0 errors), build all pass. Ready for review.
 
 ## Plan
 - A supply chooser: Prompt/menu get a `supply` view (slots, materials, heading); one item per listed
@@ -18,7 +18,7 @@ Status: A-F done; running the four checks.
 - A: supply chooser (controller promptsFor/supplyView/supplyOptions, round-end menu, ui/game/supply.ts, prompts.ts, popovers.ts, CSS, gameText operatePrompts/runLabel, gameView prompts). Tests: src/play/__tests__/supply.test.ts. awaitingInterface no longer hides supplied runs.
 
 ## Tests
-Baseline `npx vitest run` on the untouched branch: running.
+Baseline on the untouched branch: 104 files, 969 tests passed. Final: 109 files, 1012 tests passed.
 - B: cards in every step. controller `isExtraMode` + `buildExtra` (card, drone, drone placement,
   pi, menu, claim, upgrade) used by place/roll/meeple/actions steps; outside actions the step's
   targets are cleared while a card waits and come back after. Production Increase outside the
