@@ -11,6 +11,7 @@ import { TableScene } from '../../../table/scene';
 import { Overlay } from '../../../table/overlay';
 import { CameraRig } from '../../../table/camera';
 import { numeralAtlas, numeralCell, woodTexture, NUMERAL_COLS, NUMERAL_ROWS } from '../../../table/textures';
+import { NUMERAL_LIVE } from '../../../table/moduleLook';
 import {
   TILE_TOP, axialToWorld, boardBounds, bufferAnchorWorld, mineSlotWorld, piecePlacement, pointWorld,
   beltCurve, sampleCurve, curveFrameAt, teleporterPlacement, TELEPORTER_HEIGHT, TELEPORTER_SCALE, type Bounds,
@@ -191,7 +192,8 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
       const [cx, cy] = numeralCell(job.numeral);
       const uv = g.getAttribute('uv') as THREE.BufferAttribute;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + cx) / NUMERAL_COLS, (uv.getY(i) + cy) / NUMERAL_ROWS);
-      const m = new THREE.MeshStandardMaterial({ map: atlas, alphaTest: 0.45, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
+      // The numeral atlas is white (the table tints each numeral): tint it the live numeral colour.
+      const m = new THREE.MeshStandardMaterial({ map: atlas, color: NUMERAL_LIVE, alphaTest: 0.45, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2 });
       const box = new THREE.Box3().setFromObject(group);
       const n = new THREE.Mesh(g, m);
       n.position.y = box.max.y + 0.04;
