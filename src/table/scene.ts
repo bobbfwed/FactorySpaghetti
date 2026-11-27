@@ -16,6 +16,7 @@ import {
   type Bounds, type SideLayout,
 } from './layout';
 import { sideAnchor } from './framing';
+import { moduleColors } from './moduleLook';
 import {
   cardBackTexture, cardFaceTexture, diceAtlas, diceCell, numeralAtlas, numeralCell,
   NUMERAL_COLS, NUMERAL_ROWS,
@@ -111,7 +112,10 @@ export class InstancedPart {
   }
 }
 
-/** Numeral decals on Control Modules: one instanced quad, each instance picks its atlas cell. */
+/**
+ * Numeral decals on Control Modules: one instanced quad, each instance picks its atlas cell and
+ * tints the white numeral with its own colour (near black, or dimmed for a module that cannot be rolled).
+ */
 class NumeralLayer {
   readonly part: InstancedPart;
   private cells: THREE.InstancedBufferAttribute;
@@ -128,12 +132,12 @@ class NumeralLayer {
     };
     this.cells = new THREE.InstancedBufferAttribute(new Float32Array(32), 2);
     this.geometry.setAttribute('aCell', this.cells);
-    this.part = new InstancedPart(parent, this.geometry, material, {}, 16);
+    this.part = new InstancedPart(parent, this.geometry, material, { colors: true }, 16);
   }
 
   begin(): void { this.part.begin(); }
 
-  push(matrix: THREE.Matrix4, numeral: number): void {
+  push(matrix: THREE.Matrix4, numeral: number, color: THREE.Color): void {
     const i = this.part.count;
     if (i * 2 + 2 > this.cells.array.length) {
       const next = new THREE.InstancedBufferAttribute(new Float32Array(this.cells.array.length * 2), 2);
@@ -143,7 +147,7 @@ class NumeralLayer {
     }
     const [cx, cy] = numeralCell(numeral);
     this.cells.setXY(i, cx, cy);
-    this.part.push(matrix);
+    this.part.push(matrix, color);
   }
 
   end(): void {
@@ -417,8 +421,10 @@ export class TableScene {
         const a = fx ? fx.claim(piece.id, i) : null;
         if (a === 'hide') return;
         const dy = a ? a.y : 0, sc = lay.scale * (a ? a.s : 1);
-        this.modules.push(mat4(w.x, TILE_TOP + y + dy, w.z, az, sc), this.colorOf(claim.ownerId));
-        this.numerals.push(mat4(w.x, TILE_TOP + y + dy + 2 * sc + 0.04, w.z, az, sc), claim.controlModule);
+        // A module below the number of Mines in play can never be rolled: greyed out.
+        const look = moduleColors(this.colorOf(claim.ownerId), claim.controlModule, this.game?.mineCount ?? 1);
+        this.modules.push(mat4(w.x, TILE_TOP + y + dy, w.z, az, sc), look.face);
+        this.numerals.push(mat4(w.x, TILE_TOP + y + dy + 2 * sc + 0.04, w.z, az, sc), claim.controlModule, look.numeral);
       });
     }
     // Material in buffers, turned with the tile.

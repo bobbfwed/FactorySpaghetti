@@ -9,7 +9,7 @@ import { legalActions, piecesExhausted, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
-import { supplyWords } from '../play/words';
+import { W, supplyWords } from '../play/words';
 import type { Room } from '../session/room';
 import { activeSeat } from '../session/room';
 
@@ -258,6 +258,25 @@ export function operatePrompts(room: Room): OperatePrompt[] {
       options,
     };
   });
+}
+
+// ── A player's Control Modules, in words ──────────────────────────────────────────
+
+/**
+ * A player's Control Modules on buildings, one entry per building: "Plate Factory 1 (cannot be
+ * rolled), 4". A module below the number of Mines in play is marked: it can never be rolled.
+ */
+export function modulesOnBoardWords(game: GameState, seat: number): string[] {
+  return game.board.filter(b => b.claims.some(c => c.ownerId === seat)).map(b => {
+    const mods = b.claims.filter(c => c.ownerId === seat).map(c => c.controlModule);
+    return `${BUILDING_NAME[b.type]} ${W.moduleNumbers(mods, game.mineCount)}`;
+  });
+}
+
+/** A player's Control Modules in the tray, lowest first, the skipped ones marked; 'none' when empty. */
+export function modulesInTrayWords(game: GameState, seat: number): string {
+  const mods = [...(game.players[seat]?.controlModules ?? [])].sort((a, b) => a - b);
+  return mods.length ? W.moduleNumbers(mods, game.mineCount) : 'none';
 }
 
 export interface Standing { seat: number; won: boolean; tesseracts: number; points: number }

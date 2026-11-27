@@ -25,10 +25,10 @@ function strings(v: PlayView): string[] {
   const out = [v.instruction, v.hint ?? '', v.primary?.label ?? '', v.primary?.hint ?? '', v.selection?.label ?? ''];
   for (const it of allItems(v)) out.push(it.label, it.detail ?? '', it.reason ?? '');
   for (const h of v.hand) out.push(h.text);
-  if (v.menu) out.push(v.menu.title, v.menu.subtitle ?? '');
+  if (v.menu) out.push(v.menu.title, v.menu.subtitle ?? '', v.menu.note ?? '');
   if (v.choices) out.push(v.choices.title);
   for (const p of v.prompts) out.push(p.title, p.detail);
-  for (const t of v.tray) out.push(t.cost ?? '');
+  for (const t of v.tray) out.push(t.cost ?? '', t.label ?? '');
   return out.filter(s => s.length > 0);
 }
 

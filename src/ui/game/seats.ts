@@ -15,6 +15,7 @@ import { activePlayer, seatHex } from './context';
 import { MATERIAL_LIST, MATERIAL_ICON, count, countdownText, pips } from './pieces';
 import { nextSeat } from './queueView';
 import { canRemovePlayer, removeOnSeat } from '../../app/lobby';
+import { modulesInTrayWords, modulesOnBoardWords } from '../../app/gameText';
 import { removePlayerButton } from '../removePlayer';
 
 /** The seats shown as opponents: everyone but me. */
@@ -113,10 +114,7 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
   const p = ctx.game.players[i];
   if (!s || !p) return null;
   const g = ctx.game;
-  const onBoard = g.board.filter(b => b.claims.some(c => c.ownerId === i)).map(b => {
-    const mods = b.claims.filter(c => c.ownerId === i).map(c => c.controlModule).join(', ');
-    return `${BUILDING_NAME[b.type]} ${mods}`;
-  });
+  const onBoard = modulesOnBoardWords(g, i);
   const meeple = p.meepleOnPieceId === null ? 'in their supply'
     : ((): string => {
       const piece = g.board.find(b => b.id === p.meepleOnPieceId);
@@ -137,7 +135,7 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
       kv('Belts left', String(p.beltsRemaining)),
       kv('Teleporters left', String(p.teleportersRemaining)),
       kv('Meeple', meeple),
-      kv('Control Modules in the tray', p.controlModules.length ? [...p.controlModules].sort((a, b) => a - b).join(', ') : 'none'),
+      kv('Control Modules in the tray', modulesInTrayWords(g, i)),
       kv('Control Modules on the board', onBoard.length ? onBoard.join(' · ') : 'none'),
       kv('Bonus cards', bonuses.length ? bonuses.map(b => BONUS_NAME[b]).join(', ') : 'none')),
     // The host can remove a player at any time; a bot plays their seat until they rejoin.

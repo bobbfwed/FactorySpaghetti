@@ -53,6 +53,13 @@ export function moduleTray(tray: readonly TrayEntry[], color: SeatColor, choose:
           attrs: { 'aria-label': `Use Control Module ${n}${t?.cost ? `, costs ${t.cost}` : ''}`, 'data-module': String(n), 'data-act': `module:${n}:${cost}:${actContext}` },
           onclick: () => choose(`module:${n}`),
         }, h('span', { class: 'n', text: String(n) }), cost ? h('span', { class: 'cost', text: cost }) : null));
+      } else if (state === 'skipped') {
+        // Below the number of Mines in play: greyed out like a tile turned face down; a tap says why.
+        cells.push(h('button', {
+          class: `tg-mod skipped${under}`,
+          attrs: { 'aria-label': t?.label ?? `Control Module ${n}: skipped`, 'data-module': String(n) },
+          onclick: () => choose(`module:${n}`),
+        }, h('span', { class: 'n', text: String(n) })));
       } else {
         cells.push(h('span', { class: `tg-mod${under}`, style: `background:${COLORS[color]}`, attrs: { 'aria-label': `Control Module ${n}: in the tray` } },
           h('span', { class: 'n', text: String(n) })));
