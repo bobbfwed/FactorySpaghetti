@@ -21,6 +21,8 @@ import type { View } from './menuView';
 import { playtestItems } from './playtestMenu';
 import { versionTag } from './version';
 import { openGuide } from './guide/open';
+import { canRemovePlayer } from '../app/lobby';
+import { removePlayerButton } from './removePlayer';
 
 const LOG_LINES = 15;
 
@@ -188,7 +190,9 @@ function seatsBlock(ctrl: AppController, room: Room): HTMLElement {
             s.index === me ? h('span', { class: 'you', text: 'you' }) : null,
             s.index === room.hostSeat ? icon('crown', undefined, 'ic small gold') : null,
             isTurn ? h('span', { class: 'turn-tag', text: 'turn' }) : null,
-            h('span', { class: 'sr-state' }, seatState(ctrl, room, s))),
+            h('span', { class: 'sr-state' }, seatState(ctrl, room, s)),
+            // The host can remove a player at any time; a bot plays their seat until they rejoin.
+            canRemovePlayer(room, me, s.index) ? removePlayerButton(ctrl, s.index, 'btn btn-quiet sr-remove') : null),
           h('div', { class: 'counts' },
             count('tess', tesseractCount(g, s.index as PlayerId), 'Tesseracts (of 4)', 'tess'),
             count('ore', inv.ore, 'Ore'),

@@ -429,7 +429,7 @@ function refusal(why: string | null): JoinError {
   const text: Record<string, string> = {
     full: 'The game is full.',
     version: 'The host runs a different version of the game. Reload the page to get the newest version.',
-    kicked: 'The host removed you from this game.',
+    kicked: 'The host removed you from this game. You can join again with the room code.',
     ended: 'The host ended the game.',
     replaced: 'This seat was taken over from another tab or device.',
     invalid: 'The host did not accept this player name or device.',

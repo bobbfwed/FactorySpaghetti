@@ -567,6 +567,16 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-hand.fan > .tg-li:hover, .tg-hand.fan > .tg-li:focus-within { transform: rotate(0deg) translateY(-26px); z-index: 2; }
 .tg-hand.grid > .tg-li { display: flex; }
 
+/* ---- the host's "Remove player": beside an away player's countdown, and in a player's details ---- */
+.tg-li.has-remove { gap: 6px; align-items: center; }
+.tg-remove { flex: none; min-height: 44px; padding: 0 12px; font-size: 13px; font-weight: 800; white-space: nowrap; }
+.tg-hud.phone .tg-toprow, .tg-chips { align-items: flex-start; }
+.tg-chips > .tg-li.has-remove { flex-direction: column; align-items: stretch; }
+.tg-chips > .tg-li.has-remove > .tg-chip { flex: none; }
+.tg-chips .tg-remove { padding: 0 6px; font-size: 12px; white-space: normal; }
+.tg-popacts { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tg-popacts .hint { font-size: 12.5px; color: var(--text-2); }
+
 /* ---- a move on its way to the host: the pressed control says so ---- */
 .tg-hud [data-sending] { position: relative; color: transparent !important; }
 .tg-hud [data-sending] > * { visibility: hidden; }
