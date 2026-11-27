@@ -150,26 +150,29 @@ describe('connections and seats', () => {
     expect(host.room.seats[1]).toMatchObject({ name: 'Bea', connected: true });
   });
 
-  it('a kicked player\'s seat goes to a bot and stays locked until the host assigns it', async () => {
+  it('a removed player\'s seat goes to a bot, and is not barred: someone else can be assigned to it', async () => {
     const { host, me, sched, p } = await table(['Bea', 'Cy']);
     const bea = p[0]!;
+    const cy = p[1]!;
     expect(await me.kick(1)).toEqual({ ok: true });
     await sched.advance(50);
     expect(bea.client.closedWhy).toBe('kicked');
     expect(host.room.seats[1]).toMatchObject({ connected: false, autopilot: true, botId: 'greedy' });
 
-    const sameToken = join(host, 'Bea', tok('bea0'));
+    // A newcomer under another name waits (an away seat exists), and the host may seat them there.
+    cy.clientEnd.close();
     await settle();
-    expect(sameToken.client.closedWhy).toBe('kicked');
-    const byName = join(host, 'Bea', tok('bea-phone'));
+    const zed = join(host, 'Zed', tok('zed'));
     await settle();
-    expect(byName.client.seat).toBeNull(); // the name no longer reclaims the seat
-    expect(host.room.waiting).toEqual([{ id: expect.any(String), name: 'Bea 2' }]);
-
+    expect(zed.client.seat).toBeNull();
     expect(await me.assign(host.room.waiting[0]!.id, 1)).toEqual({ ok: true });
     await settle();
-    expect(byName.client.seat).toBe(1);
-    expect(host.room.seats[1]).toMatchObject({ connected: true, autopilot: false, name: 'Bea 2' });
+    expect(zed.client.seat).toBe(1);
+    expect(host.room.seats[1]).toMatchObject({ connected: true, autopilot: false, name: 'Zed' });
+    // Bea's old device token no longer points at the seat someone else now holds.
+    const old = join(host, 'Bea', tok('bea0'));
+    await settle();
+    expect(old.client.seat).toBeNull();
     await sched.advance(50);
     host.dispose();
   });
