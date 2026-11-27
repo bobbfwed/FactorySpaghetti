@@ -10,7 +10,7 @@
 
 import type { CardType, Material } from '../engine/config';
 import type { GameState } from '../engine/state';
-import { directFlowAllowed } from '../engine/rules/flow';
+import { directFlowAllowed, teleporterCutsOff } from '../engine/rules/flow';
 import type { TableEvent } from '../session/room';
 import { traceFlow, pathLength, sourceWorld, type FlowSource } from './flowPath';
 import { bufferSlotWorld, type XZ } from './layout';
@@ -252,7 +252,9 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
     const src = emptied.find(x => {
       if (x.buffer !== 'output' || x.material !== s.material || x.pieceId === s.pieceId) return false;
       const from = next.board.find(p => p.id === x.pieceId);
-      return !!from && !!destPiece && directFlowAllowed(from, destPiece);
+      // A teleporter cuts its buffer off (#53): a teleported output empties only to its owner.
+      return !!from && !!destPiece && directFlowAllowed(from, destPiece) &&
+        !teleporterCutsOff(from, 'output') && !teleporterCutsOff(destPiece, 'input');
     });
     if (src && flowFrom(s, [{ pieceId: src.pieceId, kind: 'output', slot: src.slot }], true)) {
       takeSlot(emptied, x => x === src);

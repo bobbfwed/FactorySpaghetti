@@ -54,6 +54,12 @@ export const RELEASES: readonly Release[] = [
         see: 'moving',
       },
       {
+        title: 'A teleporter cuts its buffer off from belts',
+        before: 'Material waiting in a teleported output (you at your limit) could still go down a belt or into a touching input, and a teleported input still took Ore from a Mine and material from belts and touching outputs.',
+        now: 'A teleported output empties only to you. The input of a Plate Factory or Power Plant with a teleporter takes nothing by itself; you supply it. Belts there stay but carry nothing. Sphere and Tesseract Factories are unchanged for now.',
+        see: 'teleporters',
+      },
+      {
         title: 'The one-belt-per-turn Mine limit counts only ore exits',
         before: 'Any belt end facing any part of a Mine counted toward the limit of one per turn.',
         now: 'Only belt ends facing an ore exit of a Mine count.',

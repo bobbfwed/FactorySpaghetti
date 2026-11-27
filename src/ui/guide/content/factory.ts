@@ -289,7 +289,7 @@ export const teleporters: Topic = {
         { k: 'p', t: `If an activation on someone else\'s turn is not answered within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the building runs only if it can without your materials, and is skipped otherwise. Nothing is ever taken from your inventory without your choice.` },
         { k: 'p', t: 'An input teleporter works for its owner only.' },
         { k: 'p', t: `An output teleporter respects your limit of ${INVENTORY_CAP}: if you already hold ${INVENTORY_CAP} of that material, the product stays in the output (so the factory cannot run again) until you have room.` },
-        { k: 'p', t: 'Output teleporters act first: material in a teleported output goes to you, never down a belt.' },
+        { k: 'p', t: 'A teleporter cuts its buffer off from belts and touching pieces. Material in a teleported output goes only to you, never down a belt or into a touching input, even while it waits because you are at your limit. The input of a Plate Factory or Power Plant with a teleporter takes nothing from a Mine, a belt or a touching output: you supply it. (The inputs of a Sphere or Tesseract Factory with a teleporter still receive material as before, for now.)' },
         { k: 'p', t: 'R&D Tax Write-Off places a teleporter for free, but it still uses one of yours and raises the price like a bought one.' },
       ],
     },

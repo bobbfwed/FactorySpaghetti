@@ -95,6 +95,20 @@ describe('flow display: a belt end facing a building it may not serve is a dead 
     expect(direct.belts).toBe(0);
   });
 
+  it('teleporters (#53): nothing is drawn out of a teleported output or into a teleported single input', () => {
+    const teleOut = (p: BoardPiece): BoardPiece => ({ ...p, output: { ...p.output!, teleporterOwner: 0 } });
+    const teleIn = (p: BoardPiece): BoardPiece => ({ ...p, input: { ...p.input!, teleporterOwner: 0 } });
+    const H0: Claims = [{ ownerId: 0, controlModule: 5 }];
+    // Out of F's teleported output: neither direct (Power Plant at (4,0)) nor by belt (G at (5,0)).
+    expect(reached(traces([teleOut(F(P0, 'plate')), piece('H', 'powerPlant', 4, 0, H0)], [], 'H', fromF))).toBe(false);
+    expect(reached(traces([F(P0, 'plate'), piece('H', 'powerPlant', 4, 0, H0)], [], 'H', fromF))).toBe(true);
+    expect(reached(traces([teleOut(F(P0, 'plate')), C, G(P0)], [beltC], 'G', fromF))).toBe(false);
+    // Into F's teleported input (one input) from the Mine along belt A.
+    expect(reached(traces([MINE, A, teleIn(F(P0))], [beltA], 'F', fromMine))).toBe(false);
+    // A Sphere Factory's inputs are not cut off (open question OQ-11).
+    expect(reached(traces([F(P0, 'plate'), C, teleIn(G(P0))], [beltC], 'G', fromF))).toBe(true);
+  });
+
   it('the drawn way runs from the source to the input slot, whichever order the belt was stored in', () => {
     const board = [MINE, A, F(P0)];
     const dest = board[2]!;

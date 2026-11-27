@@ -8,7 +8,7 @@
 // material could not.
 
 import type { BoardPiece, GameState } from '../engine/state';
-import { directFlowAllowed, isReservedPoint } from '../engine/rules/flow';
+import { directFlowAllowed, isReservedPoint, teleporterCutsOff } from '../engine/rules/flow';
 import {
   beltCurve, bufferSlotWorld, pointWorld, positionsWithRole, sampleCurve, type XZ,
 } from './layout';
@@ -58,7 +58,11 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   // A building's output passes into this input only from an unclaimed building or one of the
   // same player's (the engine's rule, directFlowAllowed; RULES_CHANGES.md #51). A Mine's ore is
   // anyone's, so it is never held back here.
-  const passes = (from: BoardPiece): boolean => from.type === 'mine' || directFlowAllowed(from, dest);
+  // A teleporter cuts its buffer off: nothing leaves a teleported output by itself, and a
+  // teleported single input takes nothing by itself (teleporterCutsOff; #53).
+  if (teleporterCutsOff(dest, 'input')) return null;
+  const passes = (from: BoardPiece): boolean =>
+    from.type === 'mine' || (directFlowAllowed(from, dest) && !teleporterCutsOff(from, 'output'));
 
   // Directly adjacent: a source hole meets the input hole.
   const direct = srcPts.find(s => near(s.p, destEdge) && passes(s.piece));

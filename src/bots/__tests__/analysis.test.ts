@@ -53,6 +53,21 @@ describe('feedAt follows the engine on direct contact (#51)', () => {
     expect(feedAt(theirs, theirs.board[1]!, 0, 0)).toBeNull();
   });
 
+  it('teleporters (#53): a teleported output feeds nothing, a teleported single input is fed by nothing', () => {
+    const tOut = { ...F(of(0)), output: { slots: ['plate' as Material], teleporterOwner: 0 as PlayerId } };
+    const s = state([tOut, G(of(0, 5))]);
+    expect(feedAt(s, s.board[1]!, 0, 0)).toBeNull();
+    // A Power Plant at (4,0) with a teleporter on its input: F's touching output does not count.
+    const pp = (tele: PlayerId | null): BoardPiece => ({
+      id: 'G', type: 'powerPlant', coord: { q: 4, r: 0 }, rotation: 0, claims: of(0, 5),
+      input: { slots: [null], teleporterOwner: tele }, output: null,
+    });
+    const t = state([F(of(0)), pp(0)]);
+    expect(feedAt(t, t.board[1]!, 0, 0)).toBeNull();
+    const u = state([F(of(0)), pp(null)]);
+    expect(feedAt(u, u.board[1]!, 0, 0)).not.toBeNull();
+  });
+
   it('counts a direct feed exactly when the engine moves the material', () => {
     for (const fc of [of(0), of(1), [] as Claims, [...of(1), ...of(0, 6)]]) {
       for (const gc of [of(0, 5), of(1, 5), [...of(1, 5), ...of(0, 6)]]) {

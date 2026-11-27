@@ -6,7 +6,7 @@
 
 import type { BoardPiece, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../../engine/state';
 import { MATERIAL_VALUES, POWER_PLANT_MATERIAL_YIELD, pieceTemplate } from '../../engine/config';
-import { adjAt, directFlowAllowed, getRole, isReservedPoint } from '../../engine/rules/flow';
+import { adjAt, directFlowAllowed, getRole, isReservedPoint, teleporterCutsOff } from '../../engine/rules/flow';
 import { canLoadMaterial } from '../../engine/rules/recipes';
 import { hexNeighbours, isCoordsOccupied, mineSecondaryCoord } from '../../engine/rules/pieces';
 import { plannedHitChance } from './dice';
@@ -67,6 +67,8 @@ export interface Feed {
  * delivers there.
  */
 export function feedAt(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): Feed | null {
+  // A teleported single input takes nothing by itself (#53).
+  if (teleporterCutsOff(piece, 'input')) return null;
   let n = adjAt(piece.coord, piece.rotation ?? 0, pos, state.board);
   let belts = 0;
   const seen = new Set<string>();
@@ -78,6 +80,7 @@ export function feedAt(state: GameState, piece: BoardPiece, pos: number, me: Pla
       // The engine moves a building's output only into a building of the same player (or out of
       // an unclaimed one), judged as if `me` held a claim on `piece` (#51).
       if (!directFlowAllowed(n.piece, piece, me)) return null;
+      if (teleporterCutsOff(n.piece, 'output')) return null; // drained only by its teleporter (#53)
       const product = PRODUCT[n.piece.type];
       return product ? { material: product, fromPieceId: n.piece.id, viaBelts: belts } : null;
     }

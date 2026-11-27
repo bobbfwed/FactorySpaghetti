@@ -24,6 +24,15 @@ describe('a building feeds only its own player\'s buildings (#51)', () => {
   });
 });
 
+describe('a teleporter cuts its buffer off from belts and direct contact (#53)', () => {
+  it('Teleporters says so, and the change is listed', () => {
+    const t = text('teleporters');
+    expect(t).toContain('never down a belt or into a touching input, even while it waits because you are at your limit');
+    expect(t).toContain('The input of a Plate Factory or Power Plant with a teleporter takes nothing from a Mine, a belt or a touching output');
+    expect(titles()).toContain('A teleporter cuts its buffer off from belts');
+  });
+});
+
 describe('removing this turn\'s Mine belt frees the limit (#52)', () => {
   it('Belts says so, and the change is listed', () => {
     expect(text('belts')).toContain('Removing just the belt you laid at a Mine this turn does the same');
