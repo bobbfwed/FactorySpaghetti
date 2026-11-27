@@ -17,7 +17,7 @@ const VIEWS = {
     rows: [
       ['tile-blank', 'tile-plate-factory', 'tile-sphere-factory', 'tile-tesseract-factory', 'tile-power-plant', 'starting-player'],
       ['mine-1', 'mine-2', 'mine-3'],
-      ['control-module-tray', 'belt', 'meeple', 'ore', 'plate', 'sphere', 'tesseract', 'power-token', 'control-module'],
+      ['control-module-tray', 'belt', 'meeple', 'ore', 'plate', 'sphere', 'tesseract', 'power-token', 'control-module', 'teleporter'],
     ],
     gap: 14,
   },
@@ -35,7 +35,7 @@ const VIEWS = {
     title: 'Small pieces close-up (with a blank tile for scale)',
     rows: [
       ['tile-blank', 'starting-player'],
-      ['meeple', 'ore', 'plate', 'sphere', 'tesseract', 'power-token', 'control-module', 'belt'],
+      ['meeple', 'ore', 'plate', 'sphere', 'tesseract', 'power-token', 'control-module', 'belt', 'teleporter'],
     ],
     gap: 8,
   },

@@ -4,15 +4,17 @@
 import type { BoardPiece, GameState } from '../engine/state';
 import type { Target } from './types';
 import {
-  BELT_THICKNESS, CARD, HEX_RADIUS, APOTHEM, TILE_TOP, beltCurve, bezierAt, bufferAnchorWorld, bufferSlotWorld,
-  distanceToCurve, mineSlotWorld, pieceCells, piecePlacement, pointCount, pointRole, pointWorld,
-  worldToAxial, axialToWorld, type SideLayout,
+  BELT_THICKNESS, CARD, HEX_RADIUS, APOTHEM, TELEPORTER_HEIGHT, TELEPORTER_SCALE, TILE_TOP, beltCurve, bezierAt,
+  bufferAnchorWorld, bufferSlotWorld, distanceToCurve, mineSlotWorld, pieceCells, piecePlacement, pointCount, pointRole,
+  pointWorld, teleporterPlacement, worldToAxial, axialToWorld, type SideLayout,
 } from './layout';
 
 export interface V3 { readonly x: number; readonly y: number; readonly z: number }
 
 /** Height at which belts are hit-tested and anchored (the chain lies 1.5 mm thick on the tile; its pegs are in the holes). */
 export const BELT_PICK_Y = TILE_TOP + BELT_THICKNESS;
+/** Height at which teleporters are hit-tested: half-way up the model as drawn. */
+export const TELEPORTER_PICK_Y = TILE_TOP + (TELEPORTER_HEIGHT * TELEPORTER_SCALE) / 2;
 
 /** Heights of things beside the board (they change with the state). */
 export interface SideHeights {
@@ -48,10 +50,12 @@ const R_SLOT = 12;
 /**
  * Everything on the board that a tap at table point (x, z) could mean, most specific first.
  * `beltAt` is where the same tap ray crosses belt mid-height (belts stand ~5 mm proud of the tile,
- * so in a tilted view that is a few millimetres from (x, z)); defaults to (x, z).
+ * so in a tilted view that is a few millimetres from (x, z)); defaults to (x, z). `teleporterAt`
+ * is where it crosses TELEPORTER_PICK_Y, half-way up a teleporter; defaults to (x, z).
  */
 export function boardCandidates(
   game: Pick<GameState, 'board' | 'belts'>, x: number, z: number, beltAt: { x: number; z: number } = { x, z },
+  teleporterAt: { x: number; z: number } = { x, z },
 ): Candidate[] {
   const cell = worldToAxial(x, z);
   const piece = pieceAt(game.board, cell.q, cell.r);
@@ -75,12 +79,18 @@ export function boardCandidates(
   for (const which of ['input', 'output'] as const) {
     const buf = which === 'input' ? piece.input : piece.output;
     if (!buf || piece.type === 'mine') continue;
-    // The buffer's own anchor (between its slots, used for popovers and the teleporter ring) counts too.
+    // The buffer's own anchor (between its slots, used for popovers) counts too.
     const anchor = bufferAnchorWorld(piece, which);
     let best = Math.hypot(anchor.x - x, anchor.z - z);
     for (let i = 0; i < buf.slots.length; i++) {
       const s = bufferSlotWorld(piece, which, i);
       best = Math.min(best, Math.hypot(s.x - x, s.z - z));
+    }
+    // A teleporter on the buffer stands a little further in; a tap on it means the buffer. It is
+    // hit-tested where the tap ray crosses its mid-height.
+    if (buf.teleporterOwner !== null) {
+      const t = teleporterPlacement(piece, which);
+      best = Math.min(best, Math.hypot(t.x - teleporterAt.x, t.z - teleporterAt.z));
     }
     if (best < R_BUFFER) out.push({ target: { kind: 'buffer', pieceId: piece.id, buffer: which }, score: best / R_BUFFER + 0.1 });
   }

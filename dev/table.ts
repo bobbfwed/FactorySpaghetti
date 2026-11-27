@@ -4,7 +4,8 @@
 // URL parameters (for repeatable screenshots): players=2|3|4, seed=N, bot=greedy|random,
 // round=N (play until that round), end=1 (play to the end), debug=1, targets=1, ghost=1,
 // topdown=1, rotate=N (60-degree steps), hud=0 (hide the controls), zoom=F (zoom in by F),
-// focus=pieceId (centre on a piece). Sets window.__ready when the requested view is drawn.
+// focus=pieceId (centre on a piece), teleporters=1 (draw a teleporter on every buffer of every
+// claimed building). Sets window.__ready when the requested view is drawn.
 
 import { createTable, planTransition, revealedStack, type Target, type Ghost, type PlayerColor, type Preview, type RouteSegment, type RouteTier } from '../src/table';
 import { createBotGame, playUntil, type BotGame, type BotKind } from '../src/table/botGame';
@@ -120,8 +121,27 @@ function currentGhost(s: GameState): Ghost | null {
   return { pieceType: type, q: cell.q, r: cell.r, rotation: rot, valid };
 }
 
+/**
+ * teleporters=1: show a teleporter on every buffer of every claimed building, in the colour of its
+ * first claim (rendering only; the game is not changed). Bots rarely place them.
+ */
+let demoTeleporters = params.get('teleporters') === '1';
+function withTeleporters(s: GameState): GameState {
+  if (!demoTeleporters) return s;
+  const board = s.board.map((p): BoardPiece => {
+    const owner = p.claims[0]?.ownerId;
+    if (owner === undefined || p.type === 'mine') return p;
+    return {
+      ...p,
+      input: p.input ? { ...p.input, teleporterOwner: p.input.teleporterOwner ?? owner } : null,
+      output: p.output ? { ...p.output, teleporterOwner: p.output.teleporterOwner ?? owner } : null,
+    };
+  });
+  return { ...s, board };
+}
+
 function refresh(): void {
-  const s = game.state;
+  const s = withTeleporters(game.state);
   table.setGame(s);
   table.setTargets(showTargets ? legalTargets(s) : [], COLORS[activeId(s)] ?? 'blue');
   table.setGhost(showGhost ? currentGhost(s) : null);
@@ -345,7 +365,7 @@ function zoomOn(target: Target, factor: number): void {
 window.__harness = {
   table, get game() { return game; }, refresh, step, legalTargets, zoomOn, playUntil: (f: (s: GameState) => boolean) => { playUntil(game, f); refresh(); },
   beltChain: (n: number, skip = 0) => beltChain(game.state, n, skip), showChain, showRoute, previewPiece, previewMeeple, revealedStack,
-  planTransition, legalActions,
+  planTransition, legalActions, setTeleporters: (on: boolean) => { demoTeleporters = on; refresh(); },
 };
 // Let the camera animations finish, apply any zoom, then report ready.
 setTimeout(() => {

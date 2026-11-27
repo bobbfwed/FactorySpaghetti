@@ -9,7 +9,7 @@ import { InstancedPart } from './scene';
 import { partsOf, type ModelLib } from './models';
 import {
   BELT_THICKNESS, CARD, HEX_RADIUS, TILE_TOP, beltCurve, bufferSlotWorld, ghostPlacement, mineSlotWorld, modelFor,
-  pieceCells, pointCount, pointRole, pointWorld, sampleCurve, curveFrameAt, axialToWorld,
+  pieceCells, pointCount, pointRole, pointWorld, sampleCurve, curveFrameAt, axialToWorld, teleporterPlacement,
   type SideLayout,
 } from './layout';
 import type { SideHeights } from './pick';
@@ -187,6 +187,8 @@ export class Overlay {
         const buf = t.buffer === 'input' ? piece.input : piece.output;
         if (!buf) return;
         for (let i = 0; i < buf.slots.length; i++) { const p = bufferSlotWorld(piece, t.buffer, i); spot(p.x, TILE_TOP + 0.5, p.z, 8); }
+        // A teleporter already on the buffer is part of it (tapping it picks the buffer): light it too.
+        if (buf.teleporterOwner !== null) { const p = teleporterPlacement(piece, t.buffer); spot(p.x, TILE_TOP + 0.5, p.z, 8); }
         return;
       }
       case 'mineSlot': {
