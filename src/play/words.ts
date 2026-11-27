@@ -244,7 +244,15 @@ export const W = {
   routeBuy: (need: number): string => `Buy ${plural(need, 'belt', 'belts')} and lay the route`,
   routeBuyDetail: (need: number): string => `Price ${need}, paid from your materials with change`,
   routeCantBuy: (need: number): string => `You cannot afford ${plural(need, 'more belt', 'more belts')}.`,
-  routeCancel: 'Cancel plan',
+  routeCancel: 'Cancel this route',
+  routeCancelDetail: 'Nothing on the board changes',
+  routeDropRest: 'Drop the rest of the route',
+  routeDropRestDetail: 'The belts already laid stay on the board',
+  routeTakeBack: 'Take back this route',
+  routeTakeBackDetail: (n: number): string =>
+    `The ${n === 1 ? 'belt' : `${n} belts`} of this route laid this turn ${n === 1 ? 'goes' : 'go'} back to your supply`,
+  routeRefused: 'This route cannot be laid now.',
+  routeRestRefused: 'The rest of this route cannot be laid now.',
   routeTotals: (n: number, have: number, buy: number, short: number): string =>
     `Route: ${plural(n, 'belt', 'belts')}. You have ${have}${buy > 0 ? `, can buy ${buy} more now` : ''}${short > 0 ? `, ${short} short` : ''}.`,
   routePlaceAll: (n: number): string => `Place ${plural(n, 'belt', 'belts')}`,

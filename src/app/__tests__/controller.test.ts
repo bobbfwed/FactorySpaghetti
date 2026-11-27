@@ -436,15 +436,24 @@ describe('connection trouble', () => {
     expect(b.ctrl.banner).toBeNull();
   }, 60_000);
 
-  it('a removed player sees why, and goes back to the menu', async () => {
+  it('a removed player sees why, goes back to the menu, and can join again to take the seat back', async () => {
     const w = world();
     const [a, b] = await twoPlayerGame(w);
-    await run(w, a.ctrl.kick(1));
+    const code = a.ctrl.state.online!.code;
+    expect(await run(w, a.ctrl.kick(1))).toBe(true);
     await until(w, () => b.ctrl.banner?.kind === 'closed');
-    expect(b.ctrl.banner!.text).toBe('The host removed you from this game.');
+    expect(b.ctrl.banner!.text).toBe(`The host removed you from this game; a bot plays your seat. You can join again with the room code ${code}.`);
     expect(b.ctrl.banner!.actions).toEqual(['menu']);
+    await until(w, () => a.ctrl.room!.seats[1]!.autopilot);
+    expect(a.ctrl.room!.seats[1]).toMatchObject({ connected: false, autopilot: true });
     b.ctrl.backToMenu();
     expect(b.ctrl.screen).toBe('menu');
+
+    await run(w, b.ctrl.join(code));
+    expect(b.ctrl.mySeat).toBe(1);
+    await until(w, () => a.ctrl.room!.seats[1]!.connected);
+    expect(a.ctrl.room!.seats[1]).toMatchObject({ connected: true, autopilot: false });
+    expect(b.ctrl.screen).toBe('game');
   }, 30_000);
 });
 

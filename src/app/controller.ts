@@ -206,11 +206,21 @@ export function saveErrorMessage(e: unknown, source: 'device' | 'link' | 'file')
 const CLOSED_TEXT: Record<string, string> = {
   full: 'The game is full.',
   version: 'The host runs a different version of the game. Reload the page to update.',
-  kicked: 'The host removed you from this game.',
   ended: 'The host ended the game.',
   replaced: 'This seat was opened on another device or tab, so this one was disconnected.',
   invalid: 'The host did not accept this player name or device.',
 };
+
+/**
+ * Said to a player the host removed. It is not a ban: during a game a bot plays their seat
+ * until they join again with the room code; in the lobby their seat was opened.
+ */
+export function kickedText(room: Room | null): string {
+  const code = room?.code ? ` ${room.code}` : '';
+  const again = `You can join again with the room code${code}.`;
+  if (room && room.phase !== 'lobby') return `The host removed you from this game; a bot plays your seat. ${again}`;
+  return `The host removed you from this game. ${again}`;
+}
 
 /** The connection banner for a room, or null while all is well. */
 export function connectionBanner(online: OnlineRoom): Banner | null {
@@ -236,7 +246,7 @@ export function connectionBanner(online: OnlineRoom): Banner | null {
       const why = online.closedWhy;
       return {
         kind: 'closed',
-        text: (why && CLOSED_TEXT[why]) || 'The room closed.',
+        text: why === 'kicked' ? kickedText(room) : (why && CLOSED_TEXT[why]) || 'The room closed.',
         actions: why === 'version' ? ['reload', 'menu'] : ['menu'],
       };
     }

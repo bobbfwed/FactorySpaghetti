@@ -192,6 +192,11 @@ export class PlayController {
    * not sent): its unlaid part is offered again when "Lay a belt" is opened on a later turn.
    */
   private plan: Seg[] | null = null;
+  /**
+   * The ids of the belts on the board when `plan` was made. A belt of the plan is "this route's"
+   * only if it was not already there, so taking back a route never picks up an earlier route.
+   */
+  private planBase: ReadonlySet<string> = new Set();
 
   constructor(opts: PlayControllerOptions) {
     this.sendFn = opts.send;
@@ -285,6 +290,9 @@ export class PlayController {
 
   cancel(): void {
     if (this.mode.k === 'pi') this.piActive = false;
+    // The ✕ of a planned route (and Escape) drops its unlaid part, like its "Cancel" button; belts
+    // already laid stay. "Keep the plan for a later turn" is the way to put a plan aside.
+    if (this.mode.k === 'route') this.dropPlan();
     this.mode = IDLE;
     this.queue = []; this.queueSent = null;
     this.hintText = null;
@@ -401,6 +409,7 @@ export class PlayController {
       return next.belts.some(b => b.pieceId === a.pieceId && b.ownerId === me
         && ((b.fromPoint === a.fromPoint && b.toPoint === a.toPoint) || (b.fromPoint === a.toPoint && b.toPoint === a.fromPoint)));
     }
+    if (a.type === 'REMOVE_BELT') return !next.belts.some(b => b.id === a.beltId);
     return true;
   }
 
@@ -582,6 +591,7 @@ export class PlayController {
     v.instruction = n > 1 ? W.pendingMineMany(n) : W.pendingMine;
     if (myTurn) v.primary = { label: W.actionsDone, enabled: false, hint: W.decideFirst };
     for (const p of v.prompts) {
+      if (!p.options.some(o => o.enabled)) continue;
       const pieceId = (p.anchor as { pieceId: string }).pieceId;
       b.lit(p.anchor, () => this.setMode({ k: 'opMenu', pieceId }));
     }
@@ -785,7 +795,7 @@ export class PlayController {
     v.primary = { label: W.actionsDone, enabled: !!end, ...(hint ? { hint } : {}) };
     if (end) b.onPrimary = (): void => this.send(end);
 
-    this.actionsIdleTargets(b, legal);
+    this.actionsIdleTargets(b, g, player, legal);
     if (!this.buildActionsMode(b, g, me, player, legal)) return false;
     // The Leverage deck answers a tap while nothing waits for a particular pick: idle, and while a
     // tool is in use (laying or removing belts, a planned route, Production Increase, a menu).
@@ -827,7 +837,7 @@ export class PlayController {
       case 'menu': case 'claim': case 'upgradeOld': case 'upgrade': case 'card': case 'drone': case 'pi':
         return this.buildExtra(b, g, me, player, legal);
       case 'belt': return this.buildBelt(b, g, me, legal, m);
-      case 'route': return this.buildRoute(b, g, me);
+      case 'route': return this.buildRoute(b, g, me, legal);
       case 'removeBelt': return this.buildRemove(b, legal, m);
       case 'teleporter': return this.buildTeleporter(b, g, legal, m);
       case 'exchange': {
@@ -903,9 +913,7 @@ export class PlayController {
       case 'pi': {
         b.clearTargets();
         const pis = this.piActions(g, me);
-        for (const id of new Set(pis.map(a => a.pieceId))) {
-          b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
-        }
+        this.lightMenus(b, g, player, legal, new Set(pis.map(a => a.pieceId)));
         if (pis.length === 0) return false;
         v.instruction = W.piInstruction(g.productionIncreaseBudget);
         v.choices = {
@@ -931,18 +939,41 @@ export class PlayController {
   }
 
   /** In the actions step: my buildings with something to do, my belts, belt start points, the deck. */
-  private actionsIdleTargets(b: Builder, legal: readonly Action[]): void {
+  private actionsIdleTargets(b: Builder, g: GameState, player: Player, legal: readonly Action[]): void {
     const pieces = new Set<string>();
     for (const a of legal) {
       if (a.type === 'PLACE_TELEPORTER' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
-    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    this.lightMenus(b, g, player, legal, pieces);
     // Belt points and placed belts are not lit here: laying and removing belts are their own modes
     // (Lay a belt, Remove a belt), so the board stays calm until the player picks one. The deck is
     // lit by buildActions (see DECK_MODES).
   }
 
   // ── Building menu ───────────────────────────────────────────────────────────
+
+  /**
+   * Light the pieces whose menu would offer at least one move that can be made now; a piece whose
+   * every entry is greyed out (for example "Run" after the building already ran this round) stays
+   * dark, and a tap on it says why (whyNot).
+   */
+  private lightMenus(b: Builder, g: GameState, player: Player, legal: readonly Action[], ids: Iterable<string>): void {
+    for (const id of ids) {
+      const piece = pieceById(g, id);
+      if (!piece || !this.menuItems(new Builder(emptyView()), g, player, legal, piece).some(i => i.enabled)) continue;
+      b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    }
+  }
+
+  /** Why a piece's menu has nothing to do now: the reason of its first greyed-out entry, if any. */
+  private menuReason(g: GameState, me: PlayerId, pieceId: string): string | null {
+    const piece = pieceById(g, pieceId);
+    const player = g.players[me];
+    if (!piece || !player) return null;
+    const items = this.menuItems(new Builder(emptyView()), g, player, legalFor(g, me), piece);
+    if (items.some(i => i.enabled)) return null;
+    return items.find(i => i.reason)?.reason ?? null;
+  }
 
   private buildMenu(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[], pieceId: string): boolean {
     const piece = pieceById(g, pieceId);
@@ -1163,22 +1194,52 @@ export class PlayController {
     const segs = planRoute(g, me, start, end);
     if (!segs) { this.hintText = W.noRoute; return; }
     this.plan = segs;
+    this.planBase = new Set(g.belts.map(x => x.id));
     this.mode = { k: 'route' };
   }
 
-  /** The planned route: its totals, and placing from the supply, buying first, or cancelling. */
-  private buildRoute(b: Builder, g: GameState, me: PlayerId): boolean {
+  /** Forget the planned route (its unlaid part); belts already on the board stay. */
+  private dropPlan(): void {
+    this.plan = null;
+    this.planBase = new Set();
+  }
+
+  /**
+   * The belts of the planned route laid this turn, which can be picked up again, last laid first.
+   * Never a belt of an earlier route (it was on the board when the plan was made) and never one
+   * laid on an earlier turn (only this turn's belts count).
+   */
+  private routeLaidThisTurn(g: GameState, me: PlayerId, legal: readonly Action[]): string[] {
+    const plan = this.plan;
+    if (!plan) return [];
+    const removable = new Set(ofType(legal, 'REMOVE_BELT').map(a => a.beltId));
+    const byId = new Map(g.belts.map(x => [x.id, x]));
+    return [...g.beltsPlacedThisTurn].reverse().filter(id => {
+      const belt = byId.get(id);
+      return !!belt && belt.ownerId === me && removable.has(id) && !this.planBase.has(id)
+        && plan.some(s => s.pieceId === belt.pieceId
+          && ((s.from === belt.fromPoint && s.to === belt.toPoint) || (s.from === belt.toPoint && s.to === belt.fromPoint)));
+    });
+  }
+
+  /**
+   * The planned route: its totals, and placing from the supply, buying first, keeping it for later,
+   * or cancelling. When the engine refuses its next belt now (for example the one Mine belt of the
+   * turn is already down), the reason stays in the instruction, no Place button is offered, and
+   * cancelling is the big button.
+   */
+  private buildRoute(b: Builder, g: GameState, me: PlayerId, legal: readonly Action[]): boolean {
     const v = b.view;
     const left = this.plan ? remaining(g, me, this.plan) : [];
     if (left.length === 0) {
       // All laid: back to choosing where the next belts go.
       if (this.plan) this.hintText = W.routeDone;
-      this.plan = null;
+      this.dropPlan();
       this.mode = { k: 'belt', start: null };
       return this.buildBelt(b, g, me, [], this.mode);
     }
     if (!stillPossible(g, me, left)) {
-      this.plan = null;
+      this.dropPlan();
       this.hintText = W.planGone;
       return false;
     }
@@ -1198,6 +1259,43 @@ export class PlayController {
     const items: Item[] = [];
     const placeOwn = (): void => this.layPlan(false);
     const placeBuy = (): void => this.layPlan(true);
+    const later = (): void => { this.mode = IDLE; };
+
+    // Cancelling: what was laid of this route this turn can be picked up again; belts laid on an
+    // earlier turn stay (they are no longer this turn's to take back).
+    const laidNow = this.routeLaidThisTurn(g, me, legal);
+    const laidBefore = (this.plan?.length ?? 0) - left.length - laidNow.length;
+    const drop = (): void => { this.dropPlan(); this.mode = { k: 'belt', start: null }; };
+    const takeBack = (): void => {
+      this.dropPlan();
+      this.mode = { k: 'belt', start: null };
+      this.startQueue(laidNow.map((beltId): Action => ({ type: 'REMOVE_BELT', beltId })));
+    };
+    const partly = laidNow.length > 0 || laidBefore > 0;
+    const cancelItem = b.item(partly
+      ? { id: 'route:cancel', label: W.routeDropRest, detail: W.routeDropRestDetail, enabled: true }
+      : { id: 'route:cancel', label: W.routeCancel, detail: W.routeCancelDetail, enabled: true }, drop);
+    const takeBackItem = laidNow.length > 0
+      ? b.item({ id: 'route:takeBack', label: W.routeTakeBack, detail: W.routeTakeBackDetail(laidNow.length), enabled: true }, takeBack)
+      : null;
+
+    // Belts are at hand (in the supply or to buy) but the engine refuses the next one now: say
+    // why for as long as the route is shown, and offer no Place button that would only fail.
+    const tryOwn = own > 0 ? placement(g, me, left, false) : null;
+    const tryBuy = buy > 0 ? placement(g, me, left, true) : null;
+    const refusal = (tryOwn?.placed ?? 0) === 0 && (tryBuy?.placed ?? 0) === 0
+      ? tryOwn?.refusal ?? tryBuy?.refusal ?? null : null;
+    if (refusal) {
+      v.instruction = `${totals} ${partly ? W.routeRestRefused : W.routeRefused} ${refusalText(refusal)}`;
+      items.push(cancelItem);
+      if (takeBackItem) items.push(takeBackItem);
+      items.push(b.item({ id: 'route:later', label: W.routeLater, detail: W.routeLaterDetail, enabled: true }, later));
+      v.primary = { label: cancelItem.label, enabled: true };
+      b.onPrimary = drop;
+      v.choices = { title: v.instruction, items };
+      return true;
+    }
+
     if (own === t.length) {
       v.primary = { label: W.routePlaceAll(own), enabled: true };
       b.onPrimary = placeOwn;
@@ -1210,17 +1308,14 @@ export class PlayController {
         b.onPrimary = first.id === 'route:own' ? placeOwn : placeBuy;
       } else {
         // Nothing can be laid now (no button with a zero count): the plan waits for a later turn.
-        const later = (): void => { this.mode = IDLE; };
         items.push(b.item({ id: 'route:later', label: W.routeLater, detail: W.routeLaterDetail, enabled: true }, later));
         v.instruction = `${totals} ${W.routeNothingNow}`;
         v.primary = { label: W.routeLater, enabled: true };
         b.onPrimary = later;
       }
     }
-    items.push(b.item({ id: 'route:cancel', label: W.routeCancel, enabled: true }, () => {
-      this.plan = null;
-      this.mode = { k: 'belt', start: null };
-    }));
+    items.push(cancelItem);
+    if (takeBackItem) items.push(takeBackItem);
     v.choices = { title: totals, items };
     return true;
   }
@@ -1553,10 +1648,9 @@ export class PlayController {
       if (a.type === 'LOAD_BUILDING_INPUT' || a.type === 'OPERATE_BUILDING' || a.type === 'COLLECT_OUTPUT'
         || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
-    // The meeple's building always opens, so the player can see why it cannot run.
-    const meep = player.meepleOnPieceId ? pieceById(g, player.meepleOnPieceId) : undefined;
-    if (meep && isBuilding(meep) && player.meepleSlotIndex === null) pieces.add(meep.id);
-    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    // The meeple's building is lit only when something can be done there; a tap on it otherwise
+    // says why it cannot run (whyNot).
+    this.lightMenus(b, g, player, legal, pieces);
     const m = this.mode;
     switch (m.k) {
       case 'idle': return true;
@@ -1754,6 +1848,9 @@ export class PlayController {
       case 'piece': case 'buffer': case 'mineSlot': {
         // In a belt mode a tap there was meant for a connection point: explain the point.
         if (this.inBeltMode()) return t.kind === 'buffer' ? W.bufferNoBelt : W.noBeltEndsHere;
+        // A building with only greyed-out entries (the meeple's building that already ran): say why.
+        const greyed = this.menuReason(g, me, t.pieceId);
+        if (greyed) return greyed;
         const piece = pieceById(g, t.pieceId);
         if (piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === me)) return W.notYourBuilding;
         return W.nothingHere;

@@ -413,13 +413,13 @@ describe('Belts', () => {
     c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
     c.choose('route:own');
     s = play(s, p, c, sent);
-    c.cancel(); // leave belt mode without cancelling the plan
+    c.choose('route:later'); // put the plan aside without cancelling it
     c.choose('bank:placeBelt');
     const cont = c.view.choices?.items.find(i => i.id === 'route:continue');
     expect(cont?.label).toBe(W.routeContinue(cost - 1));
     c.choose('route:continue');
     expect(c.view.route).toHaveLength(cost - 1);
-    // "Cancel plan" forgets it.
+    // "Drop the rest of the route" forgets it (the belt laid on the earlier visit stays).
     c.choose('route:cancel');
     expect(c.view.choices?.items.some(i => i.id === 'route:continue') ?? false).toBe(false);
   });
@@ -593,9 +593,12 @@ describe('Disabled reasons', () => {
     const { c } = harness(state, player);
     const id = state.players[player]!.meepleOnPieceId!;
     c.tap({ kind: 'piece', pieceId: id });
+    // Lit (something else can be done there): its menu has "Run" greyed out with the reason.
+    // Not lit (nothing can be done there): the tap says the same reason.
     const run = c.view.menu?.items.find(i => i.id === 'menu:run');
-    expect(run?.enabled).toBe(false);
-    expect([W.alreadyRan, W.outputFull, W.loadFirst, W.badRecipe].includes(run!.reason as never) || /^Needs /.test(run!.reason!)).toBe(true);
+    if (c.view.menu) expect(run?.enabled).toBe(false);
+    const reason = c.view.menu ? run!.reason! : c.view.hint!;
+    expect([W.alreadyRan, W.outputFull, W.loadFirst, W.badRecipe].includes(reason as never) || /^Needs /.test(reason)).toBe(true);
   });
 
   it('touching something unlit says why', () => {

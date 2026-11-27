@@ -283,7 +283,7 @@ export function bufferSlotWorld(
   return pointWorld(piece, positions[i]!, BUFFER_INSET + extra * 13);
 }
 
-/** Anchor of a whole buffer (for glow, teleporter ring and popovers): centre of its slots. */
+/** Anchor of a whole buffer (for popovers and picking): centre of its slots. */
 export function bufferAnchorWorld(
   piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation' | 'input' | 'output'>,
   buffer: 'input' | 'output',
@@ -296,6 +296,67 @@ export function bufferAnchorWorld(
     x += p.x; z += p.z;
   }
   return { x: x / n, z: z / n };
+}
+
+/**
+ * Teleporter model (public/models/teleporter.glb, from the designer's Teleporter.3mf): a little
+ * arched block 15 mm long (model X) x 10.4 mm wide x 11.9 mm tall, with the round portal on its +X
+ * end. It is drawn at this scale so it fits beside a buffer's material clear of the Control
+ * Modules and the meeple (about 11.3 x 7.8 x 8.9 mm on the table).
+ */
+export const TELEPORTER_SCALE = 0.75;
+/** Measured from teleporter.glb (unscaled): half its length (model X), half its width (Z), height. */
+export const TELEPORTER_HALF_LENGTH = 7.5;
+export const TELEPORTER_HALF_WIDTH = 5.2;
+export const TELEPORTER_HEIGHT = 11.88;
+/** A teleporter beside a one-stub buffer: this far to the side of the slot, and this far further in. */
+export const TELEPORTER_SIDE = 10.2;
+export const TELEPORTER_ALONG = 7;
+
+const unit = (x: number, z: number): XZ => { const l = Math.hypot(x, z) || 1; return { x: x / l, z: z / l }; };
+
+/**
+ * Where a teleporter on a buffer stands, lying parallel to the stub with its portal facing out
+ * towards the tile edge (the Control Modules turn to face the viewer, so the module square is
+ * crowded at some angles and there is no room on the stub itself between material and modules):
+ * - a buffer with one stub (every output, and the Plate Factory's and Power Plant's input): beside
+ *   the material, on the side of the stub with no printed icon;
+ * - a buffer with several stubs (the Sphere and Tesseract Factories' inputs): between the material
+ *   of its first two stubs, over the printed input icons.
+ * Either way it clears the material in the buffer, the Control Modules (one to three) and the
+ * meeple (checked by teleporter.test.ts). Mines have no stubs and are never claimed, so they never
+ * carry a teleporter; the buffer's anchor is used. Yaw is in Three.js's convention.
+ */
+export function teleporterPlacement(
+  piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation' | 'input' | 'output'>,
+  buffer: 'input' | 'output',
+): Placement {
+  const positions = piece.type === 'mine' ? [] : positionsWithRole(piece, buffer === 'input' ? 'input_buffer' : 'output_buffer');
+  if (positions.length === 0) {
+    const a = bufferAnchorWorld(piece, buffer);
+    return { x: a.x, z: a.z, yaw: piecePlacement(piece).yaw };
+  }
+  let at: XZ, edge: XZ;
+  if (positions.length === 1) {
+    // Beside the stub, on the side away from the middle of its edge (towards the nearer corner):
+    // the printed icons are on the other side, and no belt uses a factory's other holes.
+    const f = pointFrame(piece.type, piece.rotation ?? 0, positions[0]!);
+    const c = hexCentreOf(piece, f.hex);
+    edge = pointWorld(piece, positions[0]!, 0);
+    const mid = edgePoint(c, f.ve, 0.5, 0);
+    const n = unit(edge.x - mid.x, edge.z - mid.z);
+    const slot = pointWorld(piece, positions[0]!, BUFFER_INSET);
+    const t = unit(slot.x - edge.x, slot.z - edge.z);
+    at = { x: slot.x + n.x * TELEPORTER_SIDE + t.x * TELEPORTER_ALONG, z: slot.z + n.z * TELEPORTER_SIDE + t.z * TELEPORTER_ALONG };
+    edge = { x: at.x - t.x, z: at.z - t.z };
+  } else {
+    const a = pointWorld(piece, positions[0]!, BUFFER_INSET), b = pointWorld(piece, positions[1]!, BUFFER_INSET);
+    const ea = pointWorld(piece, positions[0]!, 0), eb = pointWorld(piece, positions[1]!, 0);
+    at = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+    edge = { x: (ea.x + eb.x) / 2, z: (ea.z + eb.z) / 2 };
+  }
+  // Model +X (the portal) maps to (cos yaw, -sin yaw): point it from the teleporter to the edge.
+  return { x: at.x, z: at.z, yaw: Math.atan2(at.z - edge.z, edge.x - at.x) };
 }
 
 /**

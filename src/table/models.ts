@@ -15,7 +15,7 @@ export type ModelLib = ReadonlyMap<string, readonly ModelPart[]>;
 
 export const MODEL_NAMES = [
   'tile-blank', 'tile-plate-factory', 'tile-sphere-factory', 'tile-tesseract-factory', 'tile-power-plant',
-  'mine-1', 'mine-2', 'mine-3', 'belt', 'meeple', 'control-module', 'ore', 'plate', 'sphere', 'tesseract',
+  'mine-1', 'mine-2', 'mine-3', 'belt', 'meeple', 'control-module', 'ore', 'plate', 'sphere', 'tesseract', 'teleporter',
 ] as const;
 
 export async function loadModels(base: string, names: readonly string[] = MODEL_NAMES): Promise<ModelLib> {

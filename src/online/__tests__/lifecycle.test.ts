@@ -246,7 +246,7 @@ describe('online room edges', () => {
     expect(b.code).not.toBe('KQMTV');
   });
 
-  it('a kicked player stops for good: status closed, no reconnect attempts', async () => {
+  it('a removed player\'s device stops: status closed, no reconnect attempts (joining again is up to them)', async () => {
     const w = await playingTable(3, { awayPolicy: 'wait' });
     const [ann, , cy] = w.rooms as [OnlineRoom, OnlineRoom, OnlineRoom];
     const h = history(cy);
@@ -254,6 +254,8 @@ describe('online room edges', () => {
     expect(res.ok).toBe(true);
     await pump(w.hub, w.clock, () => cy.status === 'closed');
     expect(cy.closedWhy).toBe('kicked');
+    // Even under the "wait" rule a bot plays the seat at once.
+    expect(ann.hostSession!.room.seats[2]).toMatchObject({ connected: false, autopilot: true, botId: 'greedy' });
     await pump(w.hub, w.clock, () => w.clock.pending === 0 && w.hub.inFlight === 0);
     expect(h).toEqual(['online', 'closed']);
   });

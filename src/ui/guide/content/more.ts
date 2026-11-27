@@ -133,6 +133,7 @@ export const online: Topic = {
     { k: 'p', t: 'A resumed online game opens in the lobby. Players get their seat back by joining with the same name as before; the host can also hand an empty seat to someone waiting, or to a bot. The host presses **Continue game** when ready.' },
     { k: 'h', t: 'If someone drops out', id: 'away' },
     { k: 'p', t: `If a player loses their connection, their seat keeps everything. The host chooses what happens: a bot plays the seat until the player comes back (by default after ${secs(st.awayGraceMs)}), or the game waits for them.` },
+    { k: 'p', t: 'The host does not have to wait: **Remove player** on an away player\'s seat lets a bot play it at once. The host can remove any other player at any time the same way (tap their seat to find the button). A removed player is not banned: if they join again with the room code, they get their seat back.' },
     { k: 'p', t: 'If the host leaves, another player takes over as host by themselves, under the same room code, and the game carries on. If nobody hosting can be reached, your device still holds the game, and you can host it from your copy.' },
     { k: 'h', t: 'Autoplay' },
     { k: 'p', t: '**Autoplay my seat** in the game menu lets a bot on your device play for you. **Take my seat back** to play again.' },

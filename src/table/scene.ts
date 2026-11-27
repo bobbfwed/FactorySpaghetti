@@ -9,10 +9,10 @@ import type { SceneFx } from './animator';
 import { arrowEnds, beltHeadMap } from './beltArrows';
 import {
   BELT_SPILL, BELT_TUCK, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT,
-  POINT_INSET, REVEAL_LIFT, TILE_MODEL, TILE_TOP,
-  beltCurve, boardBounds, bufferAnchorWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout,
+  POINT_INSET, REVEAL_LIFT, TELEPORTER_SCALE, TILE_MODEL, TILE_TOP,
+  beltCurve, boardBounds, bufferSlotWorld, buildingMeepleWorld, claimLayout,
   curveFrameAt, mineModel, minePileAt, mineSlotWorld, modelToWorld, pieceCells, piecePlacement, pointNormal,
-  pointWorld, revealedStack, sampleCurve, sideLayout, stackHeight, axialToWorld, type ModelName,
+  pointWorld, revealedStack, sampleCurve, sideLayout, stackHeight, teleporterPlacement, axialToWorld, type ModelName,
   type Bounds, type SideLayout,
 } from './layout';
 import { sideAnchor } from './framing';
@@ -169,7 +169,7 @@ export class TableScene {
   private readonly numerals: NumeralLayer;
   private readonly materialParts = new Map<Material, InstancedPart>();
   private readonly meeples: InstancedPart;
-  private readonly teleporters: InstancedPart;
+  private readonly teleporters: InstancedPart[];
   private readonly stackLayers: InstancedPart;
   private readonly stackTops: InstancedPart[] = [];
   private readonly shadowCasters: InstancedPart;
@@ -227,9 +227,9 @@ export class TableScene {
     const meeple = partsOf(lib, 'meeple')[0]!;
     this.meeples = new InstancedPart(this.root, meeple.geometry, meeple.mat, { cast: true, receive: true, colors: true }, 4);
 
-    const torus = new THREE.TorusGeometry(7.5, 1.1, 10, 40);
-    torus.rotateX(Math.PI / 2);
-    this.teleporters = new InstancedPart(this.root, torus, new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), { colors: true }, 4);
+    // Teleporters: the designer's model, tinted with the owner's colour like the meeples (one
+    // instanced mesh per colour part; the model has a single 'player' part).
+    this.teleporters = partsOf(lib, 'teleporter').map(p => new InstancedPart(this.root, p.geometry, p.mat, { cast: true, receive: true, colors: p.material === 'player' }, 8));
 
     // Face-down stacks: plain hexagonal layers, with a real (flipped) blank tile on top so the
     // holes of the tile back show.
@@ -351,7 +351,7 @@ export class TableScene {
   rebuild(now: number, az: number): void {
     const game = this.game;
     for (const parts of this.tileParts.values()) for (const p of parts) p.begin();
-    this.modules.begin(); this.numerals.begin(); this.meeples.begin(); this.teleporters.begin();
+    this.modules.begin(); this.numerals.begin(); this.meeples.begin(); for (const p of this.teleporters) p.begin();
     for (const p of this.materialParts.values()) p.begin();
     this.shadowCasters.begin();
     for (const g of this.mineGroups.values()) g.visible = false;
@@ -367,7 +367,7 @@ export class TableScene {
     // Piles (the drawn piece above its pile is one of the tile instances).
     this.buildStacks(game, now);
     for (const parts of this.tileParts.values()) for (const p of parts) p.end();
-    this.modules.end(); this.numerals.end(); this.meeples.end(); this.teleporters.end();
+    this.modules.end(); this.numerals.end(); this.meeples.end(); for (const p of this.teleporters) p.end();
     for (const p of this.materialParts.values()) p.end();
     this.shadowCasters.end();
 
@@ -435,8 +435,10 @@ export class TableScene {
       if (buf.teleporterOwner !== null) {
         const k = fx ? fx.teleporter(piece.id, which) : null;
         if (k !== null && k <= 0) continue;
-        const a = bufferAnchorWorld(piece, which);
-        this.teleporters.push(mat4(a.x, TILE_TOP + y + 0.6, a.z, 0, k ?? 1), this.colorOf(buf.teleporterOwner));
+        const t = teleporterPlacement(piece, which);
+        const m = mat4(t.x, TILE_TOP + y, t.z, t.yaw, TELEPORTER_SCALE * (k ?? 1));
+        const color = this.colorOf(buf.teleporterOwner);
+        for (const part of this.teleporters) part.push(m, color);
       }
     }
   }

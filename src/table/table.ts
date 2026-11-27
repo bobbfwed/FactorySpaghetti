@@ -14,7 +14,7 @@ import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from './layout';
 import { frameAll, frameArea, keepInView as keepAreaInView, turnPivot, turnRefitArea, type FramingTable } from './framing';
 import { seatAzimuth } from './seat';
-import { BELT_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
+import { BELT_PICK_Y, TELEPORTER_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
 const DEFAULT_COLORS: readonly PlayerColor[] = ['blue', 'red', 'orange', 'green'];
@@ -288,7 +288,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     const g = rig.groundAt(px, py, TILE_TOP);
     if (!g) return null;
     const b = rig.groundAt(px, py, BELT_PICK_Y) ?? g;
-    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }), targetKeys);
+    const t = rig.groundAt(px, py, TELEPORTER_PICK_Y) ?? g;
+    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }, { x: t.x, z: t.z }), targetKeys);
   }
 
   // ── Public interface ─────────────────────────────────────────────────────────────────────────
