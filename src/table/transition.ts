@@ -10,6 +10,7 @@
 
 import type { CardType, Material } from '../engine/config';
 import type { GameState } from '../engine/state';
+import { directFlowAllowed } from '../engine/rules/flow';
 import type { TableEvent } from '../session/room';
 import { traceFlow, pathLength, sourceWorld, type FlowSource } from './flowPath';
 import { bufferSlotWorld, type XZ } from './layout';
@@ -244,8 +245,15 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   const mineSources: FlowSource[] = mines.map(m => ({ pieceId: m.id, kind: 'mine' as const, slot: 0 }));
   for (const s of [...filled]) {
     if (s.buffer !== 'input') continue;
-    // From another building's output that emptied: the material clearly moved from there.
-    const src = emptied.find(x => x.buffer === 'output' && x.material === s.material && x.pieceId !== s.pieceId);
+    // From another building's output that emptied: the material clearly moved from there — but
+    // only out of a building whose output may pass into this one (an unclaimed building or one of
+    // the same player's: the engine's rule, directFlowAllowed; RULES_CHANGES.md #51).
+    const destPiece = next.board.find(p => p.id === s.pieceId);
+    const src = emptied.find(x => {
+      if (x.buffer !== 'output' || x.material !== s.material || x.pieceId === s.pieceId) return false;
+      const from = next.board.find(p => p.id === x.pieceId);
+      return !!from && !!destPiece && directFlowAllowed(from, destPiece);
+    });
     if (src && flowFrom(s, [{ pieceId: src.pieceId, kind: 'output', slot: src.slot }], true)) {
       takeSlot(emptied, x => x === src);
       continue;

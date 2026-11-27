@@ -145,7 +145,7 @@ export const moving: Topic = {
     { k: 'p', t: 'Material moves by itself between pieces. There are four ways to get it where you want it:' },
     {
       k: 'list', items: [
-        '**Direct contact**: a Mine\'s ore exit, or a building\'s output, touching the input of a claimed building. No belt needed.',
+        '**Direct contact**: a Mine\'s ore exit touching the input of a claimed building, or a building\'s output touching the input of another building of the same player. No belt needed.',
         '**Belts**: a chain of belts from a source to an input. See [[belts|Belts]].',
         '**Your meeple** on your building lets you load its input and collect its output in your round-end turn.',
         '**Teleporters** connect a building\'s input or output with your materials. See [[teleporters|Teleporters]].',
@@ -168,13 +168,13 @@ export const moving: Topic = {
           k: 'steps', items: [
             'Output teleporters send whatever sits in their buildings\' outputs to their owners (up to the limit of 6).',
             'Mines fill every empty input of a claimed building that touches an ore exit directly.',
-            'Every output that touches the input of another claimed building passes its material across.',
+            'Every output that touches the input of another building of the same player passes its material across. Your output never passes into another player\'s building: it stays in your output. The output of an unclaimed building passes into any claimed building it touches.',
             'Then, building by building, every empty input with a belt end facing it is traced back along its belt chain. If the far end faces a Mine\'s ore exit, an Ore arrives. If it faces a building\'s output holding material, that material moves.',
           ],
         },
         { k: 'p', t: 'So material moves one hop at a time: a Plate made in one factory reaches the next factory\'s input the next time material moves.' },
         { k: 'note', tone: 'example', t: 'You roll your Plate Factory\'s number and choose **Run it**. The Plate sits in its output. When you press **Done with actions**, it travels along your belt into your Sphere Factory\'s input.' },
-        { k: 'p', t: 'Material enters an input only if the slot is empty, the building is claimed, and a valid recipe is still possible. Otherwise it stays in the output (or, for Ore, simply stays in the Mine).' },
+        { k: 'p', t: 'Material enters an input only if the slot is empty, the building is claimed, a valid recipe is still possible, and it comes from a Mine, an unclaimed building or a building of the same player. Otherwise it stays in the output (or, for Ore, simply stays in the Mine).' },
         { k: 'p', t: 'An output feeds at most one place: the piece it touches, or the one belt chain that starts there.' },
       ],
     },

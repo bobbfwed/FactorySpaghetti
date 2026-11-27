@@ -165,6 +165,27 @@ export function isReservedPoint(piece: BoardPiece, pos: number, playerId: Player
     piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === playerId);
 }
 
+// May material move from building `src`'s output into building `dst`'s input (RULES_CHANGES.md
+// #51)? Only a claimed building receives, and only from a building of the same player: at least
+// one player holds a claim on both. An unclaimed building's output is open — it is nobody's
+// material, just as it is open to anyone's belt — and a Mine belongs to nobody and feeds any
+// claimed building. Otherwise nothing moves and the material stays in `src`'s output.
+// One predicate for every consumer: the flow resolver (direct contact, and as a safeguard every
+// belt-chain delivery too), the table's flow display and the bots' feed analysis.
+// `assumeOwner`: judge as if that player also held a claim on `dst` (a bot weighing a building it
+// may claim).
+export function directFlowAllowed(
+  src: Pick<BoardPiece, 'type' | 'claims'>,
+  dst: Pick<BoardPiece, 'claims'>,
+  assumeOwner?: PlayerId,
+): boolean {
+  const receivers = new Set<PlayerId>(dst.claims.map(c => c.ownerId));
+  if (assumeOwner !== undefined) receivers.add(assumeOwner);
+  if (receivers.size === 0) return false;
+  if (src.type === 'mine' || src.claims.length === 0) return true;
+  return src.claims.some(c => receivers.has(c.ownerId));
+}
+
 // Why player `me` may not end a belt at (piece, pos), judged by what sits across that
 // point's shared edge, or null if nothing there forbids it:
 //   • 'POINT_RESERVED' — the point faces an input or output of a building that has at least
@@ -695,6 +716,7 @@ export function drainOutputTeleporters(state: GameState): GameState {
 // One pass of material flow:
 //   Pass 0 — output teleporters drain to their owner's inventory (respecting caps)
 //   Pass 1 — direct adjacency: ore_output / output_buffer → adjacent claimed input_buffer
+//            (a building's output only into a building of the same player; #51)
 //   Pass 2 — belt-mediated:    through a chain of one or more belts (input-driven search)
 // Called after PLACE_BELT and CLAIM_BUILDING so new connections activate immediately.
 export function resolveDirectAdjacency(state: GameState): GameState {
@@ -730,12 +752,15 @@ export function resolveDirectAdjacency(state: GameState): GameState {
     return true;
   }
 
-  // Move a material from a building's output slot to a claimed building's input slot.
+  // Move a material from a building's output slot to a claimed building's input slot of the
+  // same player (directFlowAllowed). Belt chains already stop at buildings the chain's owner
+  // holds no claim on (dead ends, #38), so for them the ownership test changes nothing; it is
+  // checked here as well so no path can carry one player's output into another's building.
   function moveOutput(
     srcPiece: BoardPiece, srcPos: number,
     dstPiece: BoardPiece, dstPos: number,
   ): boolean {
-    if (dstPiece.claims.length === 0) return false;
+    if (!directFlowAllowed(srcPiece, dstPiece)) return false;
     const srcSi = outputSlotIdx(srcPiece, srcPos);
     if (srcSi < 0 || !srcPiece.output) return false;
     const material = srcPiece.output.slots[srcSi];
@@ -757,7 +782,9 @@ export function resolveDirectAdjacency(state: GameState): GameState {
     return true;
   }
 
-  // Pass 1: direct adjacency, building output → adjacent claimed input (no belt).
+  // Pass 1: direct adjacency, building output → adjacent claimed input (no belt), only between
+  // buildings of the same player or out of an unclaimed building (moveOutput, #51); otherwise
+  // the material stays in the output, as it does when the input is full.
   // (Direct mine ore is already delivered by fillInputsFromAdjacentMines above.)
   for (const piece of state.board) {
     const template = pieceTemplate(piece);

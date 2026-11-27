@@ -89,7 +89,7 @@ export const table: Topic = {
     },
     { k: 'p', t: `You start with no materials. They come from your buildings, from Leverage cards, and from a Mine's resource point (the first Mine's gives ${amount(MINE_RESOURCE_REWARD[0]!.n, MINE_RESOURCE_REWARD[0]!.material)}). The bank never runs out.` },
     { k: 'h', t: 'Connection points', id: 'points' },
-    { k: 'p', t: 'Each single piece has 12 points around its edge, 2 on each side. Where two pieces touch, their points line up in pairs. That is how material moves from piece to piece: an output that touches an input passes material across, and belts run from point to point. See [[belts|Belts]].' },
+    { k: 'p', t: 'Each single piece has 12 points around its edge, 2 on each side. Where two pieces touch, their points line up in pairs. That is how material moves from piece to piece: an output that touches an input of another building of the same player passes material across, and belts run from point to point. See [[belts|Belts]].' },
   ],
   see: ['screen', 'factories', 'belts'],
 };

@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
-import { payMaterials, resolveDirectAdjacency } from '../rules/flow';
+import { directFlowAllowed, payMaterials, resolveDirectAdjacency } from '../rules/flow';
 import { longestBeltChain } from '../rules/beltWeaver';
 import { isListedMove, listedForm } from '../rules/legalActions';
 import { teleporterCost, MAX_CARDS_PLAYED_PER_TURN } from '../config';
@@ -261,17 +261,112 @@ describe("a belt end facing a building it may not serve is a dead end (#38)", ()
     expect(moved([])).toEqual({ f: null, g: 'plate' }); // an unclaimed building's output is open
   });
 
-  it('direct adjacency (no belt) is unchanged: an output touching an input still moves material', () => {
-    const F2 = F(P1, 'plate');
-    const G2 = piece('G2', 'sphereFact', 4, 0, 0, P0); // its input #1 touches F's output #8
-    const after = resolveDirectAdjacency(actionsState([F2, G2]));
-    expect(after.board.find(p => p.id === 'G2')!.input!.slots).toContain('plate');
-  });
-
   it('Belt Weaver: a dead end does not count as the chain reaching that building', () => {
     expect(longestBeltChain(actionsState([MINE, A, F(P0)], [beltA]), 0)).toBe(1); // mine + building
     expect(longestBeltChain(actionsState([MINE, A, F([])], [beltA]), 0)).toBe(1);
     expect(longestBeltChain(actionsState([MINE, A, F(P1)], [beltA]), 0)).toBe(0); // reaches only the mine
+  });
+});
+
+// ── A building feeds only its own player's buildings (#51) ────────────────────
+
+describe("an output touching an input moves material only between one player's buildings (#51)", () => {
+  // Plate Factory F at (3,0): its output #8 touches input #1 of the Sphere Factory G at (4,0).
+  // Mine 1 at (0,0): its lean hex's ore exit faces input #1 of a Plate Factory M at (2,0).
+  const MINE = piece('mine-1', 'mine', 0, 0);
+  const P0: Claims = [{ ownerId: 0, controlModule: 4 }];
+  const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
+  const G0: Claims = [{ ownerId: 0, controlModule: 5 }];
+  const G1: Claims = [{ ownerId: 1, controlModule: 5 }];
+  const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 6 }];
+  const F = (claims: Claims, out: Material | null = 'plate', input: Material | null = null): BoardPiece =>
+    ({ ...piece('F', 'plateFact', 3, 0, 0, claims), input: { slots: [input], teleporterOwner: null }, output: { slots: [out], teleporterOwner: null } });
+  const G = (claims: Claims, slots: Array<Material | null> = [null, null]): BoardPiece =>
+    ({ ...piece('G', 'sphereFact', 4, 0, 0, claims), input: { slots, teleporterOwner: null } });
+  const run = (board: BoardPiece[]): { f: unknown; g: unknown[] } => {
+    const after = resolveDirectAdjacency(actionsState(board));
+    return { f: after.board.find(p => p.id === 'F')!.output!.slots[0], g: [...after.board.find(p => p.id === 'G')!.input!.slots] };
+  };
+
+  it("another player's output touching my input: nothing moves, the material stays in the output", () => {
+    expect(run([F(P1), G(G0)])).toEqual({ f: 'plate', g: [null, null] });
+    expect(run([F(P0), G(G1)])).toEqual({ f: 'plate', g: [null, null] });
+    expect(directFlowAllowed(F(P1), G(G0))).toBe(false);
+  });
+
+  it('my output touching my own input moves', () => {
+    expect(run([F(P0), G(G0)])).toEqual({ f: null, g: ['plate', null] });
+    expect(run([F(P1), G(G1)])).toEqual({ f: null, g: ['plate', null] });
+  });
+
+  it('a shared building: it moves when one player holds a claim on both', () => {
+    expect(run([F(BOTH), G(G0)])).toEqual({ f: null, g: ['plate', null] });
+    expect(run([F(P1), G([...G1, ...G0])])).toEqual({ f: null, g: ['plate', null] });
+    expect(run([F(BOTH), G([...G1, ...G0])])).toEqual({ f: null, g: ['plate', null] });
+  });
+
+  it("an unclaimed building's output still passes into a claimed neighbour", () => {
+    expect(run([F([]), G(G0)])).toEqual({ f: null, g: ['plate', null] });
+    expect(run([F([]), G(G1)])).toEqual({ f: null, g: ['plate', null] });
+  });
+
+  it('an unclaimed building never receives', () => {
+    expect(run([F(P0), G([])])).toEqual({ f: 'plate', g: [null, null] });
+    expect(run([F([]), G([])])).toEqual({ f: 'plate', g: [null, null] });
+  });
+
+  it('a Mine feeds any claimed building it touches, as before', () => {
+    const M = (claims: Claims): BoardPiece => piece('M', 'plateFact', 2, 0, 0, claims);
+    for (const claims of [P0, P1, BOTH]) {
+      const after = resolveDirectAdjacency(actionsState([MINE, M(claims)]));
+      expect(after.board.find(p => p.id === 'M')!.input!.slots, JSON.stringify(claims)).toEqual(['ore']);
+    }
+    expect(resolveDirectAdjacency(actionsState([MINE, M([])])).board.find(p => p.id === 'M')!.input!.slots).toEqual([null]);
+  });
+
+  it('material already in another player\'s input (a game saved under the old rule) stays where it is', () => {
+    expect(run([F(P0), G(G1, ['plate', null])])).toEqual({ f: 'plate', g: ['plate', null] });
+  });
+
+  it('a factory whose output is blocked this way is like one with a full output: its roll offers no decision', () => {
+    const rolled = (g: Claims): GameState => {
+      const s = { ...actionsState([F(P0, 'plate', 'ore'), G(g)]), phase: 'roll' as const, pendingFactoryOps: [] };
+      return expectOk(applyAction(s, { type: 'ROLL_DICE', rolls: [4] }));
+    };
+    // Blocked (the Sphere Factory is player 1's): the Plate stays, so F cannot run.
+    const blocked = rolled(G1);
+    expect(blocked.pendingFactoryOps).toEqual([]);
+    expect(blocked.board.find(p => p.id === 'F')!.output!.slots).toEqual(['plate']);
+    expect(blocked.board.find(p => p.id === 'F')!.input!.slots).toEqual(['ore']);
+    expect(code({ ...blocked, pendingFactoryOps: [] }, { type: 'OPERATE_BUILDING', pieceId: 'F' })).not.toBeNull();
+    // Own Sphere Factory: the Plate moves on before production, so F may run.
+    const open = rolled(G0);
+    expect(open.pendingFactoryOps).toEqual([{ pieceId: 'F', ownerId: 0 }]);
+    expect(open.board.find(p => p.id === 'G')!.input!.slots).toContain('plate');
+  });
+
+  it('a belt chain never carries one player\'s output into a building of a player without a claim on the source', () => {
+    // Every claim combination on source F and destination G, with the belt on C laid by either
+    // player: material arrives only if the belt owner holds a claim on G and on F (or F is
+    // unclaimed) — so always where directFlowAllowed holds.
+    const C = piece('C', 'blank', 4, 0);
+    const Gb = (claims: Claims): BoardPiece => piece('G', 'sphereFact', 5, 0, 0, claims);
+    const options: Claims[] = [[], P0, P1, BOTH];
+    for (const owner of [0, 1] as const) {
+      const belt: Belt = { id: 'bC', ownerId: owner, pieceId: 'C', fromPoint: 0, toPoint: 7 };
+      for (const fc of options) {
+        for (const gc of options) {
+          const f = F(fc);
+          const g = Gb(gc);
+          const after = resolveDirectAdjacency(actionsState([f, C, g], [belt]));
+          const arrived = after.board.find(p => p.id === 'G')!.input!.slots.includes('plate');
+          const holds = (c: Claims): boolean => c.some(x => x.ownerId === owner);
+          const label = `belt of ${owner}, F ${JSON.stringify(fc)}, G ${JSON.stringify(gc)}`;
+          expect(arrived, label).toBe(holds(gc) && (fc.length === 0 || holds(fc)));
+          if (arrived) expect(directFlowAllowed(f, g), label).toBe(true);
+        }
+      }
+    }
   });
 });
 

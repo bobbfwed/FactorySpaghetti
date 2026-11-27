@@ -48,6 +48,12 @@ export const RELEASES: readonly Release[] = [
         see: 'belts#whose',
       },
       {
+        title: 'Your buildings feed only your own buildings',
+        before: 'A building\'s output touching another building\'s input passed its material across, whoever owned the two buildings.',
+        now: 'It passes only into another building of the same player. Next to another player\'s input, your material stays in your output. An unclaimed building\'s output still passes into the claimed building it touches, and Mines feed every claimed building.',
+        see: 'moving',
+      },
+      {
         title: 'The one-belt-per-turn Mine limit counts only ore exits',
         before: 'Any belt end facing any part of a Mine counted toward the limit of one per turn.',
         now: 'Only belt ends facing an ore exit of a Mine count.',
