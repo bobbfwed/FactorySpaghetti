@@ -63,6 +63,35 @@ export function lobbyInfo(room: Room, mySeat: number | null): LobbyInfo {
   return { ...base, resuming: false, canStart, needs };
 }
 
+/** The host's button that removes a player from a game: a bot plays the seat until they rejoin. */
+export const REMOVE_PLAYER_LABEL = 'Remove player';
+
+/** The question asked before a player is removed from a game. */
+export function removePlayerQuestion(name: string): string {
+  return `Remove ${name}? A bot will play their seat. They can rejoin later with the room code.`;
+}
+
+/**
+ * Whether this device (the host's) may remove the player in `seat` from the game in progress
+ * (also while a resumed game is on hold). Never the host's own seat, a bot or an open seat; and
+ * not an away seat a bot already plays, where there is nothing left to skip. The lobby has its
+ * own "Remove" (the seat opens there).
+ */
+export function canRemovePlayer(room: Room, mySeat: number | null, seat: number): boolean {
+  if (mySeat === null || mySeat !== room.hostSeat || room.phase !== 'playing') return false;
+  const s = room.seats[seat];
+  if (!s || s.kind !== 'human' || s.index === room.hostSeat) return false;
+  return s.connected || !s.autopilot;
+}
+
+/**
+ * The player is away and no bot plays their seat yet (on the countdown, or the game waits for
+ * them): the host's "Remove player" stands right on their seat, so the wait can be skipped.
+ */
+export function removeOnSeat(room: Room, mySeat: number | null, seat: number): boolean {
+  return canRemovePlayer(room, mySeat, seat) && !room.seats[seat]!.connected;
+}
+
 function capitalise(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

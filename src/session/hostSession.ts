@@ -116,9 +116,6 @@ export class HostSession {
   private readonly conns = new Map<Conn, ConnInfo>();
   private readonly seatConn = new Map<number, Conn>();
   private readonly tokens = new Map<string, number>();
-  private readonly kicked = new Set<string>();
-  /** Seats of kicked players: no token, hint or name can reclaim them until the host assigns one. */
-  private readonly locked = new Set<number>();
   private readonly closing = new Set<Conn>();
   private readonly welcomes = new Set<Conn>();
   private readonly listeners = new Set<() => void>();
@@ -341,7 +338,6 @@ export class HostSession {
       this.closeWith(conn, 'invalid');
       return;
     }
-    if (this.kicked.has(msg.token)) { this.closeWith(conn, 'kicked'); return; }
     if (info.token !== null) { this.welcomes.add(conn); this.afterChange(); return; } // repeated hello: re-welcome
 
     const r = this.room;
@@ -368,8 +364,8 @@ export class HostSession {
   /**
    * The seat for a hello, in this order: (1) a known token; (2) the hinted seat, if it is an
    * away player seat with that name; (3) any away player seat with that name; (4) in the
-   * lobby, the first open seat. Locked (kicked) seats and the host's own seat are never
-   * taken by name.
+   * lobby, the first open seat. The host's own seat is never taken by name. A player the host
+   * removed is not barred: they come back like anyone returning (by token or by name).
    */
   private findSeat(token: string, hint: number | undefined, name: string): number | null {
     const r = this.room;
@@ -378,14 +374,14 @@ export class HostSession {
       const s = r.seats[known];
       const holder = this.seatConn.get(known);
       const heldByOther = holder !== undefined && this.conns.get(holder)?.token !== token;
-      if (s && !this.locked.has(known) && !heldByOther && (s.kind === 'human' || (r.phase === 'lobby' && s.kind === 'open'))) {
+      if (s && !heldByOther && (s.kind === 'human' || (r.phase === 'lobby' && s.kind === 'open'))) {
         return known;
       }
       if (token !== this.hostToken) this.tokens.delete(token);
     }
     const awayMatch = (i: number): boolean => {
       const s = r.seats[i];
-      return !!s && s.kind === 'human' && !s.connected && i !== r.hostSeat && !this.locked.has(i) && sameName(s.name, name);
+      return !!s && s.kind === 'human' && !s.connected && i !== r.hostSeat && sameName(s.name, name);
     };
     if (hint !== undefined && awayMatch(hint)) return hint;
     const byName = r.seats.find(s => awayMatch(s.index));
@@ -664,7 +660,6 @@ export class HostSession {
         if (msg.kind === 'open') return err('BAD_SEAT', 'A seat cannot be emptied once the game has started.');
         this.forgetSeatTokens(seat.index);
         this.clearAway(seat.index);
-        this.locked.delete(seat.index);
         // A bot seat that still has the name it was given automatically ("Smart Bot", "Smart Bot 2")
         // is renamed after its new kind, by the same rule; a name a person chose is kept.
         const rename = seat.kind === 'bot' && isAutoBotName(seat.name) && botById(seat.botId ?? STAND_IN_BOT).id !== bot.id;
@@ -733,6 +728,7 @@ export class HostSession {
       }
 
       case 'kick': {
+        // Removing a player is not a ban: they may join again like anyone returning.
         const seat = r.seats[msg.seat];
         if (!seat || seat.kind !== 'human' || seat.index === r.hostSeat) return err('BAD_SEAT', 'That seat cannot be removed.');
         const conn = this.seatConn.get(seat.index);
@@ -740,17 +736,20 @@ export class HostSession {
           this.seatConn.delete(seat.index);
           this.closeWith(conn, 'kicked');
         }
-        for (const token of this.forgetSeatTokens(seat.index)) this.kicked.add(token);
         if (r.phase === 'lobby') {
+          // The seat opens for someone else; the device that held it may join again as a newcomer.
+          this.forgetSeatTokens(seat.index);
           this.patchSeat(seat.index, openSeat(seat.index, seat.color));
           this.seatWaiting();
         } else {
-          this.locked.add(seat.index);
+          // During a game the seat looks like one whose player left and whose grace period already
+          // ran out, whatever the away rule: a bot plays it at once, until the player returns. The
+          // device token still points here, so the same device (or the same name) gets it back.
           this.clearAway(seat.index);
           this.patchSeat(seat.index, {
             connected: false, ready: false, awaySince: seat.awaySince ?? this.sched.now(), autopilot: true, botId: STAND_IN_BOT,
           });
-          this.note(seat.index, `${seat.name} was removed from the game; a bot plays their seat.`);
+          this.note(seat.index, `${seat.name} was removed by the host; a bot plays their seat.`);
         }
         return done();
       }
@@ -799,7 +798,6 @@ export class HostSession {
     info.waitingId = null;
     this.room = { ...this.room, waiting: this.room.waiting.filter(w => w.id !== visitor.id) };
     this.forgetSeatTokens(seat);
-    this.locked.delete(seat);
     if (samePerson) {
       this.attach(conn, info, seat, info.name);
       return;
@@ -848,7 +846,7 @@ export class HostSession {
     this.patchSeat(seat, { connected: false, ready: false, awaySince: s.awaySince ?? this.sched.now() });
     this.note(seat, `${s.name} left the table.`);
     // Someone already waiting under this seat's name (a second device) takes it at once.
-    const visitor = seat === r.hostSeat || this.locked.has(seat) ? null : this.waitingConn(n => sameName(n, s.name));
+    const visitor = seat === r.hostSeat ? null : this.waitingConn(n => sameName(n, s.name));
     if (visitor) { this.seatVisitor(visitor[0], visitor[1], seat, true); return; }
     this.armAway(seat);
   }

@@ -4,13 +4,14 @@
 import type { BotSpeed } from '../session/pacing';
 import { botSpeedOf } from '../session/pacing';
 import type { AppController } from '../app/controller';
-import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, botChoices, botKindOf, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
+import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, botChoices, botKindOf, canRemovePlayer, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
 import type { Room, RoomSettings, Seat } from '../session/room';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import { COLORS, COLOR_NAME, icon } from './icons';
 import { connectionBanner, messageStrip, topBar } from './common';
 import { askConfirm } from './confirmDialog';
+import { removePlayerButton } from './removePlayer';
 import type { View } from './menuView';
 
 export function lobbyView(ctrl: AppController): View {
@@ -126,9 +127,13 @@ function seatCard(ctrl: AppController, room: Room, s: Seat, isHost: boolean, res
     if (s.index === room.hostSeat) nameLine.push(h('span', { class: 'tagh' }, icon('crown'), 'HOST'));
     if (mine) meta += ' · you';
     if (resuming) {
-      meta += s.connected ? ' · back' : ' · not back yet';
-      state = s.connected ? h('span', { class: 'state ready' }, icon('check'), 'Back') : h('span', { class: 'state wait', text: 'Away' });
+      const botPlays = !s.connected && s.autopilot; // removed by the host: a bot plays until they rejoin
+      meta += s.connected ? ' · back' : botPlays ? ' · a bot plays until they rejoin' : ' · not back yet';
+      state = s.connected ? h('span', { class: 'state ready' }, icon('check'), 'Back')
+        : h('span', { class: botPlays ? 'state bot' : 'state wait', text: botPlays ? 'Bot plays' : 'Away' });
       if (isHost && !s.connected && !mine) controls.push(actionButton([icon('bot'), 'Give to a bot'], 'btn btn-quiet', () => ctrl.seatToBot(s.index)));
+      // A player who came back can still be removed before the game continues (a bot plays their seat).
+      if (s.connected && !mine && canRemovePlayer(room, me, s.index)) controls.push(removePlayerButton(ctrl, s.index, 'btn btn-quiet'));
     } else {
       if (!mine) meta += s.connected ? ' · connected' : ' · not connected';
       state = s.ready ? h('span', { class: 'state ready' }, icon('check'), 'Ready') : h('span', { class: 'state wait', text: 'Not ready' });

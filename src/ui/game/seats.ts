@@ -14,6 +14,8 @@ import type { Ctx } from './context';
 import { activePlayer, seatHex } from './context';
 import { MATERIAL_LIST, MATERIAL_ICON, count, countdownText, pips } from './pieces';
 import { nextSeat } from './queueView';
+import { canRemovePlayer, removeOnSeat } from '../../app/lobby';
+import { removePlayerButton } from '../removePlayer';
 
 /** The seats shown as opponents: everyone but me. */
 export function opponents(ctx: Ctx): Seat[] {
@@ -61,7 +63,8 @@ export function seatPlates(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-seats', attrs: { role: 'list', 'aria-label': 'Other players' } }, opponents(ctx).map(s => {
     const st = status(ctx, s);
     const t = tesseractCount(ctx.game, s.index as PlayerId);
-    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
+    const remove = removeOnSeat(ctx.room, ctx.me, s.index);
+    return h('div', { class: `tg-li${remove ? ' has-remove' : ''}`, attrs: { role: 'listitem' } }, h('button', {
       class: `tg-plate tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}${ctx.ui.seat === s.index ? ' open' : ''}`,
       style: `--seat:${seatHex(ctx.room, s.index)}`,
       attrs: { 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
@@ -75,7 +78,8 @@ export function seatPlates(ctx: Ctx): HTMLElement {
         h('span', { class: `status${st.warn ? ' is-warn' : ''}` }, st.text),
         h('span', { class: 'grow' }),
         pips(t)),
-      counts(ctx, s))));
+      counts(ctx, s))),
+    remove ? removePlayerButton(ctx.ctrl, s.index, 'btn btn-dark tg-remove') : null);
   }));
 }
 
@@ -85,7 +89,8 @@ export function seatChips(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-chips', attrs: { role: 'list', 'aria-label': 'Other players' } }, opponents(ctx).map(s => {
     const st = status(ctx, s);
     const t = tesseractCount(ctx.game, s.index as PlayerId);
-    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
+    const remove = removeOnSeat(ctx.room, ctx.me, s.index);
+    return h('div', { class: `tg-li${remove ? ' has-remove' : ''}`, attrs: { role: 'listitem' } }, h('button', {
       class: `tg-chip tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}`,
       style: `--seat:${seatHex(ctx.room, s.index)}`,
       attrs: { 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
@@ -95,7 +100,8 @@ export function seatChips(ctx: Ctx): HTMLElement {
     h('span', { class: 'col' },
       h('span', { class: 'nm', text: s.name || `Player ${s.index + 1}` }),
       h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of ${TESSERACTS_TO_WIN}`)),
-    pips(t)));
+    pips(t)),
+    remove ? removePlayerButton(ctx.ctrl, s.index, 'btn btn-dark tg-remove') : null);
   }));
 }
 
@@ -133,7 +139,13 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
       kv('Meeple', meeple),
       kv('Control Modules in the tray', p.controlModules.length ? [...p.controlModules].sort((a, b) => a - b).join(', ') : 'none'),
       kv('Control Modules on the board', onBoard.length ? onBoard.join(' · ') : 'none'),
-      kv('Bonus cards', bonuses.length ? bonuses.map(b => BONUS_NAME[b]).join(', ') : 'none')));
+      kv('Bonus cards', bonuses.length ? bonuses.map(b => BONUS_NAME[b]).join(', ') : 'none')),
+    // The host can remove a player at any time; a bot plays their seat until they rejoin.
+    canRemovePlayer(ctx.room, ctx.me, i)
+      ? h('div', { class: 'tg-popacts' },
+        h('span', { class: 'hint', text: 'A bot plays their seat until they rejoin.' }),
+        removePlayerButton(ctx.ctrl, i, 'btn btn-dark tg-remove'))
+      : null);
 }
 
 function kv(k: string, v: Child): HTMLElement {

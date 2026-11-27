@@ -120,8 +120,10 @@ Default: every client receives the full state, and the interface simply does not
 **A client leaves.** The host marks the seat away and tells everyone.
 
 - If the away player owes an off-turn operate-or-skip decision, the normal 8-second default applies.
-- If it is their turn, the game waits for a grace period (default 90 seconds, host-adjustable) with a visible banner. After that a bot plays the seat until the player returns. The host can also hand the seat to a bot at once, or keep waiting. See open decision D2.
+- If it is their turn, the game waits for a grace period (default 90 seconds, host-adjustable) with a visible banner. After that a bot plays the seat until the player returns. The host can also skip the wait with **Remove player** beside the countdown, or keep waiting. See open decision D2.
 - A returning player takes the seat back at the next move boundary.
+
+**The host removes a player.** At any time during a game (also while a resumed game is on hold) the host can press **Remove player** for any other player: beside an away player's countdown, or in a player's details for one still connected. The seat then looks exactly like an away seat whose grace period has run out (a bot plays it at once, whatever the away rule), and a connected player's device is closed with a "removed" message and does not reconnect by itself. It is not a ban: the player may join again with the room code, from the same device or under the same name, and gets the seat back like any returning player. In the lobby, removing a player opens their seat instead. Nothing about it is stored in the room or in saves.
 
 **The host leaves.** Every client sees its connection close and applies the same rule to the same seat list: the successor is the first connected human seat that is not the old host. No vote is needed. The successor turns its copy of the room into a host session and registers the same room code again, retrying every 2 seconds for up to a minute because the matchmaking service frees the old id slowly. The others wait briefly and then rejoin the same code, getting their seats back by token. This is easier than in the reference game because every client already holds the exact state after the last move.
 
