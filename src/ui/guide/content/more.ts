@@ -8,6 +8,7 @@ import { defaultSettings } from '../../../session/room';
 import { BOT_TYPES } from '../../../bots/registry';
 import type { Topic } from '../types';
 import { minePointRows } from './turn';
+import { MINE_FIGURE, MINE_REWARDS_FIGURE, TESSERACT_COUNT_FIGURE, WIN_FIGURE } from './figures';
 import { MATERIALS, MATERIAL_NAME, ORDINAL, cardPriceWords, listWords, minePriceWords, upgradePointWords } from './facts';
 
 const secs = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
@@ -37,7 +38,9 @@ export const mines: Topic = {
     { k: 'p', t: 'Either way the stack under that Mine opens, and from then on everyone rolls one more die.' },
     { k: 'h', t: 'Meeple points', id: 'points' },
     { k: 'p', t: 'Each Mine has a resource point and an upgrade point, each with room for one meeple. They pay out at the end of the round:' },
+    MINE_FIGURE,
     { k: 'table', head: ['Point', 'Gives'], rows: minePointRows() },
+    MINE_REWARDS_FIGURE,
     { k: 'p', t: `Each Mine's upgrade point gives the number printed on it (${upgradePointWords()}), however many Mines are in play.` },
     { k: 'h', t: 'Placing a Mine', id: 'placing' },
     { k: 'p', t: 'A Mine covers two spaces side by side: its larger half, with ore exits all round, and its smaller half. **Either half may touch the board**, as long as both spaces are free. Tap the glowing space for its larger half (spaces one step further out glow too, for placings where only the smaller half touches), then turn it with the turn button until it lies the way you want, and confirm.' },
@@ -60,6 +63,7 @@ export const bonuses: Topic = {
   blocks: [
     ...(bonusesEnabled ? [] : [{ k: 'note' as const, tone: 'warn' as const, t: 'Bonus Tesseracts are switched off in this version of the game.' }]),
     { k: 'p', t: 'Three bonus cards each count as one Tesseract toward winning, for as long as you hold them. They are not materials: you cannot spend or exchange them, and they are worth nothing in the material-value count at the end.' },
+    TESSERACT_COUNT_FIGURE,
     {
       k: 'table', head: ['Bonus', 'Who holds it'], rows: [
         ['The Investor', `The player with the highest Control Module on any building, if it is at least ${BONUS_THRESHOLDS.investor}.`],
@@ -87,6 +91,7 @@ export const winning: Topic = {
   summary: `${TESSERACTS_TO_WIN} Tesseracts on your own turn — or the most valuable materials when the pieces run out.`,
   blocks: [
     { k: 'p', t: `You win the moment you hold **${TESSERACTS_TO_WIN} Tesseracts** — in your materials plus your bonus cards — during your own turn, your round-end turn included. The game checks after every move; there is nothing to announce.` },
+    WIN_FIGURE,
     { k: 'p', t: 'Tesseracts that reach you on someone else\'s turn, for example through an output teleporter, count as soon as your next turn (or round-end turn) begins and you make a move.' },
     { k: 'h', t: 'When the pieces run out', id: 'exhausted' },
     { k: 'p', t: 'When all three stacks are empty (and no Mine is waiting to be placed), the round is finished: the notice **The pieces have run out: this is the final round** appears, every player still to play takes their turn — starting at the roll, since there is nothing to place — and the round-end turns are played. You can still win with Tesseracts in those last turns.' },

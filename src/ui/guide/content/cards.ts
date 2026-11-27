@@ -9,6 +9,7 @@ import {
 } from '../../../engine/config';
 import type { Block, Topic } from '../types';
 import { CARD_NAME, CARD_TYPES, cardPriceWords, deckSize, listWords } from './facts';
+import { cardFigure } from './figures';
 
 export interface CardGuide {
   /** One line for the overview table. */
@@ -145,6 +146,7 @@ function cardBlocks(): Block[] {
     const tags = [`${CARD_COUNTS[c]} in the deck`, ...(PLAY_ON_DRAW_CARDS.has(c) ? ['played as soon as it is drawn'] : [])];
     out.push({ k: 'h', t: CARD_NAME[c], id: c });
     out.push({ k: 'p', t: `**${tags.join(' · ')}**` });
+    out.push(cardFigure(c));
     out.push(...g.blocks);
     if (g.details?.length) out.push({ k: 'details', blocks: g.details });
   }

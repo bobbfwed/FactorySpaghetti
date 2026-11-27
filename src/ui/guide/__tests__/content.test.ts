@@ -22,6 +22,12 @@ function texts(blocks: readonly Block[]): string[] {
       case 'icons': out.push(...b.items.map(i => i.label)); break;
       case 'details': out.push(...(b.title ? [b.title] : []), ...texts(b.blocks)); break;
       case 'change': out.push(b.title, b.before, b.now); break;
+      case 'figure':
+        out.push(b.alt, ...(b.caption ? [b.caption] : []));
+        if (b.show.kind === 'lineup') for (const it of b.show.items) if ('pic' in it) out.push(it.label, ...(it.value ? [it.value] : []));
+        if (b.show.kind === 'scene') out.push(...(b.show.callouts ?? []).map(c => c.text));
+        if (b.show.kind === 'recipe') out.push(b.show.name, ...(b.show.note ? [b.show.note] : []));
+        break;
     }
   }
   return out;

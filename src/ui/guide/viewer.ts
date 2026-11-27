@@ -16,6 +16,7 @@ import { renderPage, renderSideList } from './render';
 import type { GuideEvent, GuideState } from './state';
 import { CLOSED, currentPage, offersContents, reduce } from './state';
 import { toDom } from './vdom';
+import { mountFigures, releaseFigures } from './figures/mount';
 
 const HISTORY_KEY = 'fsGuide';
 
@@ -31,6 +32,8 @@ let pushed = 0;
 let unwinding = false;
 let opener: HTMLElement | null = null;
 let listening = false;
+/** Stops watching the shown page's pictures (figures/mount.ts). */
+let unmountFigures = (): void => undefined;
 
 function historyWorks(): boolean {
   try { return typeof window.history?.pushState === 'function'; } catch { return false; }
@@ -161,6 +164,9 @@ function build(host: HTMLElement): void {
 function sync(): void {
   if (!state.open) {
     if (root) {
+      unmountFigures();
+      unmountFigures = (): void => undefined;
+      releaseFigures();
       root.remove();
       root = body = main = side = null;
       shownKey = '';
@@ -180,6 +186,8 @@ function sync(): void {
   shownKey = key;
 
   main.replaceChildren(toDom(renderPage(GUIDE, cur.topic)));
+  unmountFigures();
+  unmountFigures = mountFigures(main, body);
   side.replaceChildren(toDom(renderSideList(GUIDE, cur.topic)));
   const backBtn = root.querySelector<HTMLElement>('.g-back');
   const onContents = cur.topic === null && state.stack.length === 1;
