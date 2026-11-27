@@ -591,6 +591,7 @@ export class PlayController {
     v.instruction = n > 1 ? W.pendingMineMany(n) : W.pendingMine;
     if (myTurn) v.primary = { label: W.actionsDone, enabled: false, hint: W.decideFirst };
     for (const p of v.prompts) {
+      if (!p.options.some(o => o.enabled)) continue;
       const pieceId = (p.anchor as { pieceId: string }).pieceId;
       b.lit(p.anchor, () => this.setMode({ k: 'opMenu', pieceId }));
     }
@@ -794,7 +795,7 @@ export class PlayController {
     v.primary = { label: W.actionsDone, enabled: !!end, ...(hint ? { hint } : {}) };
     if (end) b.onPrimary = (): void => this.send(end);
 
-    this.actionsIdleTargets(b, legal);
+    this.actionsIdleTargets(b, g, player, legal);
     if (!this.buildActionsMode(b, g, me, player, legal)) return false;
     // The Leverage deck answers a tap while nothing waits for a particular pick: idle, and while a
     // tool is in use (laying or removing belts, a planned route, Production Increase, a menu).
@@ -912,9 +913,7 @@ export class PlayController {
       case 'pi': {
         b.clearTargets();
         const pis = this.piActions(g, me);
-        for (const id of new Set(pis.map(a => a.pieceId))) {
-          b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
-        }
+        this.lightMenus(b, g, player, legal, new Set(pis.map(a => a.pieceId)));
         if (pis.length === 0) return false;
         v.instruction = W.piInstruction(g.productionIncreaseBudget);
         v.choices = {
@@ -940,18 +939,41 @@ export class PlayController {
   }
 
   /** In the actions step: my buildings with something to do, my belts, belt start points, the deck. */
-  private actionsIdleTargets(b: Builder, legal: readonly Action[]): void {
+  private actionsIdleTargets(b: Builder, g: GameState, player: Player, legal: readonly Action[]): void {
     const pieces = new Set<string>();
     for (const a of legal) {
       if (a.type === 'PLACE_TELEPORTER' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
-    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    this.lightMenus(b, g, player, legal, pieces);
     // Belt points and placed belts are not lit here: laying and removing belts are their own modes
     // (Lay a belt, Remove a belt), so the board stays calm until the player picks one. The deck is
     // lit by buildActions (see DECK_MODES).
   }
 
   // ── Building menu ───────────────────────────────────────────────────────────
+
+  /**
+   * Light the pieces whose menu would offer at least one move that can be made now; a piece whose
+   * every entry is greyed out (for example "Run" after the building already ran this round) stays
+   * dark, and a tap on it says why (whyNot).
+   */
+  private lightMenus(b: Builder, g: GameState, player: Player, legal: readonly Action[], ids: Iterable<string>): void {
+    for (const id of ids) {
+      const piece = pieceById(g, id);
+      if (!piece || !this.menuItems(new Builder(emptyView()), g, player, legal, piece).some(i => i.enabled)) continue;
+      b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    }
+  }
+
+  /** Why a piece's menu has nothing to do now: the reason of its first greyed-out entry, if any. */
+  private menuReason(g: GameState, me: PlayerId, pieceId: string): string | null {
+    const piece = pieceById(g, pieceId);
+    const player = g.players[me];
+    if (!piece || !player) return null;
+    const items = this.menuItems(new Builder(emptyView()), g, player, legalFor(g, me), piece);
+    if (items.some(i => i.enabled)) return null;
+    return items.find(i => i.reason)?.reason ?? null;
+  }
 
   private buildMenu(b: Builder, g: GameState, me: PlayerId, player: Player, legal: readonly Action[], pieceId: string): boolean {
     const piece = pieceById(g, pieceId);
@@ -1626,10 +1648,9 @@ export class PlayController {
       if (a.type === 'LOAD_BUILDING_INPUT' || a.type === 'OPERATE_BUILDING' || a.type === 'COLLECT_OUTPUT'
         || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') pieces.add(a.pieceId);
     }
-    // The meeple's building always opens, so the player can see why it cannot run.
-    const meep = player.meepleOnPieceId ? pieceById(g, player.meepleOnPieceId) : undefined;
-    if (meep && isBuilding(meep) && player.meepleSlotIndex === null) pieces.add(meep.id);
-    for (const id of pieces) b.lit({ kind: 'piece', pieceId: id }, () => this.setMode({ k: 'menu', pieceId: id }));
+    // The meeple's building is lit only when something can be done there; a tap on it otherwise
+    // says why it cannot run (whyNot).
+    this.lightMenus(b, g, player, legal, pieces);
     const m = this.mode;
     switch (m.k) {
       case 'idle': return true;
@@ -1827,6 +1848,9 @@ export class PlayController {
       case 'piece': case 'buffer': case 'mineSlot': {
         // In a belt mode a tap there was meant for a connection point: explain the point.
         if (this.inBeltMode()) return t.kind === 'buffer' ? W.bufferNoBelt : W.noBeltEndsHere;
+        // A building with only greyed-out entries (the meeple's building that already ran): say why.
+        const greyed = this.menuReason(g, me, t.pieceId);
+        if (greyed) return greyed;
         const piece = pieceById(g, t.pieceId);
         if (piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === me)) return W.notYourBuilding;
         return W.nothingHere;
