@@ -308,7 +308,7 @@ export const TELEPORTER_SCALE = 0.75;
 /** Measured from teleporter.glb (unscaled): half its length (model X), half its width (Z), height. */
 export const TELEPORTER_HALF_LENGTH = 7.5;
 export const TELEPORTER_HALF_WIDTH = 5.2;
-export const TELEPORTER_HEIGHT = 11.884;
+export const TELEPORTER_HEIGHT = 11.88;
 /** A teleporter beside a one-stub buffer: this far to the side of the slot, and this far further in. */
 export const TELEPORTER_SIDE = 10.2;
 export const TELEPORTER_ALONG = 7;

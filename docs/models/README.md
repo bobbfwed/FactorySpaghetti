@@ -41,12 +41,13 @@ To see the result: `npx vite`, then open `/tools/gallery/index.html` (views: `?v
 - **Hex tiles** lie in the XZ plane, pointy-top: flat sides face ±X (68.8 mm across flats), corners at ±Z. **Mines** are two hexes side by side along X; the hex centres are at x = −34.4 (the rayed hex) and x = +34.4.
 - **One mesh primitive per colour**, each with a named material. Normals are split at edges sharper than 35°, so flat faces and engraved edges stay crisp.
 - **Belt:** the file has it as printed: a flat chain 1.5 mm thick along Z (arrowhead at −Z, notched tail at +Z), with a D-shaped peg 3.8 mm tall standing *up* from each end (peg centres at z ≈ −31.9 and +31.7). On the table the game turns it over (a rotation about its length, not a mirror), so the pegs point down into the D-shaped holes of the tile it lies on and the chain face is up. Each end (peg and tab) stays rigid with its peg centred on the hole; only the chain between the pegs bends along the curve. The tabs are drawn reaching 1.6 mm past the tile edge (the print reaches about 0.5 mm) so belts meeting at a shared edge overlap and read as one chain (`scene.ts` `bendBeltItems`, `layout.ts` `BELT_SPILL`).
-- **`player` material:** belts, meeple and Control Module tile. The game tints it with the owner's colour; the file holds a neutral grey placeholder.
+- **`player` material:** belts, meeple, Control Module tile and teleporter. The game tints it with the owner's colour; the file holds a neutral grey placeholder.
+- **Teleporter:** an arched block lying along X, with the round swirl-shaped portal recessed into its +X end and a 0.7 mm foot (11.7 × 6.4 mm) under the portal end, kept as printed. The table draws it at 0.75 scale beside the buffer's material, portal facing the tile edge (`layout.ts` `teleporterPlacement`).
 - No compression extensions are used, so `GLTFLoader` loads the files with no extra decoders.
 
 ## Models
 
-All 18 models come from **`Factory Speghetti AMS.3mf`**, which the designer says is the current file. No piece fell back to an older single-piece file, so nothing is marked "possibly out of date".
+18 of the 19 models come from **`Factory Speghetti AMS.3mf`**, which the designer says is the current file. No piece fell back to an older single-piece file, so nothing is marked "possibly out of date". The teleporter comes from **`Teleporter.3mf`**, a separate file the designer provided for it (2026-11-27): one single-colour part with no filament data, so the whole piece is the `player` material.
 
 | Model | Materials (one primitive each) | Triangles before → after | Budget | KB | Size X × Y × Z (mm) | Item in the AMS file |
 |---|---|---|---|---|---|---|
@@ -68,8 +69,9 @@ All 18 models come from **`Factory Speghetti AMS.3mf`**, which the designer says
 | starting-player | yellow-green | 6,668 → 800 | 800 | 21.0 | 32.9 × 41.4 × 32.9 | triangles 6668 |
 | control-module | player | 4,100 → 120 | 120 | 5.0 | 16.0 × 2.0 × 16.0 | "Number Tiles AMS", part Body12 |
 | control-module-tray | black | 69,026 → 3,000 | 3,000 | 127.7 | 80.9 × 10.4 × 141.6 | tray assembly (triangles 83682), second part |
+| teleporter | player | 5,150 → 400 | 400 | 15.1 | 15.0 × 11.9 × 10.4 | `Teleporter.3mf`, its only item |
 
-Every model is within its budget (tiles ≤ 2,500, mines ≤ 6,000, small pieces ≤ 800, Control Module tile 120; the tray and belt had no budget in the brief and were set to 3,000 and 1,500). The `.glb` files total **1,231,756 bytes (1.17 MB)**; with the manifest the folder is about 1.25 MB, under the 1.5 MB limit.
+Every model is within its budget (tiles ≤ 2,500, mines ≤ 6,000, small pieces ≤ 800, Control Module tile 120; the tray and belt had no budget in the brief and were set to 3,000 and 1,500). The teleporter is set to 400: up to 16 can be on the table, and at its drawn size (about 11 mm) 400 triangles look the same as 800. The `.glb` files total **1,247,184 bytes (1.19 MB)**; with the manifest the folder is about 1.27 MB, under the 1.5 MB limit.
 
 "Item in the AMS file" says how the config finds the piece on the print plate: by the triangle count of the whole build item, by the object name Bambu Studio shows, or by taking one copy out of an assembly of copies (`partIndex`).
 
@@ -82,7 +84,7 @@ All colours come from the AMS file itself (`Metadata/project_settings.config` �
 | 1 | #000000 | `inlay-black`, `black` | outlines, belt stubs, mine rays, disc and tracks, "+" marks, bolt on the power token (`inlay-black`); the Control Module tray (`black`) |
 | 2 | #D6D3D3 | `body` | tiles and all three mines |
 | 3 | #0086D6 | `icon-blue` | the stacked-square "+" icons on the mines |
-| 3 / 4 | #0086D6 / #71D0FF | `player` | meeple and Control Module tile (3), belt (4); tinted at runtime |
+| 3 / 4 | #0086D6 / #71D0FF | `player` | meeple and Control Module tile (3), belt (4); tinted at runtime. The teleporter (its own file, no filament data) is all `player` too |
 | 5 | #B7EC00 | `yellow-green` | tesseract, starting-player piece |
 | 6 | #9DFB20 | `lime-green` | sphere, circle icon on mine 3 |
 | 7 | #6BFA27 | `icon-green` | plate, parallelogram icon on mine 2 |
@@ -102,7 +104,7 @@ Nothing was guessed by eye. Some choices were made on top of the file's data:
 - **Separate belt link and arrowhead models.** The belt chain is one closed mesh: the links are joined to each other, not separate pieces. So only the whole belt is exported. The converter can still export one link of a chain whose links are separate meshes (`"component": { "axis": "y", "pick": "middle" | "first" | "last" }` in the config) if a future belt file has them. Until then the game can bend the whole belt along a curve by deforming its vertices.
 - **Control Module numerals.** The engraved numeral on the chosen tile is filled flat (`fillEngraving`), and the tile is turned face up, because it prints face down. Numerals are meant to be textures.
 - **The other half of the tray assembly.** This is a flat panel with 18 square outlines, probably a lid. Also not converted: the blue "Number Tile Tray v4" box, the card holders, and the big "Holder". These are not game pieces on the table.
-- **Teleporters, cards, dice.** No print model exists for them.
+- **Cards, dice.** No print model exists for them. (Teleporters had none either until the designer provided `Teleporter.3mf`; until then the table drew a ring.)
 - **The older files** (`Factory Speghetti AMS what I need.3mf`, `Board Piece Chit Tile Layout.3mf`, the single-piece files, `Mine 1/2/3 AMS v2.3mf`, `Starting PIece*.3mf`) are out of date, and nothing reads them now. In particular, their factory tiles have gold stubs and purple icons and their Mine 1 has no belt tracks. None of that matches the current design.
 
 ## How it was checked
