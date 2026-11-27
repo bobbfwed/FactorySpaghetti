@@ -11,16 +11,19 @@ export type FigColor = 'blue' | 'red' | 'orange' | 'green';
 export type FigIcon = 'ore' | 'plate' | 'sphere' | 'tess' | 'power' | 'card' | 'mine' | 'belt' | 'teleporter' | 'meeple' | 'dice' | 'exchange' | 'book';
 
 /**
- * A model file in public/models (by its manifest name). 'teleporter' may be missing from the
- * manifest: a figure that names it then draws its stand-in (orElse) or its icon.
+ * A model file in public/models (by its manifest name). A model missing from the manifest, or one
+ * that fails to load, is not an error: the figure draws its stand-in (orElse) or its icon instead.
  */
 export type FigModel =
   | 'tile-blank' | 'tile-plate-factory' | 'tile-sphere-factory' | 'tile-tesseract-factory' | 'tile-power-plant'
   | 'mine-1' | 'mine-2' | 'mine-3' | 'ore' | 'plate' | 'sphere' | 'tesseract' | 'belt' | 'meeple'
   | 'power-token' | 'starting-player' | 'control-module' | 'control-module-tray' | 'teleporter';
 
-/** Models that may be absent from public/models/manifest.json (the figure then degrades). */
-export const OPTIONAL_MODELS: ReadonlySet<FigModel> = new Set<FigModel>(['teleporter']);
+/**
+ * Models a figure may name before they are in public/models/manifest.json (the figure then
+ * degrades quietly). Empty now that the Teleporter model has arrived; the content test allows these.
+ */
+export const OPTIONAL_MODELS: ReadonlySet<FigModel> = new Set<FigModel>();
 
 /** One board piece of a staged scene. Players are numbered 0-3 (the scene's colours, in order). */
 export interface ScenePiece {
@@ -93,6 +96,8 @@ export type CalloutAt =
   | { readonly piece: string; readonly point: number }
   | { readonly piece: string; readonly slot: 0 | 1 }
   | { readonly piece: string; readonly belt: number }
+  /** Just above the teleporter on a buffer (where the table draws it). */
+  | { readonly piece: string; readonly teleporter: 'input' | 'output' }
   /** The middle of a piece, moved dx / dz millimetres on the table (-dz is up the picture). */
   | { readonly piece: string; readonly centre: true; readonly dx?: number; readonly dz?: number }
   | { readonly q: number; readonly r: number };

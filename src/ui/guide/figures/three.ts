@@ -13,7 +13,7 @@ import { CameraRig } from '../../../table/camera';
 import { numeralAtlas, numeralCell, woodTexture, NUMERAL_COLS, NUMERAL_ROWS } from '../../../table/textures';
 import {
   TILE_TOP, axialToWorld, boardBounds, bufferAnchorWorld, mineSlotWorld, piecePlacement, pointWorld,
-  beltCurve, sampleCurve, curveFrameAt, type Bounds,
+  beltCurve, sampleCurve, curveFrameAt, teleporterPlacement, TELEPORTER_HEIGHT, TELEPORTER_SCALE, type Bounds,
 } from '../../../table/layout';
 import type { Target } from '../../../table/types';
 import { PLAYER_COLOR_HEX } from '../../../table/types';
@@ -227,8 +227,16 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     const piece = game.board.find(p => p.id === at.piece);
     if (!piece) return { x: 0, y: 0, z: 0 };
     const y = TILE_TOP + 1;
-    // Lifted, so the marker sits just above the material in the buffer instead of over it.
-    if ('buffer' in at) { const c = bufferAnchorWorld(piece, at.buffer); return { x: c.x, y: y + 12, z: c.z }; }
+    // Moved in towards the middle of the piece, so the marker sits beside the material in the buffer, not over it.
+    if ('buffer' in at) {
+      const c = bufferAnchorWorld(piece, at.buffer), m = piecePlacement(piece);
+      const d = Math.hypot(c.x - m.x, c.z - m.z) || 1, k = Math.min(13, d * 0.5) / d;
+      return { x: c.x + (m.x - c.x) * k, y, z: c.z + (m.z - c.z) * k };
+    }
+    if ('teleporter' in at) {
+      const t = teleporterPlacement(piece, at.teleporter);
+      return { x: t.x, y: TILE_TOP + TELEPORTER_HEIGHT * TELEPORTER_SCALE + 9, z: t.z };
+    }
     if ('point' in at) { const c = pointWorld(piece, at.point); return { x: c.x, y, z: c.z }; }
     // Above the spot, clear of a meeple standing on it.
     if ('slot' in at) { const c = mineSlotWorld(piece, at.slot); return { x: c.x, y: y + 24, z: c.z }; }

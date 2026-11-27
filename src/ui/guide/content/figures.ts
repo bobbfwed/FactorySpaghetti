@@ -71,8 +71,6 @@ export const MINE_REWARDS_FIGURE: FigureBlock = {
 
 /** A blank tile with one blue belt: how a belt looks on the table. */
 const BELT_ON_TILE: SceneSpec = { pieces: [{ id: 't', type: 'blank', q: 0, r: 0 }], belts: [{ piece: 't', a: 1, b: 6 }], aspect: 150 / 112 };
-/** A Plate Factory with a blue teleporter on its output: the table's stand-in until the model arrives. */
-const TELEPORTER_ON_TILE: SceneSpec = { pieces: [{ id: 'f', type: 'plateFact', q: 0, r: 0, claims: [[0, 3]], tpOut: 0 }], aspect: 150 / 112 };
 
 export const PLAYER_PIECES_FIGURE: FigureBlock = {
   k: 'figure',
@@ -87,7 +85,7 @@ export const PLAYER_PIECES_FIGURE: FigureBlock = {
       { pic: { model: 'control-module', color: 'blue', numeral: 7 }, label: 'Control Module', value: 'Numbered 1 to 18' },
       { pic: { model: 'control-module-tray' }, label: 'Control Module tray' },
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: 'On a blank tile' },
-      { pic: { model: 'teleporter', color: 'blue', orElse: TELEPORTER_ON_TILE, icon: 'teleporter' }, label: 'Teleporter' },
+      { pic: { model: 'teleporter', color: 'blue' }, label: 'Teleporter' },
       { pic: { model: 'power-token' }, label: 'Power Token' },
       { pic: { model: 'starting-player' }, label: 'Starting player marker' },
     ],
@@ -208,7 +206,7 @@ export const BANK_FIGURE: FigureBlock = {
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: String(BELT_COST) },
       { pic: { flat: { k: 'card', card: 'productionIncrease' } }, label: 'Leverage card', value: 'Mines + 1' },
       { pic: { model: 'mine-2' }, label: 'Mine', value: `${MINE_COSTS[0]}, then ${MINE_COSTS[1]}`, wide: true },
-      { pic: { model: 'teleporter', color: 'blue', orElse: TELEPORTER_ON_TILE, icon: 'teleporter' }, label: 'Teleporter', value: 'On the board + 1' },
+      { pic: { model: 'teleporter', color: 'blue' }, label: 'Teleporter', value: 'On the board + 1' },
     ],
   },
 };
@@ -426,8 +424,8 @@ export const TELEPORTER_FIGURE: FigureBlock = {
       aspect: 4 / 3,
     },
     callouts: [
-      { mark: '1', at: { piece: 'pf', buffer: 'output' }, text: 'On the output: whatever the Plate Factory makes goes straight into your materials.' },
-      { mark: '2', at: { piece: 'pp', buffer: 'input' }, text: 'On the input: when the Power Plant runs, you may hand over a material of yours for more Power Tokens.' },
+      { mark: '1', at: { piece: 'pf', teleporter: 'output' }, text: 'On the output: whatever the Plate Factory makes goes straight into your materials.' },
+      { mark: '2', at: { piece: 'pp', teleporter: 'input' }, text: 'On the input: when the Power Plant runs, you may hand over a material of yours for more Power Tokens.' },
     ],
     icon: 'teleporter',
   },

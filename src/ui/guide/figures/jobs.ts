@@ -47,7 +47,7 @@ export function modelIcon(model: FigModel): FigIcon | undefined {
 
 /**
  * How a model picture is drawn, given the models listed in public/models/manifest.json: the model
- * itself, its stand-in scene (a model not converted yet, such as the teleporter), or nothing (the
+ * itself, its stand-in scene (for a model not in the manifest), or nothing (the
  * picture then shows its icon).
  */
 export function modelPlan(job: Extract<FigureJob, { t: 'model' }>, available: ReadonlySet<string>): 'model' | 'orElse' | 'none' {

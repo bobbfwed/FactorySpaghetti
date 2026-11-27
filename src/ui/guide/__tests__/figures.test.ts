@@ -1,5 +1,5 @@
 // The guide's pictures: the figure block renders the expected structure; every picture names only
-// models in public/models/manifest.json (the teleporter may be missing) and icons that exist;
+// models in public/models/manifest.json and icons that exist;
 // every staged scene is legal under the engine's rules; the cache draws each picture once and a
 // picture that cannot be drawn falls back quietly.
 
@@ -129,7 +129,7 @@ describe('the guide\'s pictures', () => {
     }
   });
 
-  it('names only models in public/models (the teleporter may be missing) and icons that exist', () => {
+  it('names only models in public/models and icons that exist', () => {
     const bad: string[] = [];
     for (const { topic, f } of FIGURES) {
       for (const m of models(f)) if (!MODELS.has(m) && !OPTIONAL_MODELS.has(m)) bad.push(`${topic}: model ${m}`);
@@ -247,6 +247,7 @@ function sceneProblems(spec: SceneSpec, marks: readonly CalloutAt[]): string[] {
     if ('buffer' in m && !(m.buffer === 'input' ? p.input : p.output)) out.push(`${p.id} has no ${m.buffer}`);
     if ('slot' in m && p.type !== 'mine') out.push(`${p.id} has no meeple point`);
     if ('belt' in m && !s.belts.filter(b => b.pieceId === p.id)[m.belt]) out.push(`${p.id} has no belt ${m.belt}`);
+    if ('teleporter' in m && (m.teleporter === 'input' ? p.input : p.output)?.teleporterOwner == null) out.push(`${p.id} has no teleporter on its ${m.teleporter}`);
     if ('point' in m && (m.point < 0 || m.point >= (p.type === 'mine' ? 24 : 12))) out.push(`${p.id} has no point ${m.point}`);
   }
   return out;
@@ -321,7 +322,7 @@ describe('drawing pictures', () => {
     for (const s of spies) { expect(s).not.toHaveBeenCalled(); s.mockRestore(); }
   });
 
-  it('draws the teleporter model once the manifest lists it, its stand-in until then, and the icon without either', () => {
+  it('draws a model the manifest lists, a stand-in scene for one it does not, and the icon without either', () => {
     const tp: Extract<FigureJob, { t: 'model' }> = { t: 'model', model: 'teleporter', w: 150, h: 112, orElse: { pieces: [{ id: 'f', type: 'plateFact', q: 0, r: 0, claims: [[0, 3]], tpOut: 0 }] } };
     expect(modelPlan(tp, new Set(['teleporter']))).toBe('model');
     expect(modelPlan(tp, MODELS.has('teleporter') ? new Set() : MODELS)).toBe('orElse');
