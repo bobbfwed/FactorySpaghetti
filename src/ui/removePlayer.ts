@@ -30,6 +30,6 @@ export function removePlayerButton(ctrl: AppController, seat: number, cls: strin
   return h('button', {
     class: cls,
     attrs: { 'aria-label': `Remove ${name} from the game`, 'data-remove-seat': String(seat) },
-    onclick: (e: MouseEvent) => { e.stopPropagation(); askRemovePlayer(ctrl, seat); },
+    onclick: () => askRemovePlayer(ctrl, seat),
   }, REMOVE_PLAYER_LABEL);
 }
