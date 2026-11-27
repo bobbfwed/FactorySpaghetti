@@ -3,8 +3,8 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import type { GameState } from '../../engine/state';
 import { createBotGame, playUntil } from '../botGame';
-import { boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, BELT_PICK_Y, type SideHeights } from '../pick';
-import { boardBounds, sideLayout, pointCount, pointRole, TILE_TOP } from '../layout';
+import { boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, BELT_PICK_Y, TELEPORTER_PICK_Y, type SideHeights } from '../pick';
+import { boardBounds, sideLayout, pointCount, pointRole, teleporterPlacement, TILE_TOP } from '../layout';
 import type { Target } from '../types';
 
 let game: GameState;
@@ -67,6 +67,47 @@ describe('picking', () => {
       const hit = choose(boardCandidates(game, a.x, a.z), new Set([targetKey(t)]));
       expect(hit).toEqual(t);
     }
+  });
+
+  it('a tap on a teleporter picks its buffer (hit-tested half-way up the model), and buffers, points and pieces still resolve', () => {
+    // A teleporter on every buffer of every claimed building.
+    const withTeleporters: GameState = {
+      ...game,
+      board: game.board.map(p => (p.claims.length === 0 || p.type === 'mine' ? p : {
+        ...p,
+        input: p.input ? { ...p.input, teleporterOwner: p.claims[0]!.ownerId } : null,
+        output: p.output ? { ...p.output, teleporterOwner: p.claims[0]!.ownerId } : null,
+      })),
+    };
+    const side = sideLayout(boardBounds(withTeleporters.board), withTeleporters.mineCount);
+    // The isometric camera looks down at 45 degrees: a ray through the teleporter's middle meets the
+    // tile top a few millimetres behind it. Try it from four directions.
+    const drop = TELEPORTER_PICK_Y - TILE_TOP;
+    expect(drop).toBeGreaterThan(2);
+    let n = 0;
+    for (const piece of withTeleporters.board) {
+      for (const buffer of ['input', 'output'] as const) {
+        const buf = buffer === 'input' ? piece.input : piece.output;
+        if (!buf || buf.teleporterOwner === null || piece.type === 'mine') continue;
+        const t: Target = { kind: 'buffer', pieceId: piece.id, buffer };
+        const at = teleporterPlacement(piece, buffer);
+        for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
+          const hit = choose(boardCandidates(withTeleporters, at.x + dx * drop, at.z + dz * drop, undefined, at), new Set());
+          expect(hit, `${piece.id} ${buffer}`).toEqual(t);
+        }
+        // Still picked at its slots, as before.
+        const a = targetAnchor(withTeleporters, side, heights, t)!;
+        expect(choose(boardCandidates(withTeleporters, a.x, a.z), new Set())).toEqual(t);
+        n++;
+      }
+      for (let pos = 0; pos < pointCount(piece); pos++) {
+        if (pointRole(piece, pos) === 'disabled') continue;
+        const pt: Target = { kind: 'point', pieceId: piece.id, point: pos };
+        const a = targetAnchor(withTeleporters, side, heights, pt)!;
+        expect(choose(boardCandidates(withTeleporters, a.x, a.z), new Set())).toEqual(pt);
+      }
+    }
+    expect(n).toBeGreaterThan(10);
   });
 
   it('empty cells resolve to cells, and a current target wins over a more specific hit', () => {

@@ -187,7 +187,7 @@ Every physical component is a 3D object, either on the board or in front of a pl
 | Meeple | 3D meeple in the owner's colour, standing on a building or a mine slot |
 | Ore, Plate, Sphere, Tesseract | 3D pieces in the print shapes (triangle, parallelogram, disc, cube) on buffers and in the player's area |
 | Power Tokens | Round lightning-bolt tokens |
-| Teleporters | A distinct marker on a building's input or output buffer in the owner's colour (no print model exists yet — see D4) |
+| Teleporters | The designer's teleporter piece in the owner's colour, standing beside the buffer it is on (see D4) |
 | Leverage cards | A deck and discard pile on the table; your hand fanned at the bottom of the screen |
 | Bonus Tesseract cards | Face-up cards in front of the holder |
 | Dice | One die per mine, rolled on the table |
@@ -274,12 +274,13 @@ Feedback that makes the game readable:
 | Tesseract | Yellow-green open cross made of intersecting square frames | 10 mm |
 | Power Token | Yellow disc with an inlaid black lightning bolt | 22 mm |
 | Starting-player piece | Tall yellow-green piece in the tesseract's shape | 46 mm |
+| Teleporter | A small arched block in the player's colour, like a tunnel, with a round swirl-shaped portal on one end and a shallow foot under it. It has its own print file, `Teleporter.3mf`, in one colour. On the table it is drawn at three quarters of its printed size, lying beside the buffer's material and parallel to the stub, with the portal facing out towards the tile edge. | 15 × 10.4 × 11.9 mm |
 
 The material pieces are the same greens as the symbols on the tiles, so a symbol and the piece it stands for match by sight.
 
 Player colours in the printed set: **blue, red, orange, green**.
 
-No model exists yet for teleporters or the leverage cards. The mock-ups use placeholders for these.
+No model exists yet for the leverage cards. The mock-ups use placeholders for these.
 
 Milestone N4 converts these pieces from the AMS file into `public/models/`, with a gallery image in `docs/models/`.
 
@@ -323,7 +324,7 @@ Each has a default the work will follow unless changed.
 | D1 | Hidden cards: send the full state to every player? | Yes. Simple, and any client can take over as host. A player using developer tools could peek. | Send each player a redacted copy; hand-over then needs an escrow scheme and is noticeably more work. |
 | D2 | A disconnected player's turn | Wait 90 seconds, then a bot plays until they return. Host can override either way. | Always pause until they return; or skip their turn. |
 | D3 | Tile faces | Printed-plastic tiles with colour inlays, exactly as in the designer's current print file. | Lunar crater artwork from the rulebook diagrams, as a second selectable skin. |
-| D4 | Teleporter piece | A simple ring marker in the owner's colour on the buffer. | A model from the designer, when one exists. |
+| D4 | Teleporter piece | Closed: the designer provided `Teleporter.3mf` (2026-11-27). The table draws that model in the owner's colour beside the buffer, in place of the stand-in ring used until then. | — |
 | D5 | TURN relay for same-wifi and strict networks | Ship with the free PeerJS relays and an empty slot; pick a relay account before relying on in-person play. | Keep the LAN WebSocket server from `vite-prototype` as the in-person option. |
 | D6 | GitHub Pages on a private repository | Assumed available on the account's plan. | Make the repository public, or publish from a separate public repository. |
 | D7 | Rules values that differ between `RULES.md` and the card-text spreadsheet | Follow `RULES.md` and the engine: mines cost 6 and 18, Investor ≥10, Factory Empire ≥6, no "draw a card" step. | The spreadsheet lists 5 and 15, Investor 14+, Factory Empire 8+, and a card-draw step each turn. |
