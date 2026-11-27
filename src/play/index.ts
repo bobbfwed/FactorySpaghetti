@@ -5,7 +5,10 @@
 // Item ids accepted by choose():
 //   bank:placeBelt | bank:removeBelt | bank:buyBelt | bank:undoBelts | bank:buyCard | bank:buyMine | bank:teleporter | bank:exchange
 //   inv:plate | inv:sphere | inv:tesseract   a material in view.inventory (offers to break it down)
-//   route:own | route:buy | route:cancel | route:continue   a planned belt route (view.route)
+//   route:own | route:buy | route:later | route:cancel | route:takeBack | route:continue
+//                                       a planned belt route (view.route). route:cancel drops the
+//                                       unlaid part (laid belts stay); route:takeBack, offered when
+//                                       belts of the route were laid this turn, also picks those up.
 //   card:<cardType>                     a card in view.hand
 //   module:<n>                          a lit Control Module in view.tray
 //   menu:...                            an item of view.menu

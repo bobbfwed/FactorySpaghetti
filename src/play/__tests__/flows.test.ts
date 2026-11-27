@@ -413,13 +413,13 @@ describe('Belts', () => {
     c.tap({ kind: 'point', pieceId: to.pieceId, point: to.position });
     c.choose('route:own');
     s = play(s, p, c, sent);
-    c.cancel(); // leave belt mode without cancelling the plan
+    c.choose('route:later'); // put the plan aside without cancelling it
     c.choose('bank:placeBelt');
     const cont = c.view.choices?.items.find(i => i.id === 'route:continue');
     expect(cont?.label).toBe(W.routeContinue(cost - 1));
     c.choose('route:continue');
     expect(c.view.route).toHaveLength(cost - 1);
-    // "Cancel plan" forgets it.
+    // "Drop the rest of the route" forgets it (the belt laid on the earlier visit stays).
     c.choose('route:cancel');
     expect(c.view.choices?.items.some(i => i.id === 'route:continue') ?? false).toBe(false);
   });
