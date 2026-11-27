@@ -43,12 +43,15 @@ export function woodTexture(): THREE.CanvasTexture {
 export const NUMERAL_COLS = 6;
 export const NUMERAL_ROWS = 3;
 
-/** Black numerals 1-18 on transparent, 6 x 3 cells; 6 and 9 carry a bar underneath, as printed. */
+/**
+ * White numerals 1-18 on transparent, 6 x 3 cells; 6 and 9 carry a bar underneath, as printed. Each
+ * numeral instance tints them (near black, or dimmed on a Control Module that cannot be rolled).
+ */
 export function numeralAtlas(): THREE.CanvasTexture {
   const cell = 128;
   const [c, g] = canvas(cell * NUMERAL_COLS, cell * NUMERAL_ROWS);
   g.clearRect(0, 0, c.width, c.height);
-  g.fillStyle = '#111';
+  g.fillStyle = '#fff';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   for (let n = 1; n <= 18; n++) {

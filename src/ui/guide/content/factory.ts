@@ -52,7 +52,7 @@ export const claiming: Topic = {
         { k: 'p', t: 'Free upgrades all go to one building: once you have used one, the rest can only go to that building (to any of your modules there).' },
         { k: 'p', t: 'Every claim must be paid for: with Mine credits (one claim per round) or with Production Increase (one claim per card). Only two claims are free: your first claims before the first turn, and Short Sale.' },
         { k: 'p', t: 'The module you place must be in your tray. A module already on another building is not in your tray: to free it, upgrade that building past it first.' },
-        { k: 'p', t: `Modules below the number of Mines can no longer be placed. With ${MINE_COUNT} Mines your ${listWords(Array.from({ length: MINE_COUNT - 1 }, (_, i) => String(i + 1)))} are of no more use (the printed rulebook suggests turning them face down).` },
+        { k: 'p', t: `Modules below the number of Mines can no longer be placed. With ${MINE_COUNT} Mines your ${listWords(Array.from({ length: MINE_COUNT - 1 }, (_, i) => String(i + 1)))} are of no more use: they can never be rolled. The game greys them out, in your tray and on the board; tap one in your tray to see why. One already on a building stays there, and you can upgrade it to a higher one.` },
         { k: 'p', t: 'Nothing puts your module on a building another player has claimed: Short Sale and Changing Priorities, too, go only to an unclaimed building or one you already hold a claim on. See their card entries in [[cards|Leverage cards]].' },
       ],
     },
