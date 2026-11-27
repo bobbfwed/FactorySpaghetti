@@ -86,7 +86,7 @@ export function boardCandidates(
       const s = bufferSlotWorld(piece, which, i);
       best = Math.min(best, Math.hypot(s.x - x, s.z - z));
     }
-    // A teleporter on the buffer stands a little further in; a tap on it means the buffer. It is
+    // A teleporter on the buffer stands beside its material; a tap on it means the buffer. It is
     // hit-tested where the tap ray crosses its mid-height.
     if (buf.teleporterOwner !== null) {
       const t = teleporterPlacement(piece, which);

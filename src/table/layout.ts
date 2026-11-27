@@ -324,7 +324,7 @@ const unit = (x: number, z: number): XZ => { const l = Math.hypot(x, z) || 1; re
  * - a buffer with several stubs (the Sphere and Tesseract Factories' inputs): between the material
  *   of its first two stubs, over the printed input icons.
  * Either way it clears the material in the buffer, the Control Modules (one to three) and the
- * meeple (checked by layout.test.ts). Mines have no stubs and are never claimed, so they never
+ * meeple (checked by teleporter.test.ts). Mines have no stubs and are never claimed, so they never
  * carry a teleporter; the buffer's anchor is used. Yaw is in Three.js's convention.
  */
 export function teleporterPlacement(
@@ -332,11 +332,12 @@ export function teleporterPlacement(
   buffer: 'input' | 'output',
 ): Placement {
   const positions = piece.type === 'mine' ? [] : positionsWithRole(piece, buffer === 'input' ? 'input_buffer' : 'output_buffer');
-  let at: XZ, edge: XZ;
   if (positions.length === 0) {
     const a = bufferAnchorWorld(piece, buffer);
     return { x: a.x, z: a.z, yaw: piecePlacement(piece).yaw };
-  } else if (positions.length === 1) {
+  }
+  let at: XZ, edge: XZ;
+  if (positions.length === 1) {
     // Beside the stub, on the side away from the middle of its edge (towards the nearer corner):
     // the printed icons are on the other side, and no belt uses a factory's other holes.
     const f = pointFrame(piece.type, piece.rotation ?? 0, positions[0]!);
