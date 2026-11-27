@@ -10,6 +10,8 @@ const params = new URLSearchParams(location.search);
 const view = params.get('view') ?? 'all';
 const topDown = params.get('top') === '1';
 const PLAYER_BLUE = 0x2f5fd0;
+/** Extra turn (radians) for pieces whose interesting face would otherwise point away from the camera. */
+const TURN = { teleporter: -Math.PI / 3 };
 
 const VIEWS = {
   all: {
@@ -146,6 +148,8 @@ for (const row of rowInfo) {
     const cx = x + m.bbox.size[0] / 2 - (m.bbox.min[0] + m.bbox.max[0]) / 2;
     const cz = z + row.depth / 2 - (m.bbox.min[2] + m.bbox.max[2]) / 2;
     obj.position.set(cx, 0, cz);
+    // The teleporter's portal is on its +X end; turn it towards the isometric camera so it shows.
+    if (!topDown && TURN[m.name]) obj.rotation.y = TURN[m.name];
     layout.add(obj);
     placed.push({ m, local: new THREE.Vector3(cx + (m.bbox.min[0] + m.bbox.max[0]) / 2, 0, z + row.depth + 2) });
     x += m.bbox.size[0] + gap;
