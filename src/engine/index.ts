@@ -12,6 +12,7 @@ export {
 } from './rules/mineRewards';
 export { listedForm, isListedMove } from './rules/legalActions';
 export { payMaterials, canAfford, isReservedPoint } from './rules/flow';
+export { moduleBelowFloor } from './rules/modules';
 
 export type {
   GameState,
