@@ -9,6 +9,10 @@ import {
   BUILDING_NAME, MATERIALS, MATERIAL_NAME, MINE_RESOURCE_REWARD, PLAYER_COUNTS, STACK_PIECE_TYPES, amount, count, listWords, recipeWords,
   stackSize, startingPiecesPerPlayer, startingPiecesWords, totalPieces,
 } from './facts';
+import {
+  BOARD_PIECES_FIGURE, CARD_AND_DICE_FIGURE, FACTORY_TILE_FIGURE, MATERIALS_FIGURE, MINES_FIGURE, PLAYER_AREA_FIGURE,
+  PLAYER_PIECES_FIGURE, SETUP_FIGURE,
+} from './figures';
 
 const makes = (type: 'plateFact' | 'sphereFact' | 'tesseractFact'): string => {
   const r = FACTORY_RECIPES[type]!;
@@ -35,7 +39,7 @@ export const goal: Topic = {
     },
     { k: 'p', t: 'If the board pieces run out before anyone has won, the round is played to its end and then the player whose materials are worth the most wins. See [[winning|Winning and the end of the game]].' },
     { k: 'h', t: 'Materials and their value', id: 'values' },
-    { k: 'icons', items: MATERIALS.map(m => ({ icon: m === 'tesseract' ? 'tess' as const : m, label: `${MATERIAL_NAME[m]} · ${MATERIAL_VALUES[m]}` })) },
+    MATERIALS_FIGURE,
     { k: 'p', t: `Each material has a value: ${listWords(MATERIALS.map(m => `${MATERIAL_NAME[m]} ${MATERIAL_VALUES[m]}`))}. Prices are paid in value, and value decides the winner if the pieces run out. You can hold at most **${INVENTORY_CAP} of each material** and **${POWER_TOKEN_CAP} Power Tokens**; anything more is lost.` },
     { k: 'note', tone: 'tip', t: 'New to the game? Read [[turn|Your turn at a glance]], then start a solo game against bots. Whatever you can do right now glows, and the game never lets you make an illegal move, so you can learn by trying.' },
   ],
@@ -49,6 +53,8 @@ export const table: Topic = {
   blocks: [
     { k: 'p', t: 'The board grows during the game: every turn adds a six-sided piece next to the pieces already there.' },
     { k: 'h', t: 'The board pieces', id: 'pieces' },
+    BOARD_PIECES_FIGURE,
+    MINES_FIGURE,
     {
       k: 'table', head: ['Piece', 'What it does'], rows: [
         [BUILDING_NAME.mine, 'A double-size piece. Ore leaves it at its ore exits, where the printed rays and tracks reach the edge. Each Mine also has two spots for a meeple. The number of Mines on the board sets how many dice are rolled.'],
@@ -87,9 +93,12 @@ export const table: Topic = {
         `A hand for **Leverage cards**, empty at the start. You may play ${MAX_CARDS_PLAYED_PER_TURN} per turn.`,
       ],
     },
+    PLAYER_PIECES_FIGURE,
+    CARD_AND_DICE_FIGURE,
     { k: 'p', t: `You start with no materials. They come from your buildings, from Leverage cards, and from a Mine's resource point (the first Mine's gives ${amount(MINE_RESOURCE_REWARD[0]!.n, MINE_RESOURCE_REWARD[0]!.material)}). The bank never runs out.` },
     { k: 'h', t: 'Connection points', id: 'points' },
     { k: 'p', t: 'Each single piece has 12 points around its edge, 2 on each side. Where two pieces touch, their points line up in pairs. That is how material moves from piece to piece: an output that touches an input passes material across, and belts run from point to point. See [[belts|Belts]].' },
+    FACTORY_TILE_FIGURE,
   ],
   see: ['screen', 'factories', 'belts'],
 };
@@ -111,6 +120,7 @@ export const screen: Topic = {
     },
     { k: 'h', t: 'Your area' },
     { k: 'p', t: 'Your area holds your Control Module tray, your meeple, your Power Tokens, belts, teleporters, your materials with their **Total Value** (for example "Total Value: 11"), and the Leverage cards in your hand. On a phone it is the sheet at the bottom of the screen; pulled down, it shows your materials with their total after an equals sign ("= 11"). Pull it up for the tabs **Tray**, **Cards**, **Log** and **Rules**.' },
+    PLAYER_AREA_FIGURE,
     {
       k: 'list', items: [
         'The **Belts** tile reads **Lay a belt** and glows when you can lay belts: press it to start. **Remove** beside it takes one of your belts back. See [[belts|Belts]].',
@@ -182,6 +192,7 @@ export const starting: Topic = {
       ],
     },
     { k: 'p', t: 'When it is your pick, the buildings you can claim glow: tap one and confirm.' },
+    SETUP_FIGURE,
     {
       k: 'details', blocks: [
         { k: 'p', t: 'With one Mine, one die is rolled, so only 1 to 6 can come up. Your Plate Factory runs on a 3 and your Power Plant on a 2.' },

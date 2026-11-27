@@ -5,6 +5,8 @@
 //   [[topic#anchor|text]]    a link to a heading (or card) inside a topic
 // Nothing else is parsed: no HTML, no markdown library.
 
+import type { FigureBlock } from './figures/types';
+
 /** A small picture from the interface's own icon set. */
 export type GuideIcon = 'ore' | 'plate' | 'sphere' | 'tess' | 'power' | 'card' | 'mine' | 'belt' | 'teleporter' | 'meeple' | 'dice' | 'exchange' | 'book';
 
@@ -26,7 +28,9 @@ export type Block =
   /** "How exactly does this work?": collapsed until the reader opens it. */
   | { readonly k: 'details'; readonly title?: string; readonly blocks: readonly Block[] }
   /** One rule as it was and as it is now. */
-  | { readonly k: 'change'; readonly title: string; readonly before: string; readonly now: string; readonly beforeLabel?: string; readonly nowLabel?: string };
+  | { readonly k: 'change'; readonly title: string; readonly before: string; readonly now: string; readonly beforeLabel?: string; readonly nowLabel?: string }
+  /** A picture drawn from the game's own pieces (figures/types.ts). */
+  | FigureBlock;
 
 export interface Topic {
   /** Unique, used in links ("belts", "cards#sinkHole"). */

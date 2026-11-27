@@ -11,6 +11,10 @@ import {
   BUILDING_NAME, FACTORY_TYPES, MATERIALS, MATERIAL_NAME, MINE_NUMBERS, amount, cardPriceWords, count, exchangeDown,
   exchangeWords, listWords, mineExits, minePriceWords, piecePoints, pointRanges, recipeWords, upgradePointWords,
 } from './facts';
+import {
+  BANK_FIGURE, BELT_CHAIN_FIGURE, BELT_RULE_FIGURE, CLAIMED_FIGURE, POWER_PLANT_FIGURE, PRODUCTION_FIGURE, TELEPORTER_FIGURE,
+  TRAY_FIGURE, UPGRADE_FIGURE, exchangeFigure, recipeFigure,
+} from './figures';
 
 const claimCost = (module: number, mines: number): number => module - mines + 1;
 
@@ -28,6 +32,7 @@ export const claiming: Topic = {
   summary: 'Control Modules, what a claim costs, and where upgrades come from.',
   blocks: [
     { k: 'p', t: 'A building is yours while one of your Control Modules is on it. The number on the module is the dice total that activates the building. A higher number is not better in itself: what matters is how often that total is rolled. See [[step-roll#odds|Which totals come up]].' },
+    CLAIMED_FIGURE,
     { k: 'h', t: 'Upgrades are the currency', id: 'upgrades' },
     { k: 'p', t: 'Claims and upgrades are paid in **upgrades**, never in materials. Upgrades come from three places:' },
     {
@@ -39,10 +44,12 @@ export const claiming: Topic = {
     },
     { k: 'h', t: 'Upgrading', id: 'upgrade' },
     { k: 'p', t: 'Swap a Control Module on one of your buildings for a higher one from your tray. It costs the difference: changing a 4 for a 6 costs 2 upgrades. The old module goes back to your tray. Tap the building: its menu offers what you can pay for right now — **Upgrade with end-of-round upgrades**, **Upgrade with Mine credits**, or, with Production Increase, **Upgrade a Control Module** — then tap a glowing Control Module in your tray.' },
+    UPGRADE_FIGURE,
     { k: 'h', t: 'Claiming', id: 'claim' },
     { k: 'p', t: 'Put a Control Module from your tray on a building nobody else has claimed. The lowest module you may place equals the number of Mines (the **claim floor**), and it costs 1 upgrade; each step higher costs 1 more:' },
     { k: 'note', t: '**Cost of placing module M = M − number of Mines + 1**' },
     { k: 'p', t: 'Tap the building and choose **Claim with your free claim** (paid with Mine credits, in your round-end turn) or, with Production Increase, **Claim with a Control Module**; then tap a glowing Control Module in your tray.' },
+    TRAY_FIGURE,
     { k: 'table', head: ['Module', ...MINE_NUMBERS.map(m => (m === 1 ? '1 Mine' : `${m} Mines`))], rows: claimCostRows(), caption: 'What a claim costs' },
     { k: 'note', tone: 'example', t: 'With 2 Mines and 4 upgrades you can claim a building with module 5 (5 − 2 + 1 = 4) — the 1 is skipped because it is below the floor.' },
     { k: 'p', t: `You can put up to **${MAX_CLAIMS_PER_BUILDING}** of your Control Modules on the same building, so it activates on more totals. Each extra claim costs the same as a new claim.` },
@@ -74,6 +81,7 @@ export const production: Topic = {
     { k: 'h', t: 'Power Plants', id: 'power-plants' },
     { k: 'p', t: 'A Power Plant runs by itself and gives its owner Power Tokens. If material sits in its input, it uses that up and gives more:' },
     { k: 'table', head: ['In its input', 'Power Tokens'], rows: powerRows() },
+    POWER_PLANT_FIGURE,
     { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you are already at the Power Token limit, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
     { k: 'p', t: `A Tesseract never goes into a Power Plant. You can hold up to ${POWER_TOKEN_CAP} Power Tokens.` },
     { k: 'h', t: 'Factories', id: 'factories' },
@@ -114,6 +122,9 @@ export const factories: Topic = {
         return [BUILDING_NAME[t], r.inputs.map(recipeWords).join(' · '), `1 ${MATERIAL_NAME[r.product]}`, String(FACTORY_POWER_COST[r.product as Exclude<Material, 'ore'>])];
       }),
     },
+    recipeFigure('plateFact'),
+    recipeFigure('sphereFact'),
+    recipeFigure('tesseractFact'),
     { k: 'p', t: `A ${BUILDING_NAME.powerPlant} takes one ${listWords(POWER_PLANT_INPUTS.map(m => MATERIAL_NAME[m]), 'or')}, or runs empty. See [[production#power-plants|Power Plants]].` },
     { k: 'p', t: 'Materials can arrive in any order and any slot; only the set counts. A Tesseract is never an input.' },
     { k: 'h', t: 'Getting material in' },
@@ -151,6 +162,7 @@ export const moving: Topic = {
         '**Teleporters** connect a building\'s input or output with your materials. See [[teleporters|Teleporters]].',
       ],
     },
+    PRODUCTION_FIGURE,
     { k: 'p', t: 'Mines never run out. An input connected to an ore exit is filled again whenever material moves.' },
     { k: 'h', t: 'When material moves', id: 'when' },
     {
@@ -210,6 +222,7 @@ export const belts: Topic = {
   blocks: [
     { k: 'p', t: 'A belt lies on one piece and links two of its connection points. It never crosses from one piece to another. Instead, belts **chain**: where a belt ends at the edge of a piece, the next belt can start at the matching point of the neighbouring piece.' },
     { k: 'p', t: 'A chain carries material from a **source** — a Mine\'s ore exit or a building\'s output — to the **input** of a claimed building, when its first and last belts end at the points facing them.' },
+    BELT_CHAIN_FIGURE,
     { k: 'h', t: 'Laying belts', id: 'laying' },
     {
       k: 'steps', items: [
@@ -222,6 +235,7 @@ export const belts: Topic = {
     { k: 'p', t: 'A plan you keep is offered again the next time you press **Lay a belt**: **Continue your planned route**.' },
     { k: 'p', t: 'On the table each belt points the way material flows along it. While a chain is not yet connected to a source or an input, it points from where you started to where you ended; once the flow is known, the whole chain turns to match it.' },
     { k: 'h', t: 'Where belts can go', id: 'rules' },
+    BELT_RULE_FIGURE,
     {
       k: 'list', items: [
         'A belt\'s two ends must be **more than two points apart** around the piece: it cannot run along one edge or cut across a single corner.',
@@ -267,6 +281,7 @@ export const teleporters: Topic = {
         '**On an output**: whatever the building makes goes straight into your materials. Anything sitting in that output is sent to you as soon as you have room.',
       ],
     },
+    TELEPORTER_FIGURE,
     { k: 'h', t: 'Placing a teleporter' },
     { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap the input or output of one of your buildings, and confirm. A building\'s menu also offers **Teleporter on the input** and **Teleporter on the output**.' },
     { k: 'p', t: `**Price: the number of teleporters on the board (all players) + 1.** The first costs ${teleporterCost(0)}, the next ${teleporterCost(1)}, and so on. It is paid with change like any purchase: a lone Sphere can pay for a teleporter costing ${teleporterCost(2)}. See [[bank#paying|Paying with change]].` },
@@ -314,6 +329,7 @@ export const bank: Topic = {
         ['Teleporter', 'Teleporters on the board + 1'],
       ],
     },
+    BANK_FIGURE,
     { k: 'p', t: `Prices are in material value: ${listWords(MATERIALS.map(m => `${MATERIAL_NAME[m]} ${MATERIAL_VALUES[m]}`))}. Your materials show their **Total Value**; you can buy anything whose price is no more than that.` },
     { k: 'h', t: 'Paying with change', id: 'paying' },
     { k: 'p', t: 'You do not pick which materials to hand over. The game pays so that you keep the most valuable materials possible: it hands in materials worth at least the price, and the bank gives the change back in smaller materials than the largest one handed in. A material is broken down only when it has to be.' },
@@ -329,6 +345,7 @@ export const bank: Topic = {
     { k: 'h', t: 'Exchanging down', id: 'exchange' },
     { k: 'p', t: 'You can break a material into smaller ones whenever it is your actions step or your round-end turn: press a Plate, Sphere or Tesseract in your materials, or the bank\'s **Exchange**.' },
     { k: 'table', head: ['Give', 'Get'], rows: exchangeRows() },
+    exchangeFigure(),
     { k: 'p', t: 'There is no exchanging up, and no trading between players.' },
     {
       k: 'details', blocks: [

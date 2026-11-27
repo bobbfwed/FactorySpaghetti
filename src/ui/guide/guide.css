@@ -103,6 +103,66 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-lab { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 800; color: var(--text-3); }
 .g-now .g-lab { color: var(--gold); }
 
+/* ---- figures: pictures drawn from the game's own pieces (figures/) ---- */
+.g-fig { margin: 4px 0 18px; }
+.g-figcap { margin-top: 8px; font-size: 14px; line-height: 1.45; color: var(--text-2); }
+.g-pic {
+  position: relative; width: 100%; overflow: hidden; border-radius: 10px;
+  background: radial-gradient(ellipse at 50% 55%, #4a443d 0%, #2b2723 80%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+.g-pic.g-scene { background: #2f1f14; border-radius: 12px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.05); }
+.g-img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.g-pic.is-loading::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(100deg, transparent 30%, rgba(255, 255, 255, 0.06) 50%, transparent 70%) 0 0 / 220% 100%;
+  animation: g-shimmer 1.4s linear infinite;
+}
+@keyframes g-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@media (prefers-reduced-motion: reduce) { .g-pic.is-loading::after { animation: none; } }
+.g-pic.is-fallback { display: grid; place-items: center; }
+.g-pic.is-fallback > .ic { width: 40px; height: 40px; }
+
+.g-lineup { list-style: none; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 8px; padding: 0; margin: 0; }
+.g-litem { flex: 0 1 112px; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.g-litem.wide { flex-basis: 232px; }
+.g-litem.flat { flex: 0 0 auto; max-width: 100%; }
+.g-flat { display: flex; align-items: center; justify-content: center; min-height: 40px; max-width: 100%; }
+.g-flat .tg-die { width: 34px; height: 34px; border-radius: 7px; }
+.g-flat .tg-die i { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
+.g-flat .g-flaticon .ic { width: 40px; height: 40px; }
+.g-flat .tg-pips .tg-pip { width: 24px; height: 24px; }
+.g-tray .tg-modtray { --m: 28px; --mg: 4px; }
+.g-plabel { margin-top: 6px; font-size: 13.5px; font-weight: 750; line-height: 1.25; overflow-wrap: anywhere; }
+.g-pval { margin-top: 2px; font-size: 12.5px; font-weight: 700; color: var(--gold); line-height: 1.25; }
+.g-sign { align-self: flex-start; margin-top: 30px; min-width: 14px; text-align: center; font-weight: 900; font-size: 20px; color: var(--gold); }
+
+.g-recipe { padding: 10px 12px 12px; border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
+.g-rhead { display: flex; align-items: center; gap: 12px; }
+.g-rhead > .g-pic { flex: 0 0 112px; width: 112px; }
+.g-rname { display: flex; flex-direction: column; gap: 2px; font-size: 16px; }
+.g-rrows { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 4px; }
+.g-rrows li { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.g-pic.g-mini { flex: 0 0 52px; width: 52px; background: none; box-shadow: none; border-radius: 6px; }
+.g-pic.g-mini.is-fallback > .ic { width: 26px; height: 26px; }
+.g-rrows .g-sign { margin-top: 0; align-self: center; font-size: 17px; }
+.g-rrows .g-arrow { padding: 0 4px; }
+
+.g-legend { list-style: none; display: grid; gap: 6px; padding: 0; margin: 10px 0 0; font-size: 14.5px; line-height: 1.4; }
+.g-legend li { display: flex; align-items: flex-start; gap: 8px; }
+.g-mark {
+  flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  background: var(--gold); color: #121214; font-weight: 900; font-size: 13px; line-height: 1;
+}
+.g-mark.ok { background: #3fbf4c; color: #0c1a0e; }
+.g-mark.no { background: #e0454f; color: #fff; }
+.g-onpic { position: absolute; transform: translate(-50%, -50%); pointer-events: none; box-shadow: 0 0 0 2px rgba(18, 18, 20, 0.75), 0 2px 6px rgba(0, 0, 0, 0.6); }
+@media (max-width: 400px) {
+  .g-onpic { width: 20px; height: 20px; font-size: 11.5px; }
+  .g-litem { flex-basis: 104px; }
+  .g-litem.wide { flex-basis: 216px; }
+}
+
 /* ---- details ---- */
 .g-details { margin: 0 0 16px; border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(232, 183, 48, 0.28); }
 .g-details > summary {

@@ -8,6 +8,7 @@ import type { Block, Guide, Topic } from './types';
 import type { VChild, VNode } from './vdom';
 import { v, vIcon } from './vdom';
 import { findTopic, topicOrder } from './content';
+import { renderFigure } from './figures/render';
 
 export const DETAILS_TITLE = 'How exactly does this work?';
 
@@ -51,6 +52,8 @@ export function renderBlock(b: Block): VNode {
         v('div', { class: 'g-changetitle' }, renderInline(b.title)),
         v('div', { class: 'g-before' }, v('span', { class: 'g-lab' }, b.beforeLabel ?? 'Before'), v('span', null, renderInline(b.before))),
         v('div', { class: 'g-now' }, v('span', { class: 'g-lab' }, b.nowLabel ?? 'Now'), v('span', null, renderInline(b.now))));
+    case 'figure':
+      return renderFigure(b, renderInline);
   }
 }
 

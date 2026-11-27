@@ -4,6 +4,8 @@
 
 import type { IconName } from '../icons';
 import { icon } from '../icons';
+import { flatDom } from './figures/flat';
+import type { Flat } from './figures/types';
 
 export interface VNode {
   readonly tag: string;
@@ -35,6 +37,10 @@ export const vIcon = (name: IconName): VNode => ({ tag: 'icon', attrs: { name } 
 export function toDom(node: VChild): Node {
   if (typeof node === 'string') return document.createTextNode(node);
   if (node.tag === 'icon') return icon((node.attrs?.name ?? 'book') as IconName, undefined, 'ic');
+  // A flat picture (figures/flat.ts): built by the game screen's own code, all text as text nodes.
+  if (node.tag === 'flat') {
+    try { return flatDom(JSON.parse(node.attrs?.data ?? 'null') as Flat); } catch { return document.createTextNode(node.attrs?.label ?? ''); }
+  }
   const el = document.createElement(node.tag);
   for (const [k, val] of Object.entries(node.attrs ?? {})) el.setAttribute(k, val);
   for (const c of node.children ?? []) el.appendChild(toDom(c));
