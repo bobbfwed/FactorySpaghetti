@@ -65,7 +65,7 @@
       "metalness": 0
     }
   },
-  "totalBytes": 1231756,
+  "totalBytes": 1247184,
   "models": [
     {
       "name": "tile-blank",
@@ -940,6 +940,53 @@
       "bytes": 5124,
       "notes": [
         "One tile body (part Body12) of the Number Tiles AMS set, turned face up (it prints face down); the engraved numeral is filled flat (numerals are meant to be textures)."
+      ]
+    },
+    {
+      "name": "teleporter",
+      "file": "teleporter.glb",
+      "title": "Teleporter",
+      "source": {
+        "file": "Teleporter.3mf",
+        "items": [
+          {
+            "index": 0
+          }
+        ]
+      },
+      "colourParts": false,
+      "parts": [
+        {
+          "material": "player",
+          "triangles": 400,
+          "vertices": 501
+        }
+      ],
+      "trianglesBefore": 5150,
+      "trianglesAfter": 400,
+      "budget": 400,
+      "withinBudget": true,
+      "simplifyError": 0.056,
+      "bbox": {
+        "min": [
+          -7.5,
+          0,
+          -5.2
+        ],
+        "max": [
+          7.5,
+          11.875,
+          5.2
+        ],
+        "size": [
+          15,
+          11.875,
+          10.4
+        ]
+      },
+      "bytes": 15428,
+      "notes": [
+        "From the designer's separate Teleporter.3mf (one single-colour part, no filament data), so the whole piece is the player-tinted material. An arched block 15 x 10.4 x 11.9 mm with a round portal on its +X end and a 0.7 mm foot under it, kept as printed."
       ]
     },
     {

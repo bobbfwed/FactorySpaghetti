@@ -1,5 +1,5 @@
 {
-  "_comment": "What tools/convert-3mf.mjs exports. Every piece comes from 'Factory Speghetti AMS.3mf' (the designer's current file). 'item' picks a build item on the print plate (by triangle count of the whole item, by object name, or by index); 'partIndex' takes one copy out of an assembly of copies; 'parts' keeps only the named parts. Colours come from the filament number of each part and from per-triangle paint, mapped to material names by 'filamentRoles' (colours in piece-theme.json).",
+  "_comment": "What tools/convert-3mf.mjs exports. Every piece comes from 'Factory Speghetti AMS.3mf' (the designer's current file), except the teleporter, which has its own file 'Teleporter.3mf'. 'item' picks a build item on the print plate (by triangle count of the whole item, by object name, or by index); 'partIndex' takes one copy out of an assembly of copies; 'parts' keeps only the named parts. Colours come from the filament number of each part and from per-triangle paint, mapped to material names by 'filamentRoles' (colours in piece-theme.json).",
   "defaults": { "maxError": 0.1, "crease": 35 },
   "filamentRoles": {
     "1": "inlay-black",
@@ -31,6 +31,7 @@
     { "name": "power-token", "title": "Power token", "source": "Factory Speghetti AMS.3mf", "item": { "name": "Power Tile AMS" }, "simplifyPerPart": true, "budget": 800 },
     { "name": "starting-player", "title": "Starting-player piece", "source": "Factory Speghetti AMS.3mf", "item": { "triangles": 6668 }, "budget": 800 },
     { "name": "control-module", "title": "Control Module tile", "source": "Factory Speghetti AMS.3mf", "item": { "name": "Number Tiles AMS" }, "parts": ["Body12"], "filamentRoles": { "3": "player" }, "flip": true, "fillEngraving": { "depth": 0.45, "inset": 6 }, "maxError": 0.1, "budget": 120, "notes": "One tile body (part Body12) of the Number Tiles AMS set, turned face up (it prints face down); the engraved numeral is filled flat (numerals are meant to be textures)." },
+    { "name": "teleporter", "title": "Teleporter", "source": "Teleporter.3mf", "item": { "index": 0 }, "role": "player", "budget": 400, "notes": "From the designer's separate Teleporter.3mf (one single-colour part, no filament data), so the whole piece is the player-tinted material. An arched block 15 x 10.4 x 11.9 mm with a round portal on its +X end and a 0.7 mm foot under it, kept as printed." },
     { "name": "control-module-tray", "title": "Control Module tray", "source": "Factory Speghetti AMS.3mf", "item": { "triangles": 83682, "partIndex": 1 }, "filamentRoles": { "1": "black" }, "rotateZ": 135, "maxError": 0.25, "budget": 3000, "notes": "The 3 x 6 pocket half of the two-part tray assembly (the other half, a flat lid-like panel, is not exported). Turned square to the axes: it sits at 45 degrees on the print plate." }
   ]
 }
