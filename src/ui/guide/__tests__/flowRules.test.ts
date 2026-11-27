@@ -23,3 +23,10 @@ describe('a building feeds only its own player\'s buildings (#51)', () => {
     expect(titles()).toContain('Your buildings feed only your own buildings');
   });
 });
+
+describe('removing this turn\'s Mine belt frees the limit (#52)', () => {
+  it('Belts says so, and the change is listed', () => {
+    expect(text('belts')).toContain('Removing just the belt you laid at a Mine this turn does the same');
+    expect(titles()).toContain('Removing this turn\'s Mine belt lets you lay another');
+  });
+});

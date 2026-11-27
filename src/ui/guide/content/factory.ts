@@ -235,7 +235,7 @@ export const belts: Topic = {
     { k: 'h', t: 'Whose belts carry material', id: 'whose' },
     { k: 'p', t: 'Your belts serve your buildings. A belt end facing the input or output of a building claimed only by other players is a **dead end**: it neither feeds that building nor draws from it. That can happen when someone else claims a building after your belt was laid. The belt stays on the board and works again if you gain a claim on that building, or if it becomes unclaimed.' },
     { k: 'h', t: 'Buying and removing', id: 'buying' },
-    { k: 'p', t: `You start with ${count(BELT_COUNT, 'belt')}. Buy more from the bank for ${BELT_COST} each. In your actions step you can remove any of your belts (**Remove**, tap one of your glowing belts, then **Remove this belt**); it goes back to your supply, ready to be laid again for free. **Undo belts** removes all the belts you laid this turn, and lets you lay a belt at a Mine again.` },
+    { k: 'p', t: `You start with ${count(BELT_COUNT, 'belt')}. Buy more from the bank for ${BELT_COST} each. In your actions step you can remove any of your belts (**Remove**, tap one of your glowing belts, then **Remove this belt**); it goes back to your supply, ready to be laid again for free. **Undo belts** removes all the belts you laid this turn, and lets you lay a belt at a Mine again. Removing just the belt you laid at a Mine this turn does the same; removing one laid on an earlier turn does not give you an extra one.` },
     { k: 'h', t: 'Which holes take a belt', id: 'points' },
     { k: 'p', t: 'A building\'s input and output points have no hole; every other hole on a building piece takes a belt, for any player.' },
     pointsTable(),

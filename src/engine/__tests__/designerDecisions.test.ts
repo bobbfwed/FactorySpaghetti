@@ -396,6 +396,53 @@ describe('the one-Mine-belt-per-turn limit counts only ends facing an ore exit (
     expect(code(s, onB)).toBe('MINE_BELT_LIMIT');
     expect(listed(s, onB, 0)).toBe(false);
   });
+
+  // #52: picking up a belt frees the limit like Undo belts, but only for this turn's Mine belt.
+  const removeA: Action = { type: 'REMOVE_BELT', beltId: 'belt-p0-A-0-7' };
+  const removeB: Action = { type: 'REMOVE_BELT', beltId: 'belt-p0-B-1-7' };
+
+  it('picking up the Mine belt laid this turn lets another Mine belt be laid (#52)', () => {
+    let s = actionsState([piece('mine-1', 'mine', 0, 0), A, B]);
+    s = expectOk(applyAction(s, onA));
+    expect(s.mineBeltPlacedThisTurn).toBe(true);
+    s = expectOk(applyAction(s, removeA));
+    expect(s.mineBeltPlacedThisTurn).toBe(false);
+    expect(listed(s, onB, 0)).toBe(true);
+    s = expectOk(applyAction(s, onB));
+    expect(s.mineBeltPlacedThisTurn).toBe(true);
+    // Still only one per turn.
+    expect(code(s, onA)).toBe('MINE_BELT_LIMIT');
+    expect(listed(s, onA, 0)).toBe(false);
+  });
+
+  it('picking up another belt keeps the limit while the Mine belt laid this turn stays (#52)', () => {
+    let s = actionsState([piece('mine-1', 'mine', 0, 0), A, B, piece('X', 'blank', 9, 9)]);
+    s = expectOk(applyAction(s, onA));
+    s = expectOk(applyAction(s, { type: 'PLACE_BELT', pieceId: 'X', fromPoint: 0, toPoint: 6 }));
+    s = expectOk(applyAction(s, { type: 'REMOVE_BELT', beltId: 'belt-p0-X-0-6' }));
+    expect(s.mineBeltPlacedThisTurn).toBe(true);
+    expect(code(s, onB)).toBe('MINE_BELT_LIMIT');
+  });
+
+  it('picking up a Mine belt laid on an earlier turn grants no extra Mine belt (#52)', () => {
+    const earlier: Belt = { id: 'belt-p0-A-0-7', ownerId: 0, pieceId: 'A', fromPoint: 0, toPoint: 7 };
+    // This turn's Mine belt is already laid: the old one is picked up, the limit stays used.
+    let s = actionsState([piece('mine-1', 'mine', 0, 0), A, B], [earlier]);
+    s = expectOk(applyAction(s, onB));
+    s = expectOk(applyAction(s, removeA));
+    expect(s.mineBeltPlacedThisTurn).toBe(true);
+    expect(code(s, onA)).toBe('MINE_BELT_LIMIT');
+    expect(listed(s, onA, 0)).toBe(false);
+    // Nothing laid this turn: picking up the old one leaves the normal one Mine belt, no more.
+    let t = actionsState([piece('mine-1', 'mine', 0, 0), A, B], [earlier]);
+    t = expectOk(applyAction(t, removeA));
+    expect(t.mineBeltPlacedThisTurn).toBe(false);
+    t = expectOk(applyAction(t, onB));
+    expect(code(t, onA)).toBe('MINE_BELT_LIMIT');
+    // And picking up this turn's belt then frees it once more, as Undo belts would.
+    t = expectOk(applyAction(t, removeB));
+    expect(t.mineBeltPlacedThisTurn).toBe(false);
+  });
 });
 
 // ── OQ-9: a pending decision of your own comes first (#40) ────────────────────

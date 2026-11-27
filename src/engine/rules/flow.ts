@@ -585,6 +585,7 @@ export function applyRemoveBelt(state: GameState, action: RemoveBeltAction): Act
     ...p,
     beltsRemaining: p.beltsRemaining + 1,
   }));
+  const placedThisTurn = state.beltsPlacedThisTurn.filter(id => id !== action.beltId);
 
   return {
     ok: true,
@@ -592,9 +593,28 @@ export function applyRemoveBelt(state: GameState, action: RemoveBeltAction): Act
       ...state,
       belts: newBelts,
       players: newPlayers,
-      beltsPlacedThisTurn: state.beltsPlacedThisTurn.filter(id => id !== action.beltId),
+      // Picking up the turn's Mine belt frees the limit again, as Undo belts does
+      // (RULES_CHANGES.md #52): the limit is used only while a belt laid this turn still has
+      // an end facing a Mine ore exit. A Mine belt laid on an earlier turn never counted.
+      mineBeltPlacedThisTurn: mineBeltAmong(state.board, newBelts, placedThisTurn),
+      beltsPlacedThisTurn: placedThisTurn,
     },
   };
+}
+
+// True when one of the belts with an id in `ids` has an end facing a Mine ore exit (the test
+// PLACE_BELT uses for the one-Mine-belt-per-turn limit).
+function mineBeltAmong(
+  board: ReadonlyArray<BoardPiece>,
+  belts: ReadonlyArray<Belt>,
+  ids: ReadonlyArray<string>,
+): boolean {
+  const wanted = new Set(ids);
+  return belts.some(b => {
+    if (!wanted.has(b.id)) return false;
+    const piece = board.find(p => p.id === b.pieceId);
+    return !!piece && (beltEndpointFacesOreExit(piece, b.fromPoint, board) || beltEndpointFacesOreExit(piece, b.toPoint, board));
+  });
 }
 
 // ── UNDO_BELTS ────────────────────────────────────────────────────────────────

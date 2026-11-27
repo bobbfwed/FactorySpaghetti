@@ -60,6 +60,12 @@ export const RELEASES: readonly Release[] = [
         see: 'belts#rules',
       },
       {
+        title: 'Removing this turn\'s Mine belt lets you lay another',
+        before: 'Only **Undo belts** let you lay a belt at a Mine again; removing the one belt you had laid there this turn did not.',
+        now: 'Removing it frees the limit too. Removing a Mine belt laid on an earlier turn gives no extra one.',
+        see: 'belts#buying',
+      },
+      {
         title: 'Your own factory decision comes first',
         before: 'The interface already made you decide Run it or Skip for your own activated factory before anything else, but the rules engine did not insist.',
         now: 'The rules require it, and online the host accepts only moves the game offers.',
