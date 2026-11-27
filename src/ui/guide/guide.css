@@ -127,7 +127,8 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-litem { flex: 0 1 112px; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .g-litem.wide { flex-basis: 232px; }
 .g-litem.flat { flex: 0 0 auto; max-width: 100%; }
-.g-flat { display: flex; align-items: center; justify-content: center; min-height: 40px; max-width: 100%; }
+/* As tall as a 3D picture, so signs between pictures line up with both. */
+.g-flat { display: flex; align-items: center; justify-content: center; min-height: 80px; max-width: 100%; }
 .g-flat .tg-die { width: 34px; height: 34px; border-radius: 7px; }
 .g-flat .tg-die i { width: 6px; height: 6px; margin: -3px 0 0 -3px; }
 .g-flat .g-flaticon .ic { width: 40px; height: 40px; }
@@ -135,7 +136,7 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-tray .tg-modtray { --m: 28px; --mg: 4px; }
 .g-plabel { margin-top: 6px; font-size: 13.5px; font-weight: 750; line-height: 1.25; overflow-wrap: anywhere; }
 .g-pval { margin-top: 2px; font-size: 12.5px; font-weight: 700; color: var(--gold); line-height: 1.25; }
-.g-sign { align-self: flex-start; margin-top: 30px; min-width: 14px; text-align: center; font-weight: 900; font-size: 20px; color: var(--gold); }
+.g-sign { align-self: flex-start; margin-top: 26px; min-width: 14px; text-align: center; font-weight: 900; font-size: 20px; color: var(--gold); }
 
 .g-recipe { padding: 10px 12px 12px; border-radius: 12px; background: #141416; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06); }
 .g-rhead { display: flex; align-items: center; gap: 12px; }
