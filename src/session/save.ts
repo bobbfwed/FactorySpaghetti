@@ -4,7 +4,7 @@
 import * as config from '../engine/config';
 import type { GameState } from '../engine/state';
 import type { Room, SeatColor } from './room';
-import { NAME_MAX, SEAT_COLORS, cleanName } from './room';
+import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import type { JournalData } from './journal';
 import { parseJournal } from './journal';
 
@@ -335,7 +335,7 @@ const MATERIALS = new Set(Object.keys(config.MATERIAL_VALUES));
 const PHASES = new Set(['setupClaimPF', 'setupClaimPP', 'placePiece', 'roll', 'actions', 'placeMeeple', 'roundEnd']);
 
 const MAX_NAME = 40;
-const MAX_LOG_TEXT = 200;
+const MAX_LOG_TEXT = LOG_TEXT_MAX;
 const MAX_ID = 64;
 
 function check(cond: boolean, what: string): asserts cond {
