@@ -19,6 +19,7 @@ import type { Target } from '../../../table/types';
 import { PLAYER_COLOR_HEX } from '../../../table/types';
 import type { GameState } from '../../../engine/state';
 import type { FigureJob, FigureRenderer, Rendered } from './jobs';
+import { modelPlan } from './jobs';
 import { DEFAULT_COLORS, sceneState } from './scene';
 import type { CalloutAt, GlowAt, SceneSpec } from './types';
 
@@ -106,7 +107,7 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     return tableLib;
   };
 
-  // â”€â”€ Lights and ground, as on the table â”€â”€
+  // ── Lights and ground, as on the table ──
   const scene = new THREE.Scene();
   scene.add(new THREE.HemisphereLight(0xfff1e0, 0x3a2a1e, 1.25));
   const sun = new THREE.DirectionalLight(0xfff8ee, 2.3);
@@ -163,9 +164,10 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     return rig;
   }
 
-  // â”€â”€ One model on its own â”€â”€
+  // ── One model on its own ──
   async function drawModel(job: Extract<FigureJob, { t: 'model' }>): Promise<Rendered | null> {
-    const p = await model(job.model);
+    const plan = modelPlan(job, available);
+    const p = plan === 'model' ? await model(job.model) : null;
     if (!p) return job.orElse ? drawScene(job.orElse, [], job.w, job.h) : null;
     const group = new THREE.Group();
     const made: { dispose(): void }[] = [];
@@ -212,7 +214,7 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     }
   }
 
-  // â”€â”€ A staged scene, drawn by the table's scene code â”€â”€
+  // ── A staged scene, drawn by the table's scene code ──
   function glowTarget(g: GlowAt): Target {
     if ('q' in g) return { kind: 'cell', q: g.q, r: g.r };
     if ('point' in g) return { kind: 'point', pieceId: g.piece, point: g.point };
@@ -228,7 +230,8 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     // Lifted, so the marker sits just above the material in the buffer instead of over it.
     if ('buffer' in at) { const c = bufferAnchorWorld(piece, at.buffer); return { x: c.x, y: y + 12, z: c.z }; }
     if ('point' in at) { const c = pointWorld(piece, at.point); return { x: c.x, y, z: c.z }; }
-    if ('slot' in at) { const c = mineSlotWorld(piece, at.slot); return { x: c.x, y, z: c.z }; }
+    // Above the spot, clear of a meeple standing on it.
+    if ('slot' in at) { const c = mineSlotWorld(piece, at.slot); return { x: c.x, y: y + 24, z: c.z }; }
     if ('belt' in at) {
       const belt = game.belts.filter(b => b.pieceId === piece.id)[at.belt];
       if (!belt) return { x: 0, y: 0, z: 0 };
@@ -267,8 +270,10 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     for (const g of spec.glow?.at ?? []) if ('q' in g) b = unite(b, boardBounds([{ type: 'blank', coord: { q: g.q, r: g.r } }]));
     if (ghost) b = unite(b, boardBounds([{ type: ghost.type, coord: { q: ghost.q, r: ghost.r }, rotation: ghost.rot ?? 0 }]));
     light(b, 20);
-    const rig = camera(w, h, b, 10, spec.turn ?? 0, 1.04);
-    return snap(rig, w, h, marks.map(m => markAt(game, m)));
+    const points = marks.map(m => markAt(game, m));
+    // Frame the markers too (they stand above the pieces), so none falls off the picture.
+    const rig = camera(w, h, b, Math.max(10, ...points.map(p => p.y + 6)), spec.turn ?? 0, 1.04);
+    return snap(rig, w, h, points);
   }
 
   return {

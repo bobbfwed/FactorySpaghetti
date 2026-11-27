@@ -56,6 +56,8 @@ const ICONS = {
 };
 
 export type IconName = keyof typeof ICONS;
+/** Every icon name (for checks that content names only icons that exist). */
+export const ICON_NAMES = Object.keys(ICONS) as IconName[];
 
 export function icon(name: IconName, color?: SeatColor, cls = 'ic'): HTMLElement {
   const el = document.createElement('i');

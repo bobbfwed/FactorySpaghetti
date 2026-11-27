@@ -13,7 +13,7 @@ import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, MINE_RESOURCE_REWARD, MINE_UPG
 
 const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
-// â”€â”€ Line-ups â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Line-ups ───────────────────────────────────────────────────────────────────────────────────
 
 export const MATERIALS_FIGURE: FigureBlock = {
   k: 'figure',
@@ -64,7 +64,7 @@ export const MINE_REWARDS_FIGURE: FigureBlock = {
     kind: 'lineup', items: (['mine-1', 'mine-2', 'mine-3'] as const).map((model, i): LineupItem => ({
       pic: { model }, wide: true,
       label: ['First Mine', 'Second Mine', 'Third Mine'][i]!,
-      value: `Resource point: ${amount(MINE_RESOURCE_REWARD[i]!.n, MINE_RESOURCE_REWARD[i]!.material)} Â· Upgrade point: ${MINE_UPGRADE_REWARD[i]} Mine credits`,
+      value: `Resource point: ${amount(MINE_RESOURCE_REWARD[i]!.n, MINE_RESOURCE_REWARD[i]!.material)} · Upgrade point: ${MINE_UPGRADE_REWARD[i]} Mine credits`,
     })),
   },
 };
@@ -124,12 +124,13 @@ export const PLAYER_AREA_FIGURE: FigureBlock = {
 export const TURN_STEPS_FIGURE: FigureBlock = {
   k: 'figure',
   alt: 'The four steps of a turn: place a piece, roll, actions, place your meeple.',
+  caption: 'The four steps of every turn, in this order.',
   show: {
     kind: 'lineup', items: [
-      { pic: { model: 'tile-sphere-factory' }, label: '1 Â· Place a piece' },
-      { pic: { flat: { k: 'die', n: 4 } }, label: '2 Â· Roll' },
-      { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: '3 Â· Actions' },
-      { pic: { model: 'meeple', color: 'blue' }, label: '4 Â· Place meeple' },
+      { pic: { model: 'tile-sphere-factory' }, label: '1 · Place a piece' },
+      { pic: { flat: { k: 'die', n: 4 } }, label: '2 · Roll' },
+      { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: '3 · Actions' },
+      { pic: { model: 'meeple', color: 'blue' }, label: '4 · Place meeple' },
     ],
   },
 };
@@ -156,7 +157,7 @@ export const UPGRADE_FIGURE: FigureBlock = {
   show: {
     kind: 'lineup', items: [
       { pic: { model: 'control-module', color: 'blue', numeral: 4 }, label: 'Control Module 4' },
-      { sign: 'â†’' },
+      { sign: '→' },
       { pic: { model: 'control-module', color: 'blue', numeral: 6 }, label: 'Control Module 6', value: count(2, 'upgrade') },
     ],
   },
@@ -223,7 +224,7 @@ export function exchangeFigure(): FigureBlock {
     show: {
       kind: 'lineup', items: [
         { pic: { model: 'sphere' }, label: 'Sphere' },
-        { sign: 'â†’' },
+        { sign: '→' },
         ...out.flatMap((m, i): LineupItem[] => [...(i ? [{ sign: '+' }] : []), { pic: { model: m }, label: MATERIAL_NAME[m] }]),
       ],
     },
@@ -253,7 +254,7 @@ export const WIN_FIGURE: FigureBlock = {
   show: { kind: 'lineup', items: [{ pic: { flat: { k: 'pips', n: TESSERACTS_TO_WIN } }, label: '' }] },
 };
 
-// â”€â”€ Staged scenes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Staged scenes ──────────────────────────────────────────────────────────────────────────────
 
 /** Free spaces touching the pieces: where the next piece may go (what the game makes glow). */
 export function freeSpaces(pieces: readonly ScenePiece[]): { q: number; r: number }[] {
@@ -359,6 +360,7 @@ export const PRODUCTION_FIGURE: FigureBlock = {
         { id: 'pp', type: 'powerPlant', q: 0, r: 1, rot: 1, claims: [[0, 2]], input: ['ore'] },
       ],
       belts: [{ piece: 'bl', a: 6, b: 9 }],
+      aspect: 2.1,
     },
     callouts: [
       { mark: '1', at: { piece: 'pf', buffer: 'input' }, text: '**Direct contact**: the Plate Factory\'s input touches an ore exit, so the Mine fills it with Ore.' },
@@ -382,6 +384,7 @@ export const BELT_CHAIN_FIGURE: FigureBlock = {
         { id: 'pf', type: 'plateFact', q: -3, r: 1, rot: 3, claims: [[0, 4]], input: ['ore'] },
       ],
       belts: [{ piece: 'b1', a: 7, b: 10 }, { piece: 'b2', a: 5, b: 1 }],
+      aspect: 2.6,
     },
     callouts: [
       { mark: '1', at: { piece: 'b1', belt: 0 }, text: 'The first belt starts at the point facing an ore exit.' },
@@ -403,8 +406,8 @@ export const BELT_RULE_FIGURE: FigureBlock = {
       aspect: 2,
     },
     callouts: [
-      { mark: 'âœ“', at: { piece: 'l', belt: 0 }, text: 'From #3 to #9: far enough apart.' },
-      { mark: 'âœ—', at: { piece: 'r', belt: 0 }, text: 'From #5 to #7: only two points apart, across one corner. The game does not allow it.' },
+      { mark: '✓', at: { piece: 'l', belt: 0 }, text: 'From #3 to #9: far enough apart.' },
+      { mark: '✗', at: { piece: 'r', belt: 0 }, text: 'From #5 to #7: only two points apart, across one corner. The game does not allow it.' },
     ],
   },
 };
@@ -442,6 +445,7 @@ export const MEEPLE_FIGURE: FigureBlock = {
         { id: 'pf', type: 'plateFact', q: -1, r: 0, rot: 3, claims: [[2, 3]], input: ['ore'] },
       ],
       meeples: [{ player: 0, piece: 'mine-1', slot: 0 }, { player: 1, piece: 'mine-1', slot: 1 }, { player: 2, piece: 'pf' }],
+      aspect: 2.4,
     },
     callouts: [
       { mark: '1', at: { piece: 'mine-1', slot: 0 }, text: 'Blue on the resource point: Blue gets the Mine\'s material at the end of the round.' },
