@@ -16,6 +16,7 @@ import { applyAction } from '../engine/reducer';
 import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
 import { piecesExhausted, revealedStack as revealedStackOf } from '../engine/rules/pieces';
 import { cardsLeftToDraw } from '../engine/rules/cards';
+import { moduleBelowFloor } from '../engine/rules/modules';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
@@ -431,7 +432,7 @@ export class PlayController {
     if (g.gameOver) {
       v.step = 'over';
       v.stepIndex = null;
-      v.tray = baseTray(player);
+      v.tray = baseTray(b, player, g.mineCount);
       v.totalValue = inventoryValue(player);
       const how = W.gameOverHow(g.gameOverReason);
       v.instruction = g.winner !== null ? W.gameOverWinner(this.nameOf(g.winner), how)
@@ -443,7 +444,7 @@ export class PlayController {
     const legal = legalFor(g, me);
     const myTurn = active === me;
     v.myTurn = myTurn;
-    v.tray = baseTray(player);
+    v.tray = baseTray(b, player, g.mineCount);
     v.totalValue = inventoryValue(player);
     const myPending = g.pendingFactoryOps.filter(e => e.ownerId === me);
     v.bank = this.bankItems(b, g, player, legal, myTurn, myPending.length > 0);
@@ -986,7 +987,8 @@ export class PlayController {
       && isBuilding(piece) && canSupply(piece, me)
       ? this.supplyView(piece, player, ofType(legal, 'OPERATE_BUILDING').filter(a => a.pieceId === pieceId && a.ownerId === undefined), true)
       : null;
-    v.menu = { anchor: { kind: 'piece', pieceId }, title: pieceName(piece.type), subtitle: this.pieceSummary(piece), items, supply };
+    const note = skippedNote(g, me, piece);
+    v.menu = { anchor: { kind: 'piece', pieceId }, title: pieceName(piece.type), subtitle: this.pieceSummary(g, piece), items, supply, ...(note ? { note } : {}) };
     v.selection = { kind: 'building', label: selectionLabel.building(pieceName(piece.type)) };
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
     return true;
@@ -1067,13 +1069,13 @@ export class PlayController {
     return items;
   }
 
-  private pieceSummary(piece: BoardPiece): string {
+  private pieceSummary(g: GameState, piece: BoardPiece): string {
     const parts: string[] = [];
     if (piece.claims.length === 0) parts.push(W.menuSubtitleNone);
     else {
       const byOwner = new Map<PlayerId, number[]>();
       for (const c of piece.claims) byOwner.set(c.ownerId, [...(byOwner.get(c.ownerId) ?? []), c.controlModule]);
-      parts.push(W.menuSubtitleModules([...byOwner].map(([o, ms]) => W.modulesOf(this.nameOf(o), ms.join(', '))).join('; ')));
+      parts.push(W.menuSubtitleModules([...byOwner].map(([o, ms]) => W.modulesOf(this.nameOf(o), W.moduleNumbers(ms, g.mineCount))).join('; ')));
     }
     const buf = (slots: ReadonlyArray<Material | null>): string => slots.map(s => (s ? MATERIAL_NAME[s] : W.empty)).join(', ');
     if (piece.input) parts.push(W.menuInput(buf(piece.input.slots)) + (piece.input.teleporterOwner !== null ? W.teleporterMark : ''));
@@ -1120,7 +1122,7 @@ export class PlayController {
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
     v.choices = {
       title: W.pickOld,
-      items: olds.map(o => b.item({ id: `old:${o}`, label: W.oldModule(o), enabled: true },
+      items: olds.map(o => b.item({ id: `old:${o}`, label: W.oldModule(o, g.mineCount), enabled: true },
         () => this.setMode({ k: 'upgrade', src: m.src, pieceId: m.pieceId, old: o }))),
     };
     return true;
@@ -1853,6 +1855,9 @@ export class PlayController {
         if (greyed) return greyed;
         const piece = pieceById(g, t.pieceId);
         if (piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === me)) return W.notYourBuilding;
+        // My building with a Control Module that cannot be rolled: say so.
+        const skipped = piece ? skippedNote(g, me, piece) : null;
+        if (skipped) return skipped;
         return W.nothingHere;
       }
       case 'belt': {
@@ -1886,12 +1891,27 @@ function stepIndexOf(g: GameState): 1 | 2 | 3 | 4 | null {
   }
 }
 
-function baseTray(player: Player): TrayEntry[] {
+/** The menu line for my building when some of my Control Modules on it cannot be rolled; null otherwise. */
+function skippedNote(g: GameState, me: PlayerId, piece: BoardPiece): string | null {
+  const mine = piece.claims.filter(c => c.ownerId === me).map(c => c.controlModule);
+  const skipped = mine.filter(m => moduleBelowFloor(m, g.mineCount)).sort((x, y) => x - y);
+  if (skipped.length === 0) return null;
+  return W.moduleSkippedOnBuilding(skipped, g.mineCount, skipped.length < mine.length);
+}
+
+/**
+ * My 18 Control Modules: on the board, in the tray, or in the tray but skipped (below the number
+ * of Mines in play, moduleBelowFloor). A skipped module's tap says why (its reason in `b`).
+ */
+function baseTray(b: Builder, player: Player, mineCount: number): TrayEntry[] {
   const inTray = new Set(player.controlModules);
-  return Array.from({ length: CONTROL_MODULE_MAX }, (_, i) => ({
-    module: i + 1,
-    state: inTray.has(i + 1) ? 'inTray' as const : 'onBoard' as const,
-  }));
+  return Array.from({ length: CONTROL_MODULE_MAX }, (_, i): TrayEntry => {
+    const module = i + 1;
+    if (!inTray.has(module)) return { module, state: 'onBoard' };
+    if (!moduleBelowFloor(module, mineCount)) return { module, state: 'inTray' };
+    b.item({ id: `module:${module}`, label: '', enabled: false, reason: W.moduleSkipped(module, mineCount) });
+    return { module, state: 'skipped', label: W.moduleSkippedLabel(module, mineCount) };
+  });
 }
 
 /**

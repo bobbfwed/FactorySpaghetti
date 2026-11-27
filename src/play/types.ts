@@ -42,8 +42,14 @@ export interface Selection {
 
 export interface TrayEntry {
   module: number;
-  state: 'onBoard' | 'inTray' | 'lit';
+  /**
+   * 'skipped': in the tray but below the number of Mines in play, so it can never be rolled and
+   * can no longer be placed (shown greyed out, never lit; a tap says why).
+   */
+  state: 'onBoard' | 'inTray' | 'lit' | 'skipped';
   cost?: string;
+  /** A skipped module: its label for screen readers (why it is skipped). */
+  label?: string;
   /** A lit module: what using it costs, in upgrades (0 = free). */
   upgradeCost?: number;
 }
@@ -78,7 +84,11 @@ export interface PlayView {
   confirmBar: { confirm: boolean; rotate: boolean; cancel: boolean; label?: string } | null;
   selection: Selection | null;
   /** Building (or belt) menu. */
-  menu: { anchor: Target; title: string; subtitle?: string; items: Item[]; supply?: SupplyView | null } | null;
+  menu: {
+    anchor: Target; title: string; subtitle?: string; items: Item[]; supply?: SupplyView | null;
+    /** A line about the building itself, e.g. that my Control Module on it cannot be rolled. */
+    note?: string;
+  } | null;
   /** My 18 Control Modules. A lit module is chosen with choose(`module:<n>`). */
   tray: TrayEntry[];
   /** Belt, Leverage card, Mine, teleporter, exchange: price, enabled, reason when not. */

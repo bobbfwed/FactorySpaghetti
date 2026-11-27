@@ -73,7 +73,13 @@ html.tg-active #app { min-height: 0; height: 100%; }
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 .tg-mod.u .n { text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 1px; }
-.tg-modtray.has-lit .tg-mod:not(.lit):not(.empty) { opacity: 0.35; }
+.tg-modtray.has-lit .tg-mod:not(.lit):not(.empty):not(.skipped) { opacity: 0.35; }
+/* Below the number of Mines in play (it can never be rolled): grey, like a tile turned face down, its number faint. */
+.tg-mod.skipped {
+  border: 0; cursor: pointer; background: #5f5f63; color: rgba(16, 16, 18, 0.55);
+  background-image: repeating-linear-gradient(135deg, transparent 0 4px, rgba(255, 255, 255, 0.06) 4px 6px);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.3), 0 1px 2px rgba(0, 0, 0, 0.6);
+}
 .tg-mod.empty {
   background: #151517; box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.9), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
   background-image: linear-gradient(135deg, transparent 0 18%, rgba(255, 255, 255, 0.10) 18% 23%, transparent 23% 77%, rgba(255, 255, 255, 0.10) 77% 82%, transparent 82%);
@@ -222,6 +228,7 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-pop .hd .tt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .tg-pop .hd .t { font-weight: 800; font-size: 15.5px; }
 .tg-pop .hd .sub { font-size: 12.5px; color: var(--text-2); line-height: 1.35; }
+.tg-pop .note { font-size: 12.5px; line-height: 1.35; color: var(--text-2); padding: 0 8px 8px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .tg-pop .item, .tg-choices .item {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 48px; padding: 7px 12px;
   border-radius: 10px; font-size: 14px; font-weight: 650; width: 100%; text-align: left;

@@ -4,6 +4,7 @@
 
 import type { CardType, Material, PieceType } from '../engine/config';
 import { INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, POWER_TOKEN_CAP } from '../engine/config';
+import { moduleBelowFloor } from '../engine';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from '../session/describe';
 
 export { CARD_NAME, MATERIAL_NAME };
@@ -300,7 +301,7 @@ export const W = {
   collectDetail: (what: string): string => `Moves ${what} into your materials`,
   moduleTrayTitle: 'Choose a Control Module',
   pickOld: 'Which Control Module do you upgrade?',
-  oldModule: (n: number): string => `Control Module ${n}`,
+  oldModule: (n: number, mines = 1): string => `Control Module ${W.moduleNumber(n, mines)}`,
   claimOn: (building: string): string => `Claim the ${building}: tap a glowing Control Module.`,
   upgradeOn: (building: string, old: number): string => `Upgrade Control Module ${old} on the ${building}: tap a glowing Control Module.`,
   moduleCost: (n: number): string => units(n),
@@ -312,6 +313,23 @@ export const W = {
   empty: 'empty',
   teleporterMark: ' (teleporter)',
   modulesOf: (name: string, mods: string): string => `${name}: ${mods}`,
+  // Control Modules below the number of Mines in play (they can never be rolled).
+  /** "4", or "1 (cannot be rolled)" for a module below the number of Mines in play. */
+  moduleNumber: (n: number, mines: number): string => (moduleBelowFloor(n, mines) ? `${n} (cannot be rolled)` : String(n)),
+  /** A list of module numbers, each marked when it cannot be rolled: "1 (cannot be rolled), 4". */
+  moduleNumbers: (ns: readonly number[], mines: number): string => ns.map(n => W.moduleNumber(n, mines)).join(', '),
+  /** The tray's label for a skipped module (screen readers). */
+  moduleSkippedLabel: (n: number, mines: number): string => `Control Module ${n}: skipped, a ${n} cannot be rolled with ${mines} Mines in play`,
+  /** Said when a skipped module in the tray is tapped. */
+  moduleSkipped: (n: number, mines: number): string =>
+    `Control Module ${n} is skipped: a ${n} cannot be rolled with ${mines} Mines in play, so it can no longer be placed or chosen as an upgrade.`,
+  /** In the menu of my building that holds modules that cannot be rolled. `runs`: another module of mine there still can be. */
+  moduleSkippedOnBuilding: (ns: readonly number[], mines: number, runs: boolean): string => {
+    const one = ns.length === 1;
+    const which = one ? `Control Module ${ns[0]}` : `Control Modules ${ns.slice(0, -1).join(', ')} and ${ns[ns.length - 1]}`;
+    return `${which} cannot be rolled with ${mines} Mines in play. `
+      + (runs ? `Upgrade ${one ? 'it' : 'them'} to use ${one ? 'it' : 'them'} again.` : `Upgrade ${one ? 'it' : 'them'} to make this building run again.`);
+  },
 
   // Run / operate
   runDetail: (power: number, consumed: string, product: Material): string =>
