@@ -37,7 +37,7 @@ export const SMART_STYLE: SmartConfig = {
   label: 'Smart Bot',
   // Attempt 3 (kept): go for the Bonus Tesseracts as the Bonus Hunter does — each weighed above a
   // real Tesseract, one more claimed building worth more (Factory Empire), the meeple's Mine
-  // upgrade point preferred, longer belt routes, and long chains for Belt Weaver.
+  // upgrade point preferred, and long chains for Belt Weaver.
   // Attempt 5a (kept): stronger still — The Investor 2.0 and Factory Empire 1.7 Tesseracts, one
   // more claimed building worth 5.
   bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.7 },
@@ -51,7 +51,7 @@ export const SMART_STYLE: SmartConfig = {
   // Attempt 7b (kept, weight sweep): buy a Leverage card only when the cards left are worth well
   // over the price on average (appetite 0.35 -> 0).
   cardAppetite: 0,
-  maxRouteBelts: 6,
+  maxRouteBelts: 4, // attempt 10c (kept, weight sweep): back to routes of at most 4 belts
   endgameThrift: false,
   denyWeight: 0,
   endgamePower: false,
