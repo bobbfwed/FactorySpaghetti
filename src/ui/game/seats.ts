@@ -137,7 +137,7 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
   const away = removable && !s.connected;
   const removeRow = removable
     ? h('div', { class: `tg-popacts${away ? ' top' : ''}` },
-      h('span', { class: 'hint', text: away ? `${s.name} is away. A bot plays their seat until they rejoin.` : 'A bot plays their seat until they rejoin.' }),
+      h('span', { class: 'hint', text: away ? `${s.name} is away. A bot plays their seat until they rejoin.` : 'If removed, a bot plays their seat until they rejoin.' }),
       removePlayerButton(ctx.ctrl, i, 'btn btn-dark tg-remove'))
     : null;
   return h('div', { class: 'tg-seatpop tray', style: `--seat:${seatHex(ctx.room, i)}`, attrs: { role: 'dialog', 'aria-label': `${s.name} details` } },
