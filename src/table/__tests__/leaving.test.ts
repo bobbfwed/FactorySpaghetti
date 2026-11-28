@@ -10,7 +10,7 @@ import { applyAction } from '../../engine/reducer';
 import { createGame } from '../../engine/rules/setup';
 import { makeBuffers } from '../../engine/rules/pieces';
 import { withTeleporter } from '../../engine/rules/teleporters';
-import type { BoardPiece, CardType, GameState, PieceType, PlayerId } from '../../engine/state';
+import type { BoardPiece, CardType, GameState, Material, PieceType, PlayerId } from '../../engine/state';
 import { moveEvents } from '../../session/events';
 import { Animator } from '../animator';
 import { boardBounds, bufferSlotWorld, portalWorld, sideLayout } from '../layout';
@@ -99,6 +99,58 @@ describe('through the portal', () => {
     expect(fly.from).toEqual({ kind: 'buffer', pieceId: 'g', buffer: 'output', slot: 0, portal: true });
     expect(fly.at).toBeGreaterThanOrEqual(into[0]!.at + into[0]!.dur - DUR.overlap - 1);
     expect(ofKind(plan, 'appear').filter(x => x.pieceId === 'g')).toHaveLength(0);
+  });
+
+  describe('a material out of the portal is drawn without a break until it is used up, and only once', () => {
+    // Every input of each factory type carries player 0's Teleporter; the whole recipe comes from
+    // player 0's materials. Sampled every 2 ms from the moment it starts coming out of the portal
+    // until its use-up step ends: on the stub's way from the portal to the input, exactly one
+    // material of its kind must be drawn at every moment.
+    const cases: { type: PieceType; supply: Material[] }[] = [
+      { type: 'plateFact', supply: ['ore'] },
+      { type: 'sphereFact', supply: ['plate', 'plate'] },
+      { type: 'sphereFact', supply: ['ore', 'plate'] },
+      { type: 'tesseractFact', supply: ['plate', 'sphere', 'sphere'] },
+      { type: 'tesseractFact', supply: ['sphere', 'sphere', 'sphere'] },
+      // A Power Plant costs no Power Token: nothing comes before the use-up in its phase.
+      { type: 'powerPlant', supply: ['plate'] },
+    ];
+    for (const c of cases) {
+      it(`${c.type}, supplied ${c.supply.join(', ')}`, () => {
+        const f = piece('t', c.type, -1, 0, 0, 5, 3);
+        let inp = f.input!;
+        for (let i = 0; i < inp.slots.length; i++) inp = withTeleporter(inp, i, 0);
+        const s = staged([{ ...f, input: inp }], x => ({
+          ...x, pendingFactoryOps: [{ pieceId: 't', ownerId: 0 }], globalTeleporterCount: inp.slots.length,
+          players: x.players.map(p => (p.id === 0 ? { ...p, inventory: { ore: 3, plate: 3, sphere: 3, tesseract: 0 } } : p)),
+        }));
+        const { prev, next, plan } = move(s, { type: 'OPERATE_BUILDING', pieceId: 't', ownerId: 0, supply: c.supply });
+        const portals = ofKind(plan, 'portalIn');
+        expect(portals).toHaveLength(c.supply.length);
+        const built = prev.board.find(p => p.id === 't')!;
+        const a = animator();
+        a.start(prev, next, plan.steps, 1, 0, sideLayout(boardBounds(next.board), next.mineCount));
+        for (const pin of portals) {
+          const used = ofKind(plan, 'consume').find(x => x.late && x.slot === pin.slot && x.material === pin.material)!;
+          expect(used).toBeDefined();
+          const from = portalWorld(built, 'input', pin.slot), to = bufferSlotWorld(built, 'input', pin.slot);
+          // Distance (in the table's plane) from the segment portal -> input of this slot.
+          const off = (e: { x: number; z: number }): number => {
+            const dx = to.x - from.x, dz = to.z - from.z;
+            const u = Math.max(0, Math.min(1, ((e.x - from.x) * dx + (e.z - from.z) * dz) / (dx * dx + dz * dz)));
+            return Math.hypot(e.x - (from.x + u * dx), e.z - (from.z + u * dz));
+          };
+          const bad: string[] = [];
+          for (let t = pin.at + 1; t < used.at + used.dur; t += 2) {
+            a.update(t);
+            const n = a.extras().filter(e => e.material === pin.material && off(e) < 0.6).length;
+            if (n !== 1) bad.push(`t=${t}: ${n}`);
+          }
+          expect(bad.slice(0, 5), `slot ${pin.slot} (${pin.material}): portal ${pin.at}-${pin.at + pin.dur}, used up ${used.at}-${used.at + used.dur}`).toEqual([]);
+        }
+        a.dispose();
+      });
+    }
   });
 
   it('a move with no Teleporter and nothing leaving plays exactly as before (no new steps, same length)', () => {

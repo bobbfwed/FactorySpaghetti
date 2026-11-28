@@ -522,6 +522,15 @@ function schedule(phases: StepBody[][], roll: number[] | null): TransitionPlan {
     }
     end = Math.max(end, phaseEnd);
   });
+  // A material out of a portal is used up only once it has come out (phases overlap a little, and
+  // with no Power Token flight first, as at a Power Plant, its use-up would start while it still emerges).
+  steps.forEach((s, i) => {
+    if (s.kind !== 'consume' || !s.late) return;
+    const out = steps.find(x => x.kind === 'portalIn' && x.pieceId === s.pieceId && x.slot === s.slot && x.material === s.material);
+    if (!out || s.at >= out.at + out.dur) return;
+    steps[i] = { ...s, at: out.at + out.dur };
+    end = Math.max(end, out.at + out.dur + s.dur);
+  });
   return { steps, baseMs: Math.round(end), roll };
 }
 

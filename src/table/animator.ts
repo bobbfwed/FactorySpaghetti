@@ -132,8 +132,9 @@ export class Animator implements SceneFx {
       const p = this.progress(s);
       if (s.kind === 'consume' && p < 1) {
         const piece = this.prev?.board.find(b => b.id === s.pieceId) ?? this.next?.board.find(b => b.id === s.pieceId);
-        // A material that came out of a portal just now is not there before its step.
-        if (piece && !(s.late && p <= 0)) {
+        // A material that came out of a portal just now is not there before it has come out; from
+        // then on it lies in the input at full size until its use-up step starts.
+        if (piece && !(s.late && p <= 0 && !this.emerged(s))) {
           const at = bufferSlotWorld(piece, s.buffer, s.slot);
           const k = p <= 0 ? 1 : 1 - easeInOut(p);
           this.extraList.push({ material: s.material, x: at.x, y: TILE_TOP + 0.05 + 4 * Math.sin(Math.PI * clamp01(p)), z: at.z, yaw: piecePlacement(piece).yaw, s: 0.8 * k });
@@ -188,6 +189,12 @@ export class Animator implements SceneFx {
     }
     for (let i = ring; i < this.rings.length; i++) this.rings[i]!.visible = false;
     return true;
+  }
+
+  /** A late use-up step's material has finished coming out of its portal (no portal step: not yet). */
+  private emerged(s: Timed & { kind: 'consume' }): boolean {
+    const out = this.steps.find(x => x.kind === 'portalIn' && x.pieceId === s.pieceId && x.slot === s.slot && x.material === s.material);
+    return !!out && this.progress(out) >= 1;
   }
 
   private progress(s: Timed): number {
