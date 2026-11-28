@@ -237,6 +237,12 @@ export function claimWorthFor(state: GameState, me: PlayerId, style: Style, chan
   return claimSetWorth(makeCtx(state, me, style), new Map(changes));
 }
 
+/** For tests: the bot's worth of one Power Token and its extra worth of each material right now. */
+export function valuesFor(state: GameState, me: PlayerId, style: Style): { power: number; need: Record<Material, number> } {
+  const ctx = makeCtx(state, me, style);
+  return { power: ctx.pv, need: { ...ctx.need } };
+}
+
 export function makeSmartBot(style: Style): BotFn {
   return (state: GameState, me: PlayerId): Action => decide(state, me, style);
 }

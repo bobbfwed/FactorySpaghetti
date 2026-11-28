@@ -6,7 +6,7 @@ import type { BoardPiece, GameState, Material, PieceType, PlayerId } from '../..
 import { createGame } from '../../engine/rules/setup';
 import { applyAction, legalActions } from '../../engine/reducer';
 import { fedFraction } from '../styles/analysis';
-import { claimWorthFor, makeSmartBot } from '../smart/smartBot';
+import { claimWorthFor, makeSmartBot, valuesFor } from '../smart/smartBot';
 import { SMART_STYLE } from '../smart/config';
 import type { SmartConfig } from '../smart/config';
 
@@ -93,5 +93,22 @@ describe('the meeple goes where the round end pays most', () => {
     const a = makeSmartBot(SMART_STYLE)(s, me);
     expect(a).toMatchObject({ type: 'PLACE_MEEPLE', pieceId: 'T' });
     expect(applyAction(s, a).ok).toBe(true);
+  });
+});
+
+describe('one Tesseract from the win (closer)', () => {
+  it('with three Tesseracts and a Tesseract Factory, Power Tokens and the inputs of the last run are worth much more', () => {
+    const t = building('T', 'tesseractFact', 7, -3, 0, [5]);
+    const base = position([t], 2);
+    const holding = (n: number): GameState => ({
+      ...base,
+      players: base.players.map(pl => pl.id === 0 ? { ...pl, powerTokens: 1, inventory: { ...pl.inventory, tesseract: n, sphere: 0, plate: 0, ore: 2 } } : pl),
+    });
+    const on = { ...SMART_STYLE, closer: true };
+    const off = { ...SMART_STYLE, closer: false };
+    expect(valuesFor(holding(3), 0, on).power).toBeCloseTo(2 * valuesFor(holding(3), 0, off).power, 6);
+    expect(valuesFor(holding(3), 0, on).need.sphere).toBeGreaterThan(valuesFor(holding(3), 0, off).need.sphere);
+    // Further from the win nothing changes.
+    expect(valuesFor(holding(1), 0, on)).toEqual(valuesFor(holding(1), 0, off));
   });
 });

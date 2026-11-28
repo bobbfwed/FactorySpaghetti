@@ -49,7 +49,7 @@ export const SMART_STYLE: SmartConfig = {
   planCredits: false,
   placeDeny: 0,
   endgamePoints: false,
-  closer: false,
+  closer: true, // attempt 4d (kept)
   lockBonus: 0,
   weaveBudget: 6000,
 };
