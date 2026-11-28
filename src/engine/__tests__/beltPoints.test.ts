@@ -73,11 +73,11 @@ describe('belt points on building pieces (#30)', () => {
   });
 });
 
-describe('points facing a claimed building are reserved for its owners (#31)', () => {
+describe('points facing a claimed building are reserved for its owner (#31)', () => {
   const cases: Array<{ who: string; claims: Claims; ok: boolean }> = [
     { who: 'unclaimed', claims: [], ok: true },
-    { who: 'sole owner', claims: [{ ownerId: 0, controlModule: 3 }], ok: true },
-    { who: 'co-owner', claims: [{ ownerId: 1, controlModule: 3 }, { ownerId: 0, controlModule: 4 }], ok: true },
+    { who: 'owner', claims: [{ ownerId: 0, controlModule: 3 }], ok: true },
+    { who: 'owner with two claims', claims: [{ ownerId: 0, controlModule: 3 }, { ownerId: 0, controlModule: 4 }], ok: true },
     { who: 'non-owner', claims: [{ ownerId: 1, controlModule: 3 }, { ownerId: 1, controlModule: 5 }], ok: false },
   ];
   for (const c of cases) {
@@ -181,9 +181,9 @@ describe('reservation with rotated neighbours (#31)', () => {
   const CELLS = [{ q: 1, r: 0 }, { q: -1, r: 0 }, { q: 0, r: 1 }, { q: 0, r: -1 }, { q: 1, r: -1 }, { q: -1, r: 1 }];
   const P0: Claims = [{ ownerId: 0, controlModule: 4 }];
   const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
-  const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
+  const P0x2: Claims = [{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
   const OWNER_CASES: Array<{ claims: Claims; reserved: boolean }> = [
-    { claims: [], reserved: false }, { claims: P0, reserved: false }, { claims: BOTH, reserved: false }, { claims: P1, reserved: true },
+    { claims: [], reserved: false }, { claims: P0, reserved: false }, { claims: P0x2, reserved: false }, { claims: P1, reserved: true },
   ];
 
   const beltPointsOf = (p: BoardPiece): number[] => pieceTemplate(p).points.filter(d => d.enabled && d.role === 'belt').map(d => d.position);
@@ -270,12 +270,12 @@ describe('reservation with rotated neighbours (#31)', () => {
     const PAIRS: Array<{ l: Claims; r: Claims; reserved: boolean }> = [
       { l: [], r: [], reserved: false },
       { l: P0, r: P0, reserved: false },
-      { l: P0, r: BOTH, reserved: false },
+      { l: P0, r: P0x2, reserved: false },
       { l: [], r: P0, reserved: false },
       { l: P0, r: P1, reserved: true },
       { l: P1, r: P0, reserved: true },
       { l: P1, r: P1, reserved: true },
-      { l: BOTH, r: P1, reserved: true },
+      { l: P0x2, r: P1, reserved: true },
     ];
     let cases = 0;
     for (let rl = 0; rl < 6; rl++) {

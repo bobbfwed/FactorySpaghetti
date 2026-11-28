@@ -1,6 +1,6 @@
 // The play-style bots' board reading (styles/analysis.ts) counts a feed only where the engine
 // moves material: a building's output touching an input feeds it only between one player's
-// buildings, or out of an unclaimed building (RULES_CHANGES.md #51).
+// buildings (RULES_CHANGES.md #51); an unclaimed building feeds nothing (#58).
 
 import { describe, expect, it } from 'vitest';
 import type { BoardPiece, GameState, PlayerId } from '../../engine/state';
@@ -39,14 +39,11 @@ describe('feedAt follows the engine on direct contact (#51)', () => {
     expect(outputFeedsMine(t, t.board[0]!, 0)).toBe(false);
   });
 
-  it('my own touching output, an unclaimed one, or a co-owner\'s feeds it', () => {
-    for (const fc of [of(0), [] as Claims, [...of(1), ...of(0, 6)]]) {
-      const s = state([F(fc), G(of(0, 5))]);
-      expect(feedAt(s, s.board[1]!, 0, 0), JSON.stringify(fc)).toEqual({ material: 'plate', fromPieceId: 'F', viaBelts: 0 });
-    }
-    // A building I share with the owner of the touching output: the engine moves it, so it counts.
-    const shared = state([F(of(1)), G([...of(1, 5), ...of(0, 6)])]);
-    expect(feedAt(shared, shared.board[1]!, 0, 0)).not.toBeNull();
+  it('my own touching output feeds it; an unclaimed one does not (#58)', () => {
+    const s = state([F(of(0)), G(of(0, 5))]);
+    expect(feedAt(s, s.board[1]!, 0, 0)).toEqual({ material: 'plate', fromPieceId: 'F', viaBelts: 0 });
+    const u = state([F([]), G(of(0, 5))]);
+    expect(feedAt(u, u.board[1]!, 0, 0)).toBeNull();
   });
 
   it('a building I may claim is judged as if I held it', () => {
@@ -93,8 +90,8 @@ describe('feedAt follows the engine on direct contact (#51)', () => {
   });
 
   it('counts a direct feed exactly when the engine moves the material', () => {
-    for (const fc of [of(0), of(1), [] as Claims, [...of(1), ...of(0, 6)]]) {
-      for (const gc of [of(0, 5), of(1, 5), [...of(1, 5), ...of(0, 6)]]) {
+    for (const fc of [of(0), of(1), [] as Claims]) {
+      for (const gc of [of(0, 5), of(1, 5)]) {
         const s = state([F(fc), G(gc)]);
         const moved = resolveDirectAdjacency(s).board[1]!.input!.slots.includes('plate');
         const label = `F ${JSON.stringify(fc)}, G ${JSON.stringify(gc)}`;

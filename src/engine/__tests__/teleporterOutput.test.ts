@@ -90,9 +90,16 @@ describe('output teleporter → inventory', () => {
   });
 
   it('drainOutputTeleporters only credits the teleporter owner', () => {
-    const owned = plateFactory({ output: { slots: ['plate'], teleporters: [1 as PlayerId] } });
-    const drained = drainOutputTeleporters({ ...base, board: [...base.board, owned] });
+    const theirs = plateFactory({ claims: [{ ownerId: 1 as PlayerId, controlModule: 3 }], output: { slots: ['plate'], teleporters: [1 as PlayerId] } });
+    const drained = drainOutputTeleporters({ ...base, board: [...base.board, theirs] });
     expect(drained.players[1]!.inventory.plate).toBe(1);
     expect(drained.players[ME]!.inventory.plate).toBe(0);
+  });
+
+  it('a teleporter whose placer holds no claim on the building drains nothing (#58)', () => {
+    const lost = plateFactory({ claims: [], output: { slots: ['plate'], teleporters: [ME] } });
+    const drained = drainOutputTeleporters({ ...base, board: [...base.board, lost] });
+    expect(drained.players[ME]!.inventory.plate).toBe(0);
+    expect(drained.board.find(p => p.id === 'pf')!.output!.slots).toEqual(['plate']);
   });
 });

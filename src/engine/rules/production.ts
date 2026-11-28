@@ -27,6 +27,12 @@ function err(code: string, message: string): { ok: false; error: RulesError } {
   return { ok: false, error: { code, message } };
 }
 
+// Refusal of a meeple action (load, run, collect) or a run on a building the player holds no
+// claim on (#58).
+function notYours(): { ok: false; error: RulesError } {
+  return err('NOT_YOUR_BUILDING', 'You hold no claim on this building');
+}
+
 function mapPlayer(
   players: ReadonlyArray<Player>,
   id: PlayerId,
@@ -602,6 +608,7 @@ export function applyLoadBuildingInput(
 
   const piece = state.board.find(p => p.id === action.pieceId);
   if (!piece) return err('PIECE_NOT_FOUND', `No piece with id ${action.pieceId}`);
+  if (!piece.claims.some(c => c.ownerId === activeId)) return notYours();
   if (!piece.input) return err('NO_INPUT', 'This building has no input buffer');
 
   const emptySlotIdx = piece.input.slots.findIndex(s => s === null);
@@ -676,6 +683,9 @@ export function applyOperateBuilding(
 
   const piece = state.board.find(p => p.id === action.pieceId);
   if (!piece) return err('PIECE_NOT_FOUND', `No piece with id ${action.pieceId}`);
+  // Only a building the operator holds a claim on runs for them (#58; a pending decision about a
+  // building its player no longer owns is dropped after every move, settleLostClaims).
+  if (!piece.claims.some(c => c.ownerId === operatorId)) return notYours();
 
   // What the operator supplies from their inventory through their input teleporter (nothing is
   // taken unless named here; RULES_CHANGES.md #45).
@@ -730,6 +740,7 @@ export function applyCollectOutput(state: GameState, action: CollectOutputAction
 
   const piece = state.board.find(p => p.id === action.pieceId);
   if (!piece) return err('PIECE_NOT_FOUND', `No piece with id ${action.pieceId}`);
+  if (!piece.claims.some(c => c.ownerId === activeId)) return notYours();
   if (!piece.output) return err('NO_OUTPUT', 'This building has no output buffer');
 
   const newInventory: Record<Material, number> = { ...player.inventory };

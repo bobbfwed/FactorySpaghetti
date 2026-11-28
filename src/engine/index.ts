@@ -13,6 +13,7 @@ export {
 export { listedForm, isListedMove } from './rules/legalActions';
 export { payMaterials, canAfford, isReservedPoint, directFlowAllowed, beltLaidThisTurn } from './rules/flow';
 export { moduleBelowFloor } from './rules/modules';
+export { buildingOwner, mayAddClaim, hasTwoOwners, materialsIn, lossIfModuleLeaves } from './rules/ownership';
 export {
   teleporterOn, teleportersOf, hasTeleporter, teleporterCount, supplySlots, hasInputTeleporterOf, freeTeleporterSlots, withTeleporter,
 } from './rules/teleporters';

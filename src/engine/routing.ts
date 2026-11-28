@@ -174,8 +174,7 @@ export function findRoute(
   const srcRole = getRole(srcPiece, source.position);
   if (srcRole !== 'ore_output' && srcRole !== 'output_buffer') return null;
 
-  // Can't feed a building claimed only by other players (its input points are reserved
-  // for its owners; a co-owner may).
+  // Can't feed another player's building (its input points are reserved for its owner).
   if (destPiece.claims.length > 0 && !destPiece.claims.some(c => c.ownerId === me)) return null;
 
   const isSource = (n: { piece: BoardPiece; pos: number }) =>

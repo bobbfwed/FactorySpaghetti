@@ -8,7 +8,8 @@
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
-import { fillInputsFromAdjacentMines, resolveDirectAdjacency, returnOrphanedTeleporters, teleporterCutsOff } from '../rules/flow';
+import { fillInputsFromAdjacentMines, resolveDirectAdjacency, teleporterCutsOff } from '../rules/flow';
+import { settleLostClaims } from '../rules/ownership';
 import { INVENTORY_CAP } from '../config';
 import type { Material } from '../config';
 import type { Action } from '../actions';
@@ -274,14 +275,14 @@ describe('supplying a factory with some inputs teleported (#55)', () => {
     expect(tRuns.every(sup => sup?.length === 3)).toBe(true);
   });
 
-  it('on a building two players claim, each supplies only the input with their own teleporter', () => {
-    // Player 0's teleporter on input 1, player 1's on input 2; both have Control Module 5.
-    const shared = withIn(teleIn(teleIn(piece('G', 'sphereFact', 4, 0, [{ ownerId: 0, controlModule: 5 }, { ownerId: 1, controlModule: 5 }]), 0, 0), 1, 1), [null, null]);
-    const s = rolled([shared]);
-    // Neither can fill the other's input, so neither can run it.
+  it('the owner supplies only the input with their teleporter; the other input must hold its material', () => {
+    // Player 0 owns the Sphere Factory (one owner per building, #57) with a teleporter on input 1.
+    const own = withIn(teleIn(piece('G', 'sphereFact', 4, 0, [{ ownerId: 0, controlModule: 5 }]), 0, 0), [null, null]);
+    const s = rolled([own]);
+    // Input 2 is empty and has no teleporter: it cannot be filled from the inventory, so no run.
     expect(s.pendingFactoryOps).toEqual([]);
-    // With player 1's input holding a Plate, player 0 supplies input 1 alone.
-    const s2 = rolled([withIn(shared, [null, 'plate'])]);
+    // With input 2 holding a Plate, player 0 supplies input 1 alone.
+    const s2 = rolled([withIn(own, [null, 'plate'])]);
     expect(s2.pendingFactoryOps).toEqual([{ pieceId: 'G', ownerId: 0 }]);
     expect(legalActions(s2, 0).filter(a => a.type === 'OPERATE_BUILDING').every(a => a.type === 'OPERATE_BUILDING' && a.supply?.length === 1)).toBe(true);
   });
@@ -372,18 +373,18 @@ describe('placing teleporters on inputs (#55)', () => {
   });
 
   it('every teleporter of a player who loses their last claim returns: each input and the output', () => {
-    // Player 0 has teleporters on inputs 1 and 3 and the output; player 1 (a co-owner) on input 2.
-    const both: Claims = [{ ownerId: 0, controlModule: 5 }, { ownerId: 1, controlModule: 6 }];
-    const t = teleOut(teleIn(teleIn(teleIn(piece('T', 'tesseractFact', 4, 0, both), 0, 0), 1, 1), 0, 2));
-    const s = { ...actionsState([t]), globalTeleporterCount: 4, players: actionsState([t]).players.map(p => ({ ...p, teleportersRemaining: p.id === 0 ? 1 : 3 })) };
-    const lost = { ...s, board: [{ ...t, claims: [{ ownerId: 1 as PlayerId, controlModule: 6 }] }] };
-    const after = returnOrphanedTeleporters(lost);
-    expect(find(after, 'T').input!.teleporters).toEqual([null, 1]);
+    // Player 0 owns the Tesseract Factory and has teleporters on inputs 1 and 3 and the output.
+    const own: Claims = [{ ownerId: 0, controlModule: 5 }];
+    const t = teleOut(teleIn(teleIn(piece('T', 'tesseractFact', 4, 0, own), 0, 0), 0, 2));
+    const s = { ...actionsState([t]), globalTeleporterCount: 3, players: actionsState([t]).players.map(p => ({ ...p, teleportersRemaining: p.id === 0 ? 1 : 4 })) };
+    const lost = { ...s, board: [{ ...t, claims: [] }] };
+    const after = settleLostClaims(lost);
+    expect(find(after, 'T').input!.teleporters).toEqual([]);
     expect(find(after, 'T').output!.teleporters).toEqual([]);
     expect(after.players[0]!.teleportersRemaining).toBe(4);
-    expect(after.players[1]!.teleportersRemaining).toBe(3);
-    expect(after.globalTeleporterCount).toBe(1);
-    expect(returnOrphanedTeleporters(s)).toBe(s); // nothing lost: the same state
+    expect(after.players[1]!.teleportersRemaining).toBe(4);
+    expect(after.globalTeleporterCount).toBe(0);
+    expect(settleLostClaims(s)).toBe(s); // nothing lost: the same state
   });
 });
 

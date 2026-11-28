@@ -88,7 +88,7 @@ describe('Scouting Drone: legalActions lists every placement applyAction accepts
   });
 });
 
-// ── Defect 2: a building claimed by two players, both matching the roll ───────
+// ── Defect 2: a pending operation that can no longer run ──────────────────────
 
 function factory(id: string, claims: BoardPiece['claims'], slots: (Material | null)[], teleporterOwner: PlayerId | null = null): BoardPiece {
   const buf = makeBuffers('plateFact');
@@ -113,22 +113,20 @@ function rollBoard(extra: BoardPiece[]): GameState {
 }
 
 describe('pending factory operation: listed only while the engine accepts it', () => {
-  const shared = factory('pf', [{ ownerId: 0, controlModule: 3 }, { ownerId: 1, controlModule: 3 }], ['ore']);
-  const rolled = mustApply(rollBoard([shared]), { type: 'ROLL_DICE', rolls: [3] });
-  const operate0: Action = { type: 'OPERATE_BUILDING', pieceId: 'pf', ownerId: 0 };
+  // Player 1's factory matches player 0's roll (one owner per building, #57).
+  const theirs = factory('pf', [{ ownerId: 1, controlModule: 3 }], ['ore']);
+  const rolled = mustApply(rollBoard([theirs]), { type: 'ROLL_DICE', rolls: [3] });
   const operate1: Action = { type: 'OPERATE_BUILDING', pieceId: 'pf', ownerId: 1 };
   const skip1: Action = { type: 'SKIP_FACTORY_ROLL', pieceId: 'pf', ownerId: 1 };
 
-  it('both owners are offered operate and skip right after the roll', () => {
-    expect(rolled.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 0 }, { pieceId: 'pf', ownerId: 1 }]);
-    expect(legalActions(rolled, 0).map(key)).toContain(key(operate0));
+  it('the owner is offered operate and skip right after the roll, on another player\'s turn', () => {
+    expect(rolled.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 1 }]);
     expect(legalActions(rolled, 1).map(key)).toContain(key(operate1));
     expect(legalActions(rolled, 1).map(key)).toContain(key(skip1));
   });
 
-  it('after the first owner operates, the second owner is offered the skip but not the operate — and the engine agrees', () => {
-    const after = mustApply(rolled, operate0);
-    expect(after.board.find(p => p.id === 'pf')!.output!.slots[0]).toBe('plate'); // output now full
+  it('once the owner can no longer run it (no Power Tokens left since), only the skip is offered — and the engine agrees', () => {
+    const after: GameState = { ...rolled, players: rolled.players.map((p): Player => (p.id === 1 ? { ...p, powerTokens: 0 } : p)) };
     expect(after.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 1 }]);
 
     const legal1 = legalActions(after, 1).map(key);

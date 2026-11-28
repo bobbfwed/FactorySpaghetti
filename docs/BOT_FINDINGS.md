@@ -16,6 +16,8 @@ The reports behind every table are in [`docs/bot-study/`](bot-study/). The first
 5. **The 2-player second-seat edge is smaller and only clear for one bot.** In Planner mirror games the second player wins 58.7% (150 games; 95% CI 51–66). In Smart Bot mirror games it is 50.0% (60 games).
 6. **Not exploits:** buying every Leverage card (2 wins in 198 games); rushing the next Mine (no better than the Planner); stalling (no unfinished game, no refused move, in 4,935 games).
 
+> **Designer's answer, 2026-11-27** (`RULES_CHANGES.md`, OQ-10): the weight of the Bonus Tesseracts (points 1–4 above, and the variants below) is by design. They exist to make the game faster, as easier ways to reach the Tesseract goal. The upgrade point amounts and the bonus thresholds stay as they are; an individual bonus may be tuned later if playtests show it is out of line.
+
 ## The bots
 
 | Bot (lobby label) | What it does |

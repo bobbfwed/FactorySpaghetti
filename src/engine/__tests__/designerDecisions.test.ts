@@ -186,25 +186,20 @@ describe('teleporters return when their placer loses the claim (#37)', () => {
     const after = expectOk(applyAction(s, move));
     const x = after.board.find(p => p.id === 'X')!;
     expect(x.claims).toEqual([]);
-    expect(x.input).toEqual({ slots: ['ore'], teleporters: [] });   // material stays
-    expect(x.output).toEqual({ slots: ['plate'], teleporters: [] });
+    // The material goes to the bank (#58; before, it stayed).
+    expect(x.input).toEqual({ slots: [null], teleporters: [] });
+    expect(x.output).toEqual({ slots: [null], teleporters: [] });
     expect(after.players[0]!.teleportersRemaining).toBe(4);
     expect(after.globalTeleporterCount).toBe(0);
     expect(teleporterCost(after.globalTeleporterCount)).toBe(1);
   });
 
-  it('they stay while the placer keeps another claim there, even if another player also claims it', () => {
+  it('they stay, with the material, while the placer keeps another claim there', () => {
     const after = expectOk(applyAction(withTeleporters([{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 6 }]), move));
-    expect(after.board.find(p => p.id === 'X')!.output!.teleporters).toEqual([0]);
-    expect(after.globalTeleporterCount).toBe(2);
-  });
-
-  it("only the leaving player's teleporters return; a co-owner who stays keeps the building", () => {
-    const after = expectOk(applyAction(withTeleporters([{ ownerId: 1, controlModule: 5 }, { ownerId: 0, controlModule: 4 }]), move));
     const x = after.board.find(p => p.id === 'X')!;
-    expect(x.claims).toEqual([{ ownerId: 1, controlModule: 5 }]);
-    expect(x.output!.teleporters).toEqual([]);
-    expect(after.players[0]!.teleportersRemaining).toBe(4);
+    expect(x.output).toEqual({ slots: ['plate'], teleporters: [0] });
+    expect(x.input).toEqual({ slots: ['ore'], teleporters: [0] });
+    expect(after.globalTeleporterCount).toBe(2);
   });
 });
 
@@ -224,16 +219,14 @@ describe("a belt end facing a building it may not serve is a dead end (#38)", ()
   const beltC: Belt = { id: 'bC', ownerId: 0, pieceId: 'C', fromPoint: 0, toPoint: 7 };
   const P0: Claims = [{ ownerId: 0, controlModule: 4 }];
   const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
-  const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
   const inF = (s: GameState): unknown => resolveDirectAdjacency(s).board.find(p => p.id === 'F')!.input!.slots[0];
 
-  it('feeding: no ore reaches a building claimed only by another player', () => {
+  it('feeding: no ore reaches a building claimed by another player', () => {
     expect(inF(actionsState([MINE, A, F(P1)], [beltA]))).toBeNull();
     expect(inF(actionsState([MINE, A, F(P0)], [beltA]))).toBe('ore');
-    expect(inF(actionsState([MINE, A, F(BOTH)], [beltA]))).toBe('ore');
   });
 
-  it('works again as soon as the belt owner gains a claim, or the building becomes unclaimed', () => {
+  it('works again once the building becomes the belt owner\'s; a belt may be laid to an unclaimed one', () => {
     // Player 0 lays the belt into the unclaimed factory; player 1 then claims it (Short Sale).
     let s = actionsState([MINE, A, F([])]);
     s = expectOk(applyAction(s, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 }));
@@ -241,24 +234,24 @@ describe("a belt end facing a building it may not serve is a dead end (#38)", ()
     s = expectOk(applyAction(s, { type: 'PLAY_CARD', cardType: 'shortSale', pieceId: 'F' }));
     expect(s.belts.map(b => b.ownerId)).toEqual([0]); // the belt stays
     expect(inF(s)).toBeNull();                         // but it is a dead end
-    // Player 0 holds a claim on it too (a shared building, as older saves may have — Short Sale
-    // can no longer claim another player's building, #46): the belt carries ore again.
-    s = { ...s, board: s.board.map(p => (p.id === 'F' ? { ...p, claims: [...p.claims, { ownerId: 0 as const, controlModule: 5 }] } : p)) };
+    // Player 1 later leaves it and player 0 claims it (one owner at a time, #57): the belt
+    // carries ore again.
+    s = { ...s, board: s.board.map(p => (p.id === 'F' ? { ...p, claims: [{ ownerId: 0 as const, controlModule: 5 }] } : p)) };
     expect(inF(s)).toBe('ore');
-    // And when the building is unclaimed again, anyone's belt feeds it... no claimed input takes
-    // material, so check the reservation lifts: the end is no longer reserved.
+    // While the building is unclaimed, the reservation is lifted: anyone may lay a belt to it.
     const unclaimed = actionsState([MINE, A, F([])], [beltA]);
     expect(code({ ...unclaimed, belts: [] }, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 })).toBeNull();
   });
 
-  it('drawing: no material leaves another player\'s building through the belt owner\'s chain', () => {
+  it('drawing: no material leaves another player\'s building, or an unclaimed one, through a belt chain', () => {
     const moved = (fClaims: Claims): { f: unknown; g: unknown } => {
       const after = resolveDirectAdjacency(actionsState([F(fClaims, 'plate'), C, G(P0)], [beltC]));
       return { f: after.board.find(p => p.id === 'F')!.output!.slots[0], g: after.board.find(p => p.id === 'G')!.input!.slots[0] };
     };
     expect(moved(P1)).toEqual({ f: 'plate', g: null });
-    expect(moved(BOTH)).toEqual({ f: null, g: 'plate' });
-    expect(moved([])).toEqual({ f: null, g: 'plate' }); // an unclaimed building's output is open
+    expect(moved(P0)).toEqual({ f: null, g: 'plate' });
+    // An unclaimed building feeds nothing (#58; it is emptied to the bank when its owner leaves).
+    expect(moved([])).toEqual({ f: 'plate', g: null });
   });
 
   it('Belt Weaver: a dead end does not count as the chain reaching that building', () => {
@@ -278,8 +271,7 @@ describe("an output touching an input moves material only between one player's b
   const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
   const G0: Claims = [{ ownerId: 0, controlModule: 5 }];
   const G1: Claims = [{ ownerId: 1, controlModule: 5 }];
-  const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 6 }];
-  const F = (claims: Claims, out: Material | null = 'plate', input: Material | null = null): BoardPiece =>
+  const F =(claims: Claims, out: Material | null = 'plate', input: Material | null = null): BoardPiece =>
     ({ ...piece('F', 'plateFact', 3, 0, 0, claims), input: { slots: [input], teleporters: [] }, output: { slots: [out], teleporters: [] } });
   const G = (claims: Claims, slots: Array<Material | null> = [null, null]): BoardPiece =>
     ({ ...piece('G', 'sphereFact', 4, 0, 0, claims), input: { slots, teleporters: [] } });
@@ -299,15 +291,10 @@ describe("an output touching an input moves material only between one player's b
     expect(run([F(P1), G(G1)])).toEqual({ f: null, g: ['plate', null] });
   });
 
-  it('a shared building: it moves when one player holds a claim on both', () => {
-    expect(run([F(BOTH), G(G0)])).toEqual({ f: null, g: ['plate', null] });
-    expect(run([F(P1), G([...G1, ...G0])])).toEqual({ f: null, g: ['plate', null] });
-    expect(run([F(BOTH), G([...G1, ...G0])])).toEqual({ f: null, g: ['plate', null] });
-  });
-
-  it("an unclaimed building's output still passes into a claimed neighbour", () => {
-    expect(run([F([]), G(G0)])).toEqual({ f: null, g: ['plate', null] });
-    expect(run([F([]), G(G1)])).toEqual({ f: null, g: ['plate', null] });
+  it("an unclaimed building's output feeds nothing (#58)", () => {
+    expect(run([F([]), G(G0)])).toEqual({ f: 'plate', g: [null, null] });
+    expect(run([F([]), G(G1)])).toEqual({ f: 'plate', g: [null, null] });
+    expect(directFlowAllowed(F([]), G(G0))).toBe(false);
   });
 
   it('an unclaimed building never receives', () => {
@@ -317,7 +304,7 @@ describe("an output touching an input moves material only between one player's b
 
   it('a Mine feeds any claimed building it touches, as before', () => {
     const M = (claims: Claims): BoardPiece => piece('M', 'plateFact', 2, 0, 0, claims);
-    for (const claims of [P0, P1, BOTH]) {
+    for (const claims of [P0, P1]) {
       const after = resolveDirectAdjacency(actionsState([MINE, M(claims)]));
       expect(after.board.find(p => p.id === 'M')!.input!.slots, JSON.stringify(claims)).toEqual(['ore']);
     }
@@ -347,11 +334,11 @@ describe("an output touching an input moves material only between one player's b
 
   it('a belt chain never carries one player\'s output into a building of a player without a claim on the source', () => {
     // Every claim combination on source F and destination G, with the belt on C laid by either
-    // player: material arrives only if the belt owner holds a claim on G and on F (or F is
-    // unclaimed) — so always where directFlowAllowed holds.
+    // player: material arrives only if the belt owner holds a claim on G and on F (an unclaimed
+    // F feeds nothing, #58) — so always where directFlowAllowed holds.
     const C = piece('C', 'blank', 4, 0);
     const Gb = (claims: Claims): BoardPiece => piece('G', 'sphereFact', 5, 0, 0, claims);
-    const options: Claims[] = [[], P0, P1, BOTH];
+    const options: Claims[] = [[], P0, P1];
     for (const owner of [0, 1] as const) {
       const belt: Belt = { id: 'bC', ownerId: owner, pieceId: 'C', fromPoint: 0, toPoint: 7 };
       for (const fc of options) {
@@ -362,7 +349,7 @@ describe("an output touching an input moves material only between one player's b
           const arrived = after.board.find(p => p.id === 'G')!.input!.slots.includes('plate');
           const holds = (c: Claims): boolean => c.some(x => x.ownerId === owner);
           const label = `belt of ${owner}, F ${JSON.stringify(fc)}, G ${JSON.stringify(gc)}`;
-          expect(arrived, label).toBe(holds(gc) && (fc.length === 0 || holds(fc)));
+          expect(arrived, label).toBe(holds(gc) && holds(fc));
           if (arrived) expect(directFlowAllowed(f, g), label).toBe(true);
         }
       }
@@ -499,26 +486,27 @@ describe('a belt picked up goes to the bank unless it was laid this turn (#54, p
 // ── OQ-9: a pending decision of your own comes first (#40) ────────────────────
 
 describe('while the active player has a factory decision pending, only operate/skip is accepted (#40)', () => {
-  const shared: BoardPiece = {
-    ...piece('pf', 'plateFact', 50, 0, 0, [{ ownerId: 0, controlModule: 3 }, { ownerId: 1, controlModule: 3 }]),
+  // Two Plate Factories with Control Module 3: pf is player 0's, pg player 1's.
+  const withOre = (id: string, x: number, owner: PlayerId): BoardPiece => ({
+    ...piece(id, 'plateFact', x, 0, 0, [{ ownerId: owner, controlModule: 3 }]),
     input: { slots: ['ore'], teleporters: [] },
-  };
+  });
   const base = createGame(1, 2);
   const roll: GameState = {
-    ...base, board: [...base.board, shared], turnOrder: [0, 1], activePlayerIndex: 0, phase: 'roll',
+    ...base, board: [...base.board, withOre('pf', 50, 0), withOre('pg', 52, 1)], turnOrder: [0, 1], activePlayerIndex: 0, phase: 'roll',
     players: base.players.map(p => ({ ...p, powerTokens: 10, inventory: inv(3, 0, 0, 0) })),
   };
   const rolled = expectOk(applyAction(roll, { type: 'ROLL_DICE', rolls: [3] }));
 
   it('other moves are refused with DECISION_PENDING', () => {
-    expect(rolled.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 0 }, { pieceId: 'pf', ownerId: 1 }]);
+    expect(rolled.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 0 }, { pieceId: 'pg', ownerId: 1 }]);
     for (const a of [{ type: 'BUY_BELT' }, { type: 'BUY_CARD' }, { type: 'END_ACTIONS' }, { type: 'EXCHANGE_MATERIALS', give: 'plate' }] as Action[]) {
       expect(code(rolled, a), a.type).toBe('DECISION_PENDING');
     }
   });
 
   it("another owner's entry may still be answered; then the active player must still decide", () => {
-    const skipped = expectOk(applyAction(rolled, { type: 'SKIP_FACTORY_ROLL', pieceId: 'pf', ownerId: 1 }));
+    const skipped = expectOk(applyAction(rolled, { type: 'SKIP_FACTORY_ROLL', pieceId: 'pg', ownerId: 1 }));
     expect(code(skipped, { type: 'BUY_BELT' })).toBe('DECISION_PENDING');
     const decided = expectOk(applyAction(skipped, { type: 'OPERATE_BUILDING', pieceId: 'pf', ownerId: 0 }));
     expect(code(decided, { type: 'BUY_BELT' })).toBeNull();
@@ -526,7 +514,7 @@ describe('while the active player has a factory decision pending, only operate/s
 
   it("once the active player's own entries are answered, others' pending entries do not block them", () => {
     const decided = expectOk(applyAction(rolled, { type: 'SKIP_FACTORY_ROLL', pieceId: 'pf', ownerId: 0 }));
-    expect(decided.pendingFactoryOps).toEqual([{ pieceId: 'pf', ownerId: 1 }]);
+    expect(decided.pendingFactoryOps).toEqual([{ pieceId: 'pg', ownerId: 1 }]);
     expect(code(decided, { type: 'BUY_BELT' })).toBeNull();
     expect(code(decided, { type: 'END_ACTIONS' })).toBe('PENDING_FACTORY_OPS');
   });

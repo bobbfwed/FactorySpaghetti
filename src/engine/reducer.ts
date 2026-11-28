@@ -16,8 +16,9 @@ import {
   endTurnError,
 } from './rules/production';
 import {
-  applyPlaceBelt, applyRemoveBelt, applyUndoBelts, applyPlaceTeleporter, applyBuyBelt, returnOrphanedTeleporters,
+  applyPlaceBelt, applyRemoveBelt, applyUndoBelts, applyPlaceTeleporter, applyBuyBelt,
 } from './rules/flow';
+import { settleLostClaims } from './rules/ownership';
 import {
   applyClaimBuilding,
   applyUpgradeBuilding,
@@ -114,7 +115,7 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     // The board running out no longer ends the game here: the round is finished first (the
     // check runs when the round-end turns are over, below). A next player with nothing to draw
     // goes straight to the roll (RULES_CHANGES.md #44).
-    return { ok: true, state: skipEmptyPlacePiece(recomputeBonuses(returnOrphanedTeleporters(result.state))) };
+    return { ok: true, state: skipEmptyPlacePiece(recomputeBonuses(settleLostClaims(result.state))) };
   }
 
   const result = dispatch(state, action);
@@ -125,10 +126,10 @@ export function applyAction(state: GameState, action: Action): ApplyResult {
     return result;
   }
 
-  // A teleporter whose placer no longer holds a claim on its building goes back to them (after
-  // any action, so every claim-removing effect is covered). Then recompute bonuses and check if
-  // the active player just hit 4 Tesseracts.
-  const after = postActionChecks(returnOrphanedTeleporters(result.state));
+  // A building that lost its owner is settled: its Teleporters go back to their placers and its
+  // material to the bank (after any action, so every claim-removing effect is covered; #37, #58).
+  // Then recompute bonuses and check if the active player just hit 4 Tesseracts.
+  const after = postActionChecks(settleLostClaims(result.state));
   // The last round-end turn ends the round: if every board piece has been played, the game ends
   // now, on points (postRoundChecks; RULES_CHANGES.md #44).
   const roundOver = state.phase === 'roundEnd' && after.phase === 'placePiece';

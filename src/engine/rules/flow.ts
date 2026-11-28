@@ -187,10 +187,11 @@ export function inputIndexAt(piece: Pick<BoardPiece, 'type' | 'id'>, pos: number
 }
 
 // May material move from building `src`'s output into building `dst`'s input (RULES_CHANGES.md
-// #51)? Only a claimed building receives, and only from a building of the same player: at least
-// one player holds a claim on both. An unclaimed building's output is open — it is nobody's
-// material, just as it is open to anyone's belt — and a Mine belongs to nobody and feeds any
-// claimed building. Otherwise nothing moves and the material stays in `src`'s output.
+// #51, #58)? Only between buildings of the same player: `dst` must be claimed, and `src` must be
+// a building of `dst`'s owner. An unclaimed building feeds nothing (and holds nothing: it is
+// emptied to the bank when it loses its owner, #58), and receives nothing. A Mine belongs to
+// nobody and feeds any claimed building. Otherwise nothing moves and the material stays in
+// `src`'s output.
 // One predicate for every consumer: the flow resolver (direct contact, and as a safeguard every
 // belt-chain delivery too), the table's flow display and the bots' feed analysis.
 // `assumeOwner`: judge as if that player also held a claim on `dst` (a bot weighing a building it
@@ -203,15 +204,16 @@ export function directFlowAllowed(
   const receivers = new Set<PlayerId>(dst.claims.map(c => c.ownerId));
   if (assumeOwner !== undefined) receivers.add(assumeOwner);
   if (receivers.size === 0) return false;
-  if (src.type === 'mine' || src.claims.length === 0) return true;
+  if (src.type === 'mine') return true;
   return src.claims.some(c => receivers.has(c.ownerId));
 }
 
 // Why player `me` may not end a belt at (piece, pos), judged by what sits across that
 // point's shared edge, or null if nothing there forbids it:
 //   • 'POINT_RESERVED' — the point faces an input or output of a building that has at least
-//     one claim and none of them is mine (the point is reserved for its owners; a co-owner
-//     may use it; anyone may use it while the building is unclaimed);
+//     one claim and none of them is mine (the point is reserved for its owner; anyone may lay
+//     a belt there while the building is unclaimed, though an unclaimed building neither
+//     receives nor feeds, #58);
 //   • 'BELT_BLOCKED'   — another player's belt connects there (you may not join it).
 // Used by belt placement, legalActions, and the router so all three agree. Only NEW belts
 // are checked here: a belt already lying at a point stays when someone later claims the
@@ -448,41 +450,6 @@ export function teleporterTarget(
     return err('BUFFER_OCCUPIED', 'This output buffer already has a teleporter');
   }
   return { ok: true, piece: owner => ({ ...piece, output: withTeleporter(output, 0, owner) }) };
-}
-
-// ── Teleporters that lost their claim ─────────────────────────────────────────
-
-// A teleporter works for the building it sits on only while its placer holds a claim there.
-// As soon as a player holds no claim on a building any more (today only Changing Priorities
-// can move their last Control Module off it), every teleporter of theirs on that building —
-// each one on an input and the one on the output (#55) — goes back to their supply, that input
-// or output has no teleporter, and the teleporter price drops with the count on the board
-// (RULES_CHANGES.md #37). Material in the buffers stays.
-// Pure; run after every action (reducer) so any future claim-removing effect is covered too.
-export function returnOrphanedTeleporters(state: GameState): GameState {
-  // Fast path (this runs after every action, including every move a bot tries).
-  const orphaned = (piece: BoardPiece): boolean => [piece.input, piece.output].some(buf =>
-    !!buf && buf.teleporters.some(owner => owner != null && !piece.claims.some(c => c.ownerId === owner)));
-  if (!state.board.some(orphaned)) return state;
-  let returned = 0;
-  let players = state.players;
-  const board = state.board.map(piece => {
-    let next = piece;
-    for (const side of ['input', 'output'] as const) {
-      for (const { slot, owner } of teleportersOf(next[side])) {
-        if (next.claims.some(c => c.ownerId === owner)) continue;
-        next = { ...next, [side]: withTeleporter(next[side]!, slot, null) };
-        players = mapPlayer(players, owner, p => ({ ...p, teleportersRemaining: p.teleportersRemaining + 1 }));
-        returned++;
-      }
-    }
-    return next;
-  });
-  if (returned === 0) return state;
-  return {
-    ...state, board, players,
-    globalTeleporterCount: Math.max(0, state.globalTeleporterCount - returned),
-  };
 }
 
 // ── PLACE_BELT ────────────────────────────────────────────────────────────────
@@ -765,6 +732,9 @@ export function drainOutputTeleporters(state: GameState): GameState {
   const board = state.board.map(piece => {
     const owner = teleporterOn(piece.output, 0);
     if (!piece.output || owner === null) return piece;
+    // Only for its placer's own building (a Teleporter whose placer lost the claim is returned
+    // after the move, and the building's material goes to the bank: #37, #58).
+    if (!piece.claims.some(c => c.ownerId === owner)) return piece;
     const slots = [...piece.output.slots] as Array<Material | null>;
     let pieceChanged = false;
     for (let i = 0; i < slots.length; i++) {
@@ -862,8 +832,8 @@ export function resolveDirectAdjacency(state: GameState): GameState {
   }
 
   // Pass 1: direct adjacency, building output → adjacent claimed input (no belt), only between
-  // buildings of the same player or out of an unclaimed building (moveOutput, #51); otherwise
-  // the material stays in the output, as it does when the input is full.
+  // buildings of the same player (moveOutput, #51, #58); otherwise the material stays in the
+  // output, as it does when the input is full.
   // (Direct mine ore is already delivered by fillInputsFromAdjacentMines above.)
   for (const piece of state.board) {
     const template = pieceTemplate(piece);
@@ -922,8 +892,11 @@ export function resolveDirectAdjacency(state: GameState): GameState {
         if (role === 'ore_output') {
           oreFound = true;
         } else if (role === 'output_buffer') {
-          // A teleported output is never a source for a chain (#53).
-          if (!deadEnd(e.pieceId, e.pos, s) && !teleporterCutsOff(s.piece, 'output')) outputs.push({ pieceId: s.piece.id, pos: s.pos });
+          // A teleported output is never a source for a chain (#53), nor is an unclaimed
+          // building's output: it holds nothing and feeds nothing (#58).
+          if (!deadEnd(e.pieceId, e.pos, s) && !teleporterCutsOff(s.piece, 'output') && s.piece.claims.length > 0) {
+            outputs.push({ pieceId: s.piece.id, pos: s.pos });
+          }
         } else if (beltPartner(s.piece.id, s.pos) !== null) {
           // a placed belt continues the chain on the neighbouring piece
           const key = `${s.piece.id}:${s.pos}`;

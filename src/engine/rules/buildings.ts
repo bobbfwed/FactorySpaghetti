@@ -18,6 +18,7 @@ import type {
 } from '../actions';
 import { MINE_COSTS, MAX_CLAIMS_PER_BUILDING } from '../config';
 import { payMaterials } from './flow';
+import { mayAddClaim } from './ownership';
 import { isCoordsOccupied, isAdjacentToBoard, mineSecondaryCoord, validRotation, OWN_TURN_STEPS } from './pieces';
 
 export type ActionResult =
@@ -131,8 +132,8 @@ export function applyClaimBuilding(
     return err('MODULE_NOT_AVAILABLE', `Module ${controlModule} is not in your hand`);
   }
 
-  // Only one player may own a building
-  if (piece.claims.length > 0 && piece.claims[0]!.ownerId !== activeId) {
+  // One owner per building: only an unclaimed building or one of the player's own (#57).
+  if (!mayAddClaim(piece, activeId)) {
     return err('ALREADY_CLAIMED', 'This building is already claimed by another player');
   }
 

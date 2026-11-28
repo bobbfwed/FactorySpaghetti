@@ -8,7 +8,8 @@ import type { BoardPiece, GameState, PlayerId, HexCoord } from '../state';
 import { freeTeleporterSlots } from './teleporters';
 import type { Action, OperateBuildingAction } from '../actions';
 import { canonicalAction, sameMove } from '../actions';
-import { scoutingDronePieceIndex, cardsLeftToDraw, mayAddClaimByCard, leavesMeepleUnowned } from './cards';
+import { scoutingDronePieceIndex, cardsLeftToDraw, leavesMeepleUnowned } from './cards';
+import { mayAddClaim } from './ownership';
 import { minePlacementError } from './buildings';
 import type { CardType } from '../config';
 import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
@@ -41,8 +42,8 @@ export function legalActions(state: GameState, playerId: PlayerId): Action[] {
     for (const e of myPending) {
       // One operate per way the engine would accept it: from the building's own input (no
       // supply), and with each distinct supply from the owner's inventory through their input
-      // teleporter (operateSupplies). An entry can go stale (e.g. a co-owner already operated
-      // the same building, so its output buffer is full): then only the skip is left. A Power
+      // teleporter (operateSupplies). An entry can go stale (e.g. the owner's inventory or power
+      // changed since the roll, so it cannot run any more): then only the skip is left. A Power
       // Plant always runs, so its skip is offered only when it cannot run any more.
       const runs = operateOptions(state, e.pieceId, playerId, { ownerId: playerId });
       acts.push(...runs);
@@ -296,7 +297,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       if (!hasValidModule) break;
       for (const piece of state.board) {
         if (piece.type === 'blank' || piece.type === 'mine') continue;
-        if (!mayAddClaimByCard(piece, playerId)) continue; // never another player's building
+        if (!mayAddClaim(piece, playerId)) continue; // never another player's building
         if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
         out.push({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId: piece.id });
       }
@@ -322,7 +323,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
           for (const toPiece of state.board) {
             if (toPiece.type === 'mine' || toPiece.type === 'blank') continue;
             if (toPiece.id === fromPiece.id) continue;
-            if (!mayAddClaimByCard(toPiece, playerId)) continue; // never another player's building
+            if (!mayAddClaim(toPiece, playerId)) continue; // never another player's building
             if (toPiece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
             out.push({
               type: 'PLAY_CARD', cardType: 'changingPriorities',
@@ -385,8 +386,8 @@ function addClaimBuilding(
 
   for (const piece of state.board) {
     if (piece.type === 'blank' || piece.type === 'mine') continue;
-    // Only one player may claim a building
-    if (piece.claims.length > 0 && piece.claims[0]!.ownerId !== playerId) continue;
+    // One owner per building (#57)
+    if (!mayAddClaim(piece, playerId)) continue;
     if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
     for (const module of validModules) {
       // Claiming never costs materials. Placing module M draws (M − mineCount + 1)
@@ -470,10 +471,11 @@ function computeRoundEnd(state: GameState, playerId: PlayerId): Action[] {
   if (!player) return [{ type: 'END_ACTIONS' }];
   const actions: Action[] = [{ type: 'END_ACTIONS' }];
 
-  // Building meeple: offer load-input and operate actions.
+  // Building meeple: offer load-input and operate actions — only on a building the player holds
+  // a claim on (#58; the meeple goes only on an own building, and #50 keeps it so this turn).
   if (player.meepleOnPieceId !== null && player.meepleSlotIndex === null) {
     const piece = state.board.find(p => p.id === player.meepleOnPieceId);
-    if (piece && piece.type !== 'mine' && piece.type !== 'blank') {
+    if (piece && piece.type !== 'mine' && piece.type !== 'blank' && piece.claims.some(c => c.ownerId === playerId)) {
       // Load material into empty input slot — only materials that keep a valid recipe
       // reachable (canLoadMaterial), so legalActions matches applyLoadBuildingInput.
       if (piece.input && piece.input.slots.some(s => s === null)) {

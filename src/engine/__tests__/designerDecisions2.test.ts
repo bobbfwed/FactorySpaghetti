@@ -269,8 +269,7 @@ describe("Short Sale and Changing Priorities cannot put a Control Module on anot
   const theirs = building('theirs', 'plateFact', [{ ownerId: 1, controlModule: 5 }], [null], null, 50);
   const free = building('free', 'plateFact', [], [null], null, 52);
   const mine = building('mine', 'plateFact', [{ ownerId: 0, controlModule: 4 }], [null], null, 54);
-  const shared = building('shared', 'plateFact', [{ ownerId: 1, controlModule: 6 }, { ownerId: 0, controlModule: 7 }], [null], null, 56);
-  const s = patchPlayer(onBoard([theirs, free, mine, shared], 'actions'), 0, { hand: ['shortSale', 'changingPriorities'] });
+  const s = patchPlayer(onBoard([theirs, free, mine], 'actions'), 0, { hand: ['shortSale', 'changingPriorities'] });
   const ss = (pieceId: string): Action => ({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId });
   const cp = (toPieceId: string): Action => ({ type: 'PLAY_CARD', cardType: 'changingPriorities', pieceId: 'mine', toPieceId, controlModule: 4 });
 
@@ -289,12 +288,8 @@ describe("Short Sale and Changing Priorities cannot put a Control Module on anot
     expect(code(s, cp('free'))).toBeNull();
     expect(listed(s, cp('free'), 0)).toBe(true);
   });
-
-  it('a building two players share in an older save still plays: either owner may add to it', () => {
-    expect(code(s, ss('shared'))).toBeNull();
-    expect(listed(s, ss('shared'), 0)).toBe(true);
-    expect(listed(s, cp('shared'), 0)).toBe(true);
-  });
+  // A building shared by two players (from a save made before #46) is refused when loading
+  // (#57): see ownership.test.ts and session/__tests__/sharedBuilding.test.ts.
 });
 
 // ── #47: a Mine may touch the board with either half ──────────────────────────

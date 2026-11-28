@@ -28,6 +28,7 @@ import {
 } from '../config';
 import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation, drawnStack, OWN_TURN_STEPS } from './pieces';
 import { mineBeltAmong, payMaterials, teleporterTarget } from './flow';
+import { mayAddClaim } from './ownership';
 import { shuffle } from '../rng';
 
 export type ActionResult =
@@ -422,15 +423,6 @@ function resolveScoutingDrone(
   };
 }
 
-// Whether Short Sale or Changing Priorities may put `playerId`'s Control Module on `piece`: only
-// an unclaimed building or one they already hold a claim on, never another player's building
-// (RULES_CHANGES.md #46; still at most 3 claims of theirs per building, checked separately).
-// So two owners on one building no longer come about; older saves that have such a building
-// still load and play (each owner holding a claim there may add to it).
-export function mayAddClaimByCard(piece: BoardPiece, playerId: PlayerId): boolean {
-  return piece.claims.length === 0 || piece.claims.some(c => c.ownerId === playerId);
-}
-
 // shortSale: claim a building with your lowest available module (≥ mine floor) for free.
 function resolveShortSale(
   state: GameState,
@@ -449,7 +441,8 @@ function resolveShortSale(
     return err('NOT_CLAIMABLE', 'Only factories and power plants can be claimed');
   }
 
-  if (!mayAddClaimByCard(piece, activeId)) {
+  // Only an unclaimed building or one of the player's own: one owner per building (#46, #57).
+  if (!mayAddClaim(piece, activeId)) {
     return err('ALREADY_CLAIMED', "Short Sale cannot claim another player's building");
   }
   const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
@@ -569,7 +562,10 @@ export function leavesMeepleUnowned(state: GameState, playerId: PlayerId, fromId
   return !!from && from.claims.filter(c => c.ownerId === playerId).length === 1;
 }
 
-// changingPriorities: move a Control Module from one of your buildings to another.
+// changingPriorities: move a Control Module from one of your buildings to another (unclaimed or
+// already yours: one owner per building, #46, #57). Moving the player's last module off a
+// building leaves it with no owner: after the move, settleLostClaims (ownership.ts, run by the
+// reducer) sends its material to the bank and its Teleporters back to their placer (#37, #58).
 function resolveChangingPriorities(
   state: GameState,
   action: PlayCardAction,
@@ -599,7 +595,7 @@ function resolveChangingPriorities(
     return err('CLAIM_NOT_FOUND', `You don't have module ${controlModule} on ${fromId}`);
   }
 
-  if (!mayAddClaimByCard(toPiece, activeId)) {
+  if (!mayAddClaim(toPiece, activeId)) {
     return err('ALREADY_CLAIMED', "Changing Priorities cannot move a Control Module onto another player's building");
   }
   if (toPiece.claims.filter(c => c.ownerId === activeId).length >= MAX_CLAIMS_PER_BUILDING) {

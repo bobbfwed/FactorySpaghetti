@@ -63,9 +63,8 @@ export interface Feed {
 /**
  * The source that reaches input point `pos` of `piece`: across the shared edge directly, or
  * along a chain of `me`'s belts (belts of one player only join each other). A building's output
- * counts only when the engine would move it into `piece` held by `me` (directFlowAllowed: an
- * unclaimed building, or one `me` — or a co-owner of `piece` — also holds). null when nothing
- * delivers there.
+ * counts only when the engine would move it into `piece` held by `me` (directFlowAllowed: a
+ * building of `me`'s; an unclaimed building feeds nothing, #58). null when nothing delivers there.
  */
 export function feedAt(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): Feed | null {
   // A teleported input takes nothing by itself (#53, per input since #55).
@@ -78,8 +77,8 @@ export function feedAt(state: GameState, piece: BoardPiece, pos: number, me: Pla
     if (role === 'ore_output') return { material: 'ore', fromPieceId: n.piece.id, viaBelts: belts };
     if (role === 'output_buffer') {
       if (belts > 0 && isReservedPoint(n.piece, n.pos, me)) return null; // a dead end for my belt
-      // The engine moves a building's output only into a building of the same player (or out of
-      // an unclaimed one), judged as if `me` held a claim on `piece` (#51).
+      // The engine moves a building's output only into a building of the same player, judged as
+      // if `me` held a claim on `piece` (#51, #58).
       if (!directFlowAllowed(n.piece, piece, me)) return null;
       if (teleporterCutsOff(n.piece, 'output')) return null; // drained only by its teleporter (#53)
       const product = PRODUCT[n.piece.type];
@@ -109,14 +108,13 @@ export function inputFeeds(state: GameState, piece: BoardPiece, me: PlayerId): A
  * How much of the building's recipe arrives by itself, 0–1: the fed inputs that can be part of
  * one valid recipe, over the number of input slots. A Power Plant counts as fed when ore (or
  * better) reaches it. An input with the owner's teleporter counts as fed from the inventory (a
- * teleporter sits on one input and supplies only that one, #55; another player's teleporter
- * cuts that input off from `me`).
+ * teleporter sits on one input and supplies only that one, #55).
  */
 export function fedFraction(state: GameState, piece: BoardPiece, me: PlayerId): number {
   if (!piece.input) return 0;
   const input = piece.input;
   const feeds = inputFeeds(state, piece, me);
-  // Material already waiting in a slot counts as arrived (it may have come along a co-owner's belt).
+  // Material already waiting in a slot counts as arrived.
   const slots: Array<Material | null> = feeds.map(() => null);
   let fed = 0;
   feeds.forEach((f, i) => {

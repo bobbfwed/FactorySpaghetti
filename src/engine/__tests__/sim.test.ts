@@ -87,43 +87,38 @@ describe('legalActions correctness', () => {
 // Seeded property check over whole random games: at EVERY step and for EVERY player (not just
 // the active one — owners of a pending factory activation may act off-turn), every action that
 // legalActions lists is accepted by applyAction. The policy picks an action type first, then an
-// action of that type, so rare kinds (card plays, pending operations) are exercised too. Short
-// Sale and Changing Priorities can no longer put a Control Module on another player's building
-// (RULES_CHANGES.md #46; checked: never listed), so a building claimed by two players comes only
-// from an older save: the non-saving games are given one, as such a save would hold it, and play
-// on with it. On sampled states it checks the other direction too:
-// every PLACE_BELT (every piece, every ordered pair of points) and every DRAW_PIECE (every stack)
-// that applyAction accepts is listed — a belt up to endpoint order (sameMove), with the same
-// effect as its listed form apart from the stored order.
+// action of that type, so rare kinds (card plays, pending operations) are exercised too. At every
+// step it checks the ownership invariants (RULES_CHANGES.md #57, #58): no building has two
+// owners, no unclaimed building holds material or a Teleporter, and no Teleporter sits on a
+// building its placer does not own; and no claiming move onto another player's building is ever
+// listed. The non-saving games steer towards Short Sale and Changing Priorities, so owners leave
+// buildings (and forfeit what is in them) and claim others. On sampled states it checks the other
+// direction too: every PLACE_BELT (every piece, every ordered pair of points) and every DRAW_PIECE
+// (every stack) that applyAction accepts is listed — a belt up to endpoint order (sameMove), with
+// the same effect as its listed form apart from the stored order.
 
-// A claim by `p` that makes a building co-owned: Short Sale or Changing Priorities onto a
-// building someone else has claimed and `p` has not.
-function coOwningPlay(state: GameState, p: PlayerId, a: Action): boolean {
-  if (a.type !== 'PLAY_CARD') return false;
-  const target = a.cardType === 'shortSale' ? a.pieceId : a.cardType === 'changingPriorities' ? a.toPieceId : undefined;
+// A claiming move by `p` onto a building another player has claimed: CLAIM_BUILDING, Short Sale,
+// or Changing Priorities to it.
+function claimsOthersBuilding(state: GameState, p: PlayerId, a: Action): boolean {
+  const target = a.type === 'CLAIM_BUILDING' ? a.pieceId
+    : a.type !== 'PLAY_CARD' ? undefined
+    : a.cardType === 'shortSale' ? a.pieceId : a.cardType === 'changingPriorities' ? a.toPieceId : undefined;
   const piece = target === undefined ? undefined : state.board.find(b => b.id === target);
-  return !!piece && piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === p);
+  return !!piece && piece.claims.some(c => c.ownerId !== p);
 }
 
-const isCoOwned = (state: GameState): boolean =>
-  state.board.some(b => new Set(b.claims.map(c => c.ownerId)).size >= 2);
-
-// The state with a second player's Control Module added to a claimed building, as a save made
-// before #46 could hold it (the lowest module of theirs at or above the claim floor); unchanged
-// when no such pair exists.
-function withLegacySharedBuilding(state: GameState): GameState {
+// The first broken ownership invariant (#57, #58) in `state`, or null.
+function ownershipProblem(state: GameState): string | null {
   for (const b of state.board) {
-    if (b.claims.length === 0 || isCoOwned(state)) continue;
-    const other = state.players.find(p => !b.claims.some(c => c.ownerId === p.id) && p.controlModules.some(m => m >= state.mineCount));
-    if (!other) continue;
-    const module = Math.min(...other.controlModules.filter(m => m >= state.mineCount));
-    return {
-      ...state,
-      board: state.board.map(x => (x.id === b.id ? { ...x, claims: [...x.claims, { ownerId: other.id, controlModule: module }] } : x)),
-      players: state.players.map(p => (p.id === other.id ? { ...p, controlModules: p.controlModules.filter(m => m !== module) } : p)),
-    };
+    if (new Set(b.claims.map(c => c.ownerId)).size > 1) return `${b.id} has two owners`;
+    const owner = b.claims[0]?.ownerId;
+    for (const buf of [b.input, b.output]) {
+      if (!buf) continue;
+      if (b.claims.length === 0 && b.type !== 'mine' && buf.slots.some(m => m !== null)) return `unclaimed ${b.id} holds material`;
+      if (buf.teleporters.some(t => t != null && t !== owner)) return `${b.id} has a Teleporter of a player who does not own it`;
+    }
   }
-  return state;
+  return null;
 }
 
 describe('legalActions ⊆ applyAction, every player, seeded games', () => {
@@ -133,21 +128,26 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
     const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
     const checked = {
       steps: 0, actions: 0, offTurnPending: 0, staleOperates: 0, drones: 0,
-      drawsApplied: 0, laterMineStates: 0, coOwnedStates: 0, minesBought: 0, buyMineListed: 0,
+      drawsApplied: 0, laterMineStates: 0, ownersLeft: 0, materialForfeited: 0, minesBought: 0, buyMineListed: 0,
       beltSweeps: 0, beltsAccepted: 0, reversedAccepted: 0, drawSweeps: 0, drawsAccepted: 0,
       ownPendingStates: 0, ownPendingSweeps: 0, suppliedOperates: 0, cardsOutsideActions: 0,
     };
 
     // `saving` games steer towards an early Mine purchase (two open stacks: the draw step); the
-    // others towards co-owned buildings.
+    // others towards the cards that move or add claims.
     for (const [pc, seed, saving] of [[2, 1, false], [2, 2, true], [3, 3, false], [3, 22, true], [4, 5, false], [4, 6, true], [3, 7, false], [4, 8, true]] as const) {
       let state = createGame(seed, pc);
+      rng = createRng(2024 + seed); // each game its own choices, so steering one does not shift the others
       for (let step = 0; step < 400 && !state.gameOver; step++) {
-        // An older save's shared building, in the actions step of the non-saving games.
-        if (!saving && step >= 40 && state.phase === 'actions' && !isCoOwned(state)) state = withLegacySharedBuilding(state);
         checked.steps++;
+        expect(ownershipProblem(state), `seed ${seed} step ${step}`).toBeNull();
+        // The non-saving games hand the active player a Changing Priorities now and then (drawing
+        // one is rare), so owners do leave buildings with material in them.
+        if (!saving && step >= 20 && step % 40 === 0) {
+          const p = state.turnOrder[state.activePlayerIndex]!;
+          state = { ...state, players: state.players.map(x => (x.id === p ? { ...x, hand: [...x.hand, 'changingPriorities' as const] } : x)) };
+        }
         if (state.board.some(b => b.id === 'mine-2' || b.id === 'mine-3')) checked.laterMineStates++;
-        if (isCoOwned(state)) checked.coOwnedStates++;
         const active = state.turnOrder[state.activePlayerIndex]!;
         const choices: Array<{ p: PlayerId; a: Action }> = [];
         for (let p = 0; p < pc; p++) {
@@ -161,7 +161,7 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             if (a.type === 'OPERATE_BUILDING' && (a.supply?.length ?? 0) > 0) checked.suppliedOperates++;
             if (a.type === 'PLAY_CARD' && state.phase !== 'actions') checked.cardsOutsideActions++;
             if (a.type === 'BUY_MINE') checked.buyMineListed++;
-            expect(coOwningPlay(state, p as PlayerId, a), `listed onto another player's building: ${JSON.stringify(a)}`).toBe(false);
+            expect(claimsOthersBuilding(state, p as PlayerId, a), `listed onto another player's building: ${JSON.stringify(a)}`).toBe(false);
             choices.push({ p: p as PlayerId, a });
           }
           // A pending entry whose operate is not listed is a stale one (now only skippable). These
@@ -224,8 +224,8 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
           action = { type: 'ROLL_DICE', rolls: Array.from({ length: state.mineCount }, () => 1 + below(6)) };
         } else {
           if (choices.length === 0) break;
-          // Cards that add a claim (on a building with claims already) keep shared buildings in play.
-          const coOwning = choices.filter(c => c.a.type === 'PLAY_CARD' && (c.a.cardType === 'shortSale' || c.a.cardType === 'changingPriorities'));
+          // Cards that move or add a claim: owners leave buildings and claim others.
+          const claimCards = choices.filter(c => c.a.type === 'PLAY_CARD' && (c.a.cardType === 'shortSale' || c.a.cardType === 'changingPriorities'));
           const buyCard = choices.filter(c => c.a.type === 'BUY_CARD');
           // Buying a Mine before a stack runs out is what leaves two stacks open (the draw step);
           // an auto-dropped Mine only arrives once the earlier stack is empty. So the "saving" games
@@ -238,10 +238,16 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
             action = pick(buyMine).a;
           } else if (saving && gather.length > 0) {
             action = pick(gather).a;
-          } else if (!saving && coOwning.length > 0) {
-            action = pick(coOwning).a;
+          } else if (!saving && claimCards.length > 0) {
+            // Prefer a Changing Priorities that leaves a building with material in it without an owner.
+            const leaving = claimCards.filter(c => {
+              if (c.a.type !== 'PLAY_CARD' || c.a.cardType !== 'changingPriorities') return false;
+              const from = state.board.find(b => b.id === (c.a as { pieceId?: string }).pieceId);
+              return !!from && from.claims.length === 1 && [...(from.input?.slots ?? []), ...(from.output?.slots ?? [])].some(m => m !== null);
+            });
+            action = pick(leaving.length > 0 ? leaving : claimCards).a;
           } else if (!saving && buyCard.length > 0 && below(3) === 0) {
-            action = buyCard[0]!.a; // Short Sale / Changing Priorities are how a building gets co-owned
+            action = buyCard[0]!.a; // for Short Sale / Changing Priorities
           } else {
             const types = [...new Set(choices.map(c => c.a.type))]
               .filter(t => t !== 'REMOVE_BELT' || below(5) === 0)
@@ -255,6 +261,14 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
         if (!result.ok) break;
         if (action.type === 'DRAW_PIECE') checked.drawsApplied++;
         if (action.type === 'BUY_MINE') checked.minesBought++;
+        if (action.type === 'PLAY_CARD' && action.cardType === 'changingPriorities') {
+          const before = state.board.find(b => b.id === action.pieceId);
+          const after = result.state.board.find(b => b.id === action.pieceId);
+          if (before && after && before.claims.length > 0 && after.claims.length === 0) {
+            checked.ownersLeft++;
+            if (before.input?.slots.some(m => m !== null) || before.output?.slots.some(m => m !== null)) checked.materialForfeited++;
+          }
+        }
         state = result.state;
       }
     }
@@ -264,7 +278,8 @@ describe('legalActions ⊆ applyAction, every player, seeded games', () => {
     expect(checked.offTurnPending).toBeGreaterThan(0); // non-active owners' operations were checked
     expect(checked.drawsApplied).toBeGreaterThan(0);    // the draw step was played
     expect(checked.laterMineStates).toBeGreaterThan(0); // Mine 2 or 3 was on the board
-    expect(checked.coOwnedStates).toBeGreaterThan(0);   // a building was claimed by two players
+    expect(checked.ownersLeft).toBeGreaterThan(0);      // Changing Priorities left a building without an owner
+    expect(checked.materialForfeited).toBeGreaterThan(0); // ...with material in it, which went to the bank
     expect(checked.beltSweeps).toBeGreaterThan(0);
     expect(checked.reversedAccepted).toBeGreaterThan(0);
     expect(checked.drawsAccepted).toBeGreaterThan(0);
