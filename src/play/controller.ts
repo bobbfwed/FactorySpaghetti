@@ -174,6 +174,11 @@ class Builder {
     this.taps.set(k, fn);
   }
 
+  /** A tap that does something without the target glowing (another choice beside the selected one). */
+  quiet(t: Target, fn: () => void): void {
+    this.taps.set(targetKey(t), fn);
+  }
+
   clearTargets(): void {
     this.view.targets = [];
     this.taps.clear();
@@ -1394,8 +1399,13 @@ export class PlayController {
     const v = b.view;
     b.clearTargets();
     const sel = m.beltId ? rms.find(a => a.beltId === m.beltId) ?? null : null;
+    // Once one is chosen only that belt glows, so it can be told apart from a belt beside or across
+    // it on the same tile; the others still answer a tap (choosing them instead).
     for (const a of rms) {
-      b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId }));
+      const t: Target = { kind: 'belt', beltId: a.beltId };
+      const fn = (): void => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId });
+      if (sel && a.beltId !== sel.beltId) b.quiet(t, fn);
+      else b.lit(t, fn);
     }
     // Say before the confirm which way the belt goes (RULES_CHANGES.md #54): laid this turn, back
     // to the player's own belts; laid earlier, back to the bank, to be bought again.
