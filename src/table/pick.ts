@@ -6,7 +6,7 @@ import type { Target } from './types';
 import {
   BELT_THICKNESS, CARD, HEX_RADIUS, APOTHEM, TELEPORTER_HEIGHT, TELEPORTER_SCALE, TILE_TOP, beltCurve, bezierAt,
   bufferAnchorWorld, bufferSlotWorld, distanceToCurve, mineSlotWorld, pieceCells, piecePlacement, pointCount, pointRole,
-  pointWorld, teleporterPlacement, worldToAxial, axialToWorld, type SideLayout,
+  pointWorld, portalWorld, teleporterPlacement, worldToAxial, axialToWorld, type SideLayout,
 } from './layout';
 import { teleporterOn } from '../engine/rules/teleporters';
 
@@ -185,6 +185,7 @@ export function targetAnchor(game: GameState | null, side: SideLayout, h: SideHe
       const buf = t.buffer === 'input' ? piece.input : piece.output;
       if (!buf) return null;
       if (t.slot !== undefined && (t.slot < 0 || t.slot >= buf.slots.length)) return null;
+      if (t.portal) return portalWorld(piece, t.buffer, t.slot ?? 0);
       const p = t.slot === undefined ? bufferAnchorWorld(piece, t.buffer) : bufferSlotWorld(piece, t.buffer, t.slot);
       return { x: p.x, y: TILE_TOP + 3, z: p.z };
     }

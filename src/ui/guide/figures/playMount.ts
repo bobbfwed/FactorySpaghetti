@@ -12,7 +12,7 @@ import { CONTROL_MODULE_MAX } from '../../../engine/config';
 import type { GameState, Material } from '../../../engine/state';
 import type { TrayEntry } from '../../../play';
 import type { TableEvent } from '../../../session/room';
-import { DUR, type AnimStep } from '../../../table/transition';
+import { DUR, type AnimStep, type Carried } from '../../../table/transition';
 import { PLAYER_COLOR_HEX, type Ghost, type Target } from '../../../table/types';
 import { h } from '../../dom';
 import { COLORS } from '../../icons';
@@ -469,8 +469,11 @@ class SidePanel {
     return cell ? centre(cell, layer) : null;
   }
 
-  holdPoint(player: number, item: Material | 'power', layer: HTMLElement): Point | null {
-    const el = this.holdEls.get(player)?.querySelector<HTMLElement>(`[data-hold="${player}-${item}"]`) ?? this.holdEls.get(player)?.querySelector<HTMLElement>(`[data-hold="${player}-power"]`);
+  holdPoint(player: number, item: Carried, layer: HTMLElement): Point | null {
+    const row = this.holdEls.get(player);
+    const exact = row?.querySelector<HTMLElement>(`[data-hold="${player}-${item}"]`);
+    // A material the row does not list goes to the row itself; a card, module or Teleporter only where it is shown.
+    const el = exact ?? (item === 'card' || item === 'module' || item === 'teleporter' ? null : row?.querySelector<HTMLElement>(`[data-hold="${player}-power"]`));
     return el ? centre(el, layer) : null;
   }
 

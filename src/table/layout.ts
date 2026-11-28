@@ -470,6 +470,17 @@ export function teleporterPlacement(
 }
 
 /**
+ * The middle of the glowing portal of the Teleporter on that input (or the output), on the table
+ * (mm): its +X end face, at the recess's centre height. Material supplied through the Teleporter
+ * comes out here; a product sent to the owner goes in here.
+ */
+export function portalWorld(piece: BufferPiece, buffer: 'input' | 'output', slot = 0): { x: number; y: number; z: number } {
+  const t = teleporterPlacement(piece, buffer, slot);
+  const d = PORTAL.faceX * TELEPORTER_SCALE;
+  return { x: t.x + Math.cos(t.yaw) * d, y: TILE_TOP + PORTAL.centreY * TELEPORTER_SCALE, z: t.z - Math.sin(t.yaw) * d };
+}
+
+/**
  * Meeple-slot icons on the mines' second hex, in model space (centres of the icon bounding boxes,
  * measured from the .glb files): slot 0 = the green material "+" (resource), slot 1 = the blue
  * stacked-squares "+" (upgrade). Checked by models.test.ts.

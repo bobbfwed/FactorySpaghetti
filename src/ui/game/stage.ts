@@ -166,7 +166,7 @@ export class Stage {
     const [from, to] = s.kind === 'toPlayer' ? [there, seat] : [seat, there];
     this.host.fx.flight(s.item, s.count, from, to, {
       delay: s.at * scale, dur: DUR.flight * scale, gap: DUR.flightGap * scale,
-      color: s.item === 'card' ? this.host.seatColor(s.player) : undefined,
+      color: s.item === 'card' || s.item === 'module' ? this.host.seatColor(s.player) : undefined,
     });
   }
 
