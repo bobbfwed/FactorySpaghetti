@@ -69,8 +69,8 @@ interface Flight {
   onStart?: (() => void) | undefined; onLand?: (() => void) | undefined;
 }
 
-/** The drawing side of one example: picture, markers, side panel and flights. */
-class DomStage implements PlayStage {
+/** The drawing side of one example: picture, markers, side panel and flights. (Exported for the tests.) */
+export class DomStage implements PlayStage {
   private view: PlayView | null = null;
   private asking: Promise<PlayView | null> | null = null;
   private readonly ctx: CanvasRenderingContext2D | null;
@@ -135,7 +135,9 @@ class DomStage implements PlayStage {
       const look: PlayLook = { colors: this.colors, layout: this.layout, w, h: hgt };
       v.use(look);
       owner = { stage: this, view: v };
-      if (this.cur) this.cur.key = '';
+      // The step's part starts over on the view (tick below), its flights with it: the ones still
+      // here from before another example took the view would otherwise fly twice.
+      if (this.cur) { this.cur.key = ''; this.clearFlights(); }
     }
     return v;
   }
