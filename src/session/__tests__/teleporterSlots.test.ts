@@ -6,11 +6,14 @@
 import { describe, it, expect } from 'vitest';
 import type { BoardPiece, GameState, PlayerId } from '../../engine/state';
 import type { Action } from '../../engine/actions';
-import { applyAction, isListedMove, legalActions } from '../../engine';
+import { applyAction, createGame, isListedMove, legalActions } from '../../engine';
+import { TELEPORTER_COUNT } from '../../engine/config';
+import { createRng, nextIntBelow } from '../../engine/rng';
+import { BOT_TYPES } from '../../bots/registry';
 import { normalizeAction } from '../normalize';
 import { parseStart } from '../journal';
 import { PROTOCOL } from '../protocol';
-import { ROOM_FORMAT, SaveError, packLink, toSave, unpackLink, validateSave } from '../save';
+import { ROOM_FORMAT, SaveError, asGameState, packLink, toSave, unpackLink, validateSave } from '../save';
 import type { Room } from '../room';
 import { findState, playingRoom } from './helpers';
 
@@ -21,18 +24,54 @@ const META = { savedAt: 1, app: 'test' };
 const base = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length === 0 && s.round >= 2);
 const me = base.turnOrder[base.activePlayerIndex]! as PlayerId;
 const sfId = base.board.find(p => p.type === 'plateFact' && p.claims.some(c => c.ownerId === me))!.id;
+/** No teleporter anywhere yet (so the old-save form below can express every one). */
 const game: GameState = {
   ...base,
-  board: base.board.map(p => (p.id === sfId ? { ...p, type: 'sphereFact' as const, input: { slots: [null, null], teleporters: [] } } : p)),
-  players: base.players.map(p => (p.id === me ? { ...p, inventory: { ore: 6, plate: 2, sphere: 0, tesseract: 0 } } : p)),
+  board: base.board.map(p => {
+    const clear = (b: BoardPiece['input']): BoardPiece['input'] => (b ? { ...b, teleporters: [] } : null);
+    return p.id === sfId
+      ? { ...p, type: 'sphereFact' as const, input: { slots: [null, null], teleporters: [] }, output: clear(p.output) }
+      : { ...p, input: clear(p.input), output: clear(p.output) };
+  }),
+  players: base.players.map(p => ({ ...p, teleportersRemaining: TELEPORTER_COUNT, ...(p.id === me ? { inventory: { ore: 6, plate: 2, sphere: 0, tesseract: 0 } } : {}) })),
+  globalTeleporterCount: 0,
 };
+
+/**
+ * `g` with the teleporter counts made to fit its board, as the engine keeps them: each player's
+ * teleporters in hand are the 4 less those on the board, and the price count is the board's total.
+ */
+function consistent(g: GameState): GameState {
+  const on = g.players.map(pl => g.board.reduce((n, p) => n + [p.input, p.output].reduce((k, b) => k + (b?.teleporters.filter(o => o === pl.id).length ?? 0), 0), 0));
+  return {
+    ...g,
+    players: g.players.map((pl, i) => ({ ...pl, teleportersRemaining: TELEPORTER_COUNT - on[i]! })),
+    globalTeleporterCount: on.reduce((a, b) => a + b, 0),
+  };
+}
+
+/** `game` with the Sphere Factory's teleporters set (input per slot, output) and the counts made to fit. */
+function withSf(input: Array<PlayerId | null>, output: Array<PlayerId | null> = [], slots: BoardPiece['input'] = null): GameState {
+  return consistent({
+    ...game,
+    board: game.board.map(p => (p.id === sfId
+      ? { ...p, input: { slots: slots?.slots ?? p.input!.slots, teleporters: input }, output: { ...p.output!, teleporters: output } }
+      : p)),
+  });
+}
 
 /** The game as a build from before #55 saved it: one `teleporterOwner` per buffer. */
 function legacy(g: GameState, owners: { input?: PlayerId; output?: PlayerId } = {}): unknown {
   const old = (b: BoardPiece['input'], o: PlayerId | undefined): unknown =>
     (b ? { slots: b.slots, teleporterOwner: o ?? null } : null);
-  return {
+  const counted = consistent({
     ...g,
+    board: g.board.map(p => (p.id === sfId
+      ? { ...p, input: { ...p.input!, teleporters: owners.input === undefined ? [] : [owners.input] }, output: { ...p.output!, teleporters: owners.output === undefined ? [] : [owners.output] } }
+      : p)),
+  });
+  return {
+    ...counted,
     board: g.board.map(p => (p.id === sfId
       ? { ...p, input: old(p.input, owners.input), output: old(p.output, owners.output) }
       : { ...p, input: old(p.input, undefined), output: old(p.output, undefined) })),
@@ -46,6 +85,7 @@ const legacyRoom = (owners: { input?: PlayerId; output?: PlayerId } = {}): unkno
 };
 const envelope = (room: unknown): unknown => ({ format: 'factory-spaghetti-save', v: 1, savedAt: 1, app: 'old', rules: 'old', room });
 const sf = (g: GameState): BoardPiece => g.board.find(p => p.id === sfId)!;
+const room = (g: GameState): Room => playingRoom(g, NAMES.slice(0, 2).map(name => ({ kind: 'human' as const, name })), 0);
 
 describe('saves and rooms from before #55', () => {
   it('a whole-input teleporter loads on input 1, an output teleporter stays on the output', () => {
@@ -78,16 +118,100 @@ describe('saves and rooms from before #55', () => {
     expect(() => validateSave(toSave(bad([0, 1, 0]), META))).toThrow(SaveError);
     expect(() => validateSave(toSave(bad([3]), META))).toThrow(SaveError);
     expect(() => validateSave(toSave(bad('x'), META))).toThrow(SaveError);
-    expect(() => validateSave(toSave(bad([null, 1]), META))).not.toThrow();
+    expect(() => validateSave(toSave(room(withSf([null, me])), META))).not.toThrow();
   });
 
   it('a save link of format 2 travels and loads', async () => {
-    const withTp: GameState = { ...game, board: game.board.map(p => (p.id === sfId ? { ...p, input: { slots: [null, 'plate'], teleporters: [null, me] } } : p)) };
-    const room = playingRoom(withTp, NAMES.slice(0, 2).map(name => ({ kind: 'human' as const, name })), 0);
-    const back = await unpackLink(await packLink(toSave(room, META, { forLink: true })));
+    const back = await unpackLink(await packLink(toSave(room(withSf([null, me], [], { slots: [null, 'plate'], teleporters: [] })), META, { forLink: true })));
     expect(sf(back.room.game!).input).toEqual({ slots: [null, 'plate'], teleporters: [null, me] });
   });
 
+  it('loading always gives the engine\'s shape: trailing nulls trimmed, no stray teleporterOwner', () => {
+    const shape = (input: unknown, output: unknown): unknown => {
+      const g = withSf([me], [me]);
+      return { ...room(g), game: { ...g, board: g.board.map(p => (p.id === sfId ? { ...p, input, output } : p)) } };
+    };
+    const clean = validateSave(toSave(room(withSf([me], [me])), META)).room.game;
+    const untrimmed = validateSave(envelope(shape({ slots: [null, null], teleporters: [me, null] }, { slots: [null], teleporters: [me, null].slice(0, 1) }))).room.game;
+    const stray = validateSave(envelope(shape({ slots: [null, null], teleporters: [me], teleporterOwner: 1 }, { slots: [null], teleporters: [me], teleporterOwner: null }))).room.game;
+    expect(untrimmed).toEqual(clean);
+    expect(stray).toEqual(clean);
+    expect(JSON.stringify(stray)).not.toContain('teleporterOwner');
+    // A buffer whose only entry is null loads as no teleporter at all.
+    const g0 = consistent(game);
+    const nulls = { ...room(g0), game: { ...g0, board: g0.board.map(p => (p.id === sfId ? { ...p, input: { slots: [null, null], teleporters: [null, null] }, output: { slots: [null], teleporters: [null] } } : p)) } };
+    expect(validateSave(envelope(nulls)).room.game).toEqual(validateSave(toSave(room(g0), META)).room.game);
+  });
+});
+
+describe('a save whose buffers or teleporters do not add up is refused', () => {
+  const refused = (g: GameState): void => { expect(() => validateSave(toSave(room(g), META))).toThrow(SaveError); };
+  const accepted = (g: GameState): void => { expect(() => validateSave(toSave(room(g), META))).not.toThrow(); };
+  const other = (1 - me) as PlayerId;
+
+  it('a teleporter on a Mine or a blank tile', () => {
+    const mine = game.board.find(p => p.type === 'mine')!;
+    refused(consistent({ ...game, board: game.board.map(p => (p.id === mine.id ? { ...p, output: { slots: p.output!.slots, teleporters: [me] } } : p)) }));
+    const blank = game.board.find(p => p.type === 'blank');
+    if (blank) refused(consistent({ ...game, board: game.board.map(p => (p.id === blank.id ? { ...p, input: { slots: [null], teleporters: [me] } } : p)) }));
+  });
+
+  it('a teleporter of a player who holds no claim on the building; one of a co-owner is fine', () => {
+    refused(withSf([other]));
+    const shared = consistent({
+      ...withSf([me, other]),
+      board: withSf([me, other]).board.map(p => (p.id === sfId ? { ...p, claims: [...p.claims, { ownerId: other, controlModule: 9 }] } : p)),
+    });
+    accepted(shared);
+  });
+
+  it('slot counts that do not match the piece type (a Plate Factory with four inputs)', () => {
+    const pf = game.board.find(p => p.type === 'plateFact' && p.claims.length > 0)!;
+    const o = pf.claims[0]!.ownerId;
+    refused(consistent({ ...game, board: game.board.map(p => (p.id === pf.id ? { ...p, input: { slots: [null, null, null, null], teleporters: [o, o, o, o] } } : p)) }));
+    refused({ ...game, board: game.board.map(p => (p.id === pf.id ? { ...p, input: { slots: [null, null], teleporters: [] } } : p)) });
+    refused({ ...game, board: game.board.map(p => (p.id === pf.id ? { ...p, output: null } : p)) });
+  });
+
+  it('teleporters in hand and on the board that do not make 4, or a price count that is not the number on the board', () => {
+    const g = withSf([me], [me]);
+    accepted(g);
+    refused({ ...g, players: g.players.map(p => (p.id === me ? { ...p, teleportersRemaining: TELEPORTER_COUNT } : p)) });
+    refused({ ...g, players: g.players.map(p => (p.id === me ? { ...p, teleportersRemaining: TELEPORTER_COUNT - 3 } : p)) });
+    refused({ ...g, globalTeleporterCount: 1 });
+    refused({ ...g, globalTeleporterCount: 3 });
+  });
+});
+
+describe('every state the engine reaches passes the save checks', () => {
+  it('whole games of every kind of bot, at 2, 3 and 4 players, every state after every move', () => {
+    let states = 0;
+    for (let g = 0; g < 6; g++) {
+      const pc = (2 + (g % 3)) as 2 | 3 | 4;
+      let s: GameState = createGame(500 + g, pc);
+      const seats = Array.from({ length: pc }, (_, i) => BOT_TYPES[(g + i * 3) % BOT_TYPES.length]!.fn);
+      let rng = createRng(500 + g);
+      for (let n = 0; n < 6000 && !s.gameOver; n++) {
+        const pending = s.pendingFactoryOps[0];
+        const who = (pending ? pending.ownerId : s.turnOrder[s.activePlayerIndex]) as PlayerId;
+        let a: Action;
+        if (s.phase === 'roll' && !pending) {
+          const rolls: number[] = [];
+          for (let d = 0; d < s.mineCount; d++) { const [v, nx] = nextIntBelow(rng, 6); rng = nx; rolls.push(v + 1); }
+          a = { type: 'ROLL_DICE', rolls };
+        } else a = seats[who]!(s, who);
+        const r = applyAction(s, a);
+        if (!r.ok) throw new Error(r.error.message);
+        s = r.state;
+        states++;
+        expect(asGameState(JSON.parse(JSON.stringify(s))), `game ${g}, move ${n} (${a.type})`).not.toBeNull();
+      }
+    }
+    expect(states).toBeGreaterThan(1000);
+  }, 120_000);
+});
+
+describe('saves and rooms from before #55, continued', () => {
   it('a replay or journal that starts from a state saved before #55 gets its teleporters on their slots', () => {
     const start = parseStart({ state: legacy(game, { input: me }), seq: 12 });
     expect(start).not.toBeNull();

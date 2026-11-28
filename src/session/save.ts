@@ -2,7 +2,8 @@
 // link (`#save=v1.<text>`), a file, or an automatic save on each player's device.
 
 import * as config from '../engine/config';
-import type { GameState } from '../engine/state';
+import type { GameState, PieceType } from '../engine/state';
+import { makeBuffers } from '../engine/rules/pieces';
 import type { Room, SeatColor } from './room';
 import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import { shownRound } from './rounds';
@@ -457,17 +458,28 @@ export const ROOM_FORMAT = 2;
  */
 export function withTeleporterSlots(g: Obj): Obj {
   const board = g.board as Obj[];
-  if (!board.some(p => isLegacyBuffer(p.input) || isLegacyBuffer(p.output))) return g;
-  const fix = (b: unknown): unknown => {
-    if (!isLegacyBuffer(b)) return b;
-    const { teleporterOwner, ...rest } = b;
-    return { ...rest, teleporters: teleporterOwner === null ? [] : [teleporterOwner] };
-  };
-  return { ...g, board: board.map(p => ({ ...p, input: fix(p.input), output: fix(p.output) })) };
+  if (!board.some(p => !isCanonicalBuffer(p.input) || !isCanonicalBuffer(p.output))) return g;
+  return { ...g, board: board.map(p => ({ ...p, input: canonicalBuffer(p.input), output: canonicalBuffer(p.output) })) };
 }
 
-const isLegacyBuffer = (b: unknown): b is Obj & { teleporterOwner: number | null } =>
-  isObj(b) && 'teleporterOwner' in b && !('teleporters' in b);
+/**
+ * A buffer in the one shape the engine makes: `teleporters` without trailing nulls, and no
+ * `teleporterOwner` (a save from before #55 has only that; one with both keeps `teleporters`).
+ */
+function canonicalBuffer(b: unknown): unknown {
+  if (isCanonicalBuffer(b)) return b;
+  const { teleporterOwner, teleporters, ...rest } = b as Obj;
+  const list: unknown[] = Array.isArray(teleporters) ? [...teleporters] : teleporterOwner == null ? [] : [teleporterOwner];
+  while (list.length > 0 && list[list.length - 1] == null) list.pop();
+  return { ...rest, teleporters: list.map(o => o ?? null) };
+}
+
+const isCanonicalBuffer = (b: unknown): boolean => {
+  if (!isObj(b)) return true;
+  if ('teleporterOwner' in b || !Array.isArray(b.teleporters)) return false;
+  const t = b.teleporters as unknown[];
+  return t.length === 0 || t[t.length - 1] != null;
+};
 
 /** A room from outside, checked the same way as a save's room. Throws SaveError('invalid'). */
 export function validateRoom(x: unknown): Room {
@@ -681,4 +693,39 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
   const pool = config.STACK_COMPOSITION[pc].reduce(
     (n, c) => n + c.plateFact + c.sphereFact + c.tesseractFact + c.powerPlant + c.blank, 0);
   check(otherPieces <= pool, 'more pieces than the game has');
+
+  checkBuffersAndTeleporters(withTeleporterSlots(g), pc);
+}
+
+/**
+ * Every buffer and Teleporter adds up, as in every state the engine makes (pinned by a test that
+ * runs whole games through this check):
+ *   - each piece's input and output have the slot counts of its piece type (rules/pieces.ts
+ *     makeBuffers: none on a blank tile, an output only on a Mine, …);
+ *   - a Teleporter sits only on a building where its owner holds a claim — never on a Mine or a
+ *     blank tile (returnOrphanedTeleporters takes back any other after every move, #37);
+ *   - each player's Teleporters on the board plus those still in hand make TELEPORTER_COUNT;
+ *   - globalTeleporterCount, which sets the price, is the number on the board.
+ * `g` is in the shape of #55 (withTeleporterSlots) and has passed the shape checks.
+ */
+function checkBuffersAndTeleporters(g: Obj, pc: 2 | 3 | 4): void {
+  const onBoard = new Array<number>(pc).fill(0);
+  for (const p of g.board as Obj[]) {
+    const want = makeBuffers(p.type as PieceType);
+    const claims = p.claims as Array<{ ownerId: number }>;
+    for (const side of ['input', 'output'] as const) {
+      const buf = p[side] as { slots: unknown[]; teleporters: Array<number | null> } | null;
+      const slots = want[side]?.slots.length ?? null;
+      check((buf === null ? null : buf.slots.length) === slots, `${p.id as string}: ${side} slots`);
+      for (const owner of buf?.teleporters ?? []) {
+        if (owner === null) continue;
+        check(p.type !== 'mine' && p.type !== 'blank' && claims.some(c => c.ownerId === owner), `${p.id as string}: teleporter without a claim`);
+        onBoard[owner] = onBoard[owner]! + 1;
+      }
+    }
+  }
+  (g.players as Array<{ teleportersRemaining: number }>).forEach((pl, i) => {
+    check(pl.teleportersRemaining >= 0 && onBoard[i]! + pl.teleportersRemaining === config.TELEPORTER_COUNT, `player ${i + 1}: teleporters`);
+  });
+  check(g.globalTeleporterCount === onBoard.reduce((a, b) => a + b, 0), 'teleporters on the board');
 }

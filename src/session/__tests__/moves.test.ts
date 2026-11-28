@@ -93,11 +93,15 @@ describe('moves', () => {
       id: 'tpf', type: 'plateFact', coord: { q: 60, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
       input: { slots: [null], teleporters: [owner] }, output: { slots: [null], teleporters: [] },
     };
-    // The factory takes the place of a piece of the first stack, so the pieces still add up.
+    // The factory takes the place of a piece of the first stack, so the pieces still add up; its
+    // teleporter is one of the owner's and counts on the board (the save checks want that too).
     const withOre = (g: GameState): GameState => ({
       ...g, board: [...g.board.filter(p => p.id !== 'tpf'), tpf],
       stacks: [{ ...g.stacks[0], pieces: g.stacks[0].pieces.slice(1) }, g.stacks[1], g.stacks[2]],
-      players: g.players.map(p => (p.id === owner ? { ...p, powerTokens: 5, inventory: { ore: 2, plate: 0, sphere: 0, tesseract: 0 } } : p)),
+      players: g.players.map(p => (p.id === owner
+        ? { ...p, powerTokens: 5, inventory: { ore: 2, plate: 0, sphere: 0, tesseract: 0 }, teleportersRemaining: p.teleportersRemaining - 1 }
+        : p)),
+      globalTeleporterCount: g.globalTeleporterCount + 1,
     });
     const offTurn: GameState = { ...withOre(found), pendingFactoryOps: [{ pieceId: 'tpf', ownerId: owner }] };
     const a = await twoHumans(offTurn, active); // Bea owns the activation

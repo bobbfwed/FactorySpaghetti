@@ -431,9 +431,11 @@ export function teleporterTarget(
   if (bufferType === 'input') {
     const input = piece.input;
     if (!input) return err('NO_BUFFER', 'This piece has no input buffer');
-    const slot = inputIndex ?? 0;
-    if (!Number.isInteger(slot) || slot < 0 || slot >= input.slots.length) {
-      return err('NO_SUCH_INPUT', `This building has no input ${slot + 1}`);
+    // Not named means input 1 (moves from before #55); anything else must name an input. As with
+    // an optional rotation (validRotation), only a missing field takes the default: null does not.
+    const slot = inputIndex === undefined ? 0 : inputIndex;
+    if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0 || slot >= input.slots.length) {
+      return err('NO_SUCH_INPUT', typeof slot === 'number' ? `This building has no input ${slot + 1}` : 'Name the input by its number');
     }
     if (teleporterOn(input, slot) !== null) {
       return err('BUFFER_OCCUPIED', 'This input already has a teleporter');

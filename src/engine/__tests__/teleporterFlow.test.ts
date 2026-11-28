@@ -16,6 +16,7 @@ import { sameMove } from '../actions';
 import type { Belt, BoardPiece, GameState, PlayerId } from '../state';
 import { expectOk } from './helpers';
 import { withTeleporter } from '../rules/teleporters';
+import { isListedMove } from '../rules/legalActions';
 
 type Claims = BoardPiece['claims'];
 
@@ -341,6 +342,24 @@ describe('placing teleporters on inputs (#55)', () => {
     const old: Action = { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input' };
     expect(legalActions(s, 0).some(l => sameMove(l, old))).toBe(true);
     expect(find(expectOk(applyAction(s, old)), 'T').input!.teleporters).toEqual([0]);
+  });
+
+  it('the engine accepts a teleporter move exactly when it is listed: an input given as null or not a whole number is neither', () => {
+    const s = { ...rich(actionsState([T()])), players: rich(actionsState([T()])).players.map(p => (p.id === 0 ? { ...p, hand: ['rdTaxWriteOff' as const] } : p)) };
+    const odd = [null, 1.5, -1, 3, '1'] as unknown as number[];
+    const moves: Action[] = [
+      ...odd.map(inputIndex => ({ type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex }) as Action),
+      ...odd.map(inputIndex => ({ type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: 'T', bufferType: 'input', inputIndex }) as Action),
+      { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input' },
+      { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex: 2 },
+      { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'output', inputIndex: 7 },
+      { type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: 'T', bufferType: 'input' },
+    ];
+    for (const a of moves) {
+      const label = JSON.stringify(a);
+      expect(applyAction(s, a).ok, label).toBe(isListedMove(s, 0, a));
+    }
+    expect(applyAction(s, moves[0]!).ok).toBe(false); // null is not input 1
   });
 
   it('R&D Tax Write-Off places its free teleporter on the input it names', () => {
