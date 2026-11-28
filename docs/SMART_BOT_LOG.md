@@ -106,3 +106,6 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 6f | Card appetite 0.35 → 0.1 | batch 6 | 1.610 → 1.747; +0.137 (95% +0.044 to +0.230); 4p +6.3 points | qualified, smaller than 6d; measured again on top of 6d |
 | 6g | Bonus denial, fourth time | batch 6 | 1.610 → 1.617; +0.006 (95% −0.007 to +0.020) | dropped: never shown to help in four measurements |
 | 6h | Investor lock, third time | batch 6 | 1.610 → 1.637; +0.027 (95% −0.041 to +0.094) | dropped: inconclusive again |
+| 7a | Card appetite 0.35 → 0.1, on top of 6d | batch 8: `--mode gauntlet --bots greedy,card-,card0,tele0 --import cand/batch8.ts --seeds 120 --start 404000 --jobs 6` | 1.677 → 1.801; +0.124 (95% +0.034 to +0.214) | qualified; 7b slightly better |
+| **7b** | **Card appetite 0.35 → 0** (a card is bought only when the cards left are worth more than 1.7 times the price on average) | batch 8 | 1.677 → **1.809**; **+0.132 (95% +0.041 to +0.224)**; 3p +6.4 points | **kept** (commit below) |
+| 7c | Teleporter appetite 0.2 → 0.05 | batch 8 | 1.677 → 1.715; +0.038 (95% −0.012 to +0.088) | inconclusive; measured again on top of 7b |
