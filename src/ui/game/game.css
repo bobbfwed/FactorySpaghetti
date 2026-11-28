@@ -575,6 +575,8 @@ html.tg-active #app { min-height: 0; height: 100%; }
 }
 .tg-yourturn .sw { width: 18px; height: 18px; border-radius: 50%; background: var(--seat); box-shadow: 0 0 12px var(--seat); }
 .tg.phone .tg-yourturn { font-size: 22px; top: 32%; padding: 12px 22px; }
+/* Held sideways: in the middle of the table, not over the panel on the right. */
+.tg.landscape .tg-yourturn { left: calc((100% - var(--side-w)) / 2); }
 
 /* Skip: shown while the table still plays earlier moves (fades in, so short animations do not flash it). */
 .tg-skip {
