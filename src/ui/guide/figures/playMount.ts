@@ -148,7 +148,7 @@ class DomStage implements PlayStage {
     this.clearFlights();
     const v = this.ready();
     const state = this.stateAt(i);
-    this.side?.show(state, i, null);
+    this.side?.show(state, i, null, i >= 0 ? this.tl.steps[i]!.from : state);
     if (!v || !this.ctx) return;
     const step = i >= 0 ? this.tl.steps[i] : undefined;
     const glow = i < 0 ? this.tl.startGlow : step!.glow;
@@ -166,7 +166,7 @@ class DomStage implements PlayStage {
     // Markers built up by earlier steps stay while the next step plays.
     const v = this.ready();
     if (v) this.placeMarks(v, step.from, this.ex.keepMarks && prev && !step.jumped ? prev.marks : []);
-    this.side?.show(step.from, i - 1, null);
+    this.side?.show(step.from, i - 1, null, step.from);
   }
 
   tick(i: number, t: number): void {
@@ -213,7 +213,7 @@ class DomStage implements PlayStage {
     const shown = t >= seg.at + seg.lead + seg.anim ? move.after : move.before;
     // The last roll may have come in an earlier step (a factory run after it).
     const roll = [...this.tl.steps.slice(0, i).flatMap(x => x.events), ...(this.rollShown(step, s, t, seg.at + seg.lead, cur.k) ?? [])];
-    this.side?.show(shown, i - 1, roll);
+    this.side?.show(shown, i - 1, roll, step.from);
     v.draw(t, this.ctx);
     this.updateFlights(t);
   }
@@ -407,6 +407,8 @@ class SidePanel {
   private lastKey = '';
   private game: GameState | null = null;
   private events: readonly TableEvent[] = [];
+  /** The state whose turn step the step indicator marks: the one the step being shown is about. */
+  private turnOf: GameState | null = null;
 
   constructor(private readonly el: HTMLElement, private readonly ex: PlayExample, private readonly tl: Timeline) {
     const s = ex.side!;
@@ -435,13 +437,14 @@ class SidePanel {
   private color(): FigColor { return this.tl.colors[this.ex.side!.player] ?? 'blue'; }
 
   /** Show `game` (the rest after step `restIndex`); `roll`: the events whose last roll to describe. */
-  show(game: GameState, restIndex: number, roll: TableEvent[] | null): void {
+  show(game: GameState, restIndex: number, roll: TableEvent[] | null, turnOf: GameState = game): void {
+    this.turnOf = turnOf;
     this.game = game;
     if (roll === null) { this.lit = null; this.away.clear(); this.coming.clear(); }
     const events = roll ?? this.tl.steps.slice(0, restIndex + 1).flatMap(s => s.events);
     this.events = events;
     if (restIndex !== -2) this.restIndex = restIndex;
-    const key = JSON.stringify([game.players, game.mineCount, game.phase, game.activePlayerIndex, game.globalTeleporterCount, game.unplacedMines.length, this.lit, [...this.away], [...this.coming], events.length, this.restIndex, roll === null]);
+    const key = JSON.stringify([game.players, game.mineCount, game.phase, game.activePlayerIndex, game.globalTeleporterCount, game.unplacedMines.length, turnOf.phase, turnOf.activePlayerIndex, this.lit, [...this.away], [...this.coming], events.length, this.restIndex, roll === null]);
     if (key === this.lastKey) return;
     this.lastKey = key;
     const me = game.players[this.ex.side!.player];
@@ -467,7 +470,7 @@ class SidePanel {
     for (const [p, row] of this.tessEls) {
       row.replaceChildren(h('span', { class: 'g-pname' }, h('span', { class: 'sw' }), row.dataset.name ?? ''), pips(tesseractCount(game, p as PlayerId)));
     }
-    if (this.stepsEl) this.drawSteps(game);
+    if (this.stepsEl) this.drawSteps(this.turnOf);
     if (this.handEl && me) {
       this.handEl.replaceChildren(h('span', { class: 'g-plabel' }, `${COLOR_WORD[this.color()]}'s Leverage cards`),
         me.hand.length ? h('div', { class: 'g-pcards' }, me.hand.map(c => { const f = cardFace(c); f.dataset.card = c; return f; })) : h('span', { class: 'g-pnone', text: 'None in hand' }));
@@ -551,7 +554,7 @@ class SidePanel {
 
   private redraw(): void {
     this.lastKey = '';
-    if (this.game) this.show(this.game, -2, [...this.events]);
+    if (this.game) this.show(this.game, -2, [...this.events], this.turnOf ?? this.game);
   }
 
   cellPoint(n: number, layer: HTMLElement): Point | null {

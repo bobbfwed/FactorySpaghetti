@@ -295,3 +295,5 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-ppaid { font-size: 13.5px; font-weight: 700; color: var(--text); padding: 4px 2px; }
 .g-ptotal { font-weight: 800; color: var(--gold); font-size: 14px; }
 .tg-fly.module .mod, .g-pfx .tg-fly.module .mod { width: 22px; height: 22px; border-radius: 5px; background: var(--seat, var(--gold)); }
+.g-pturn .tg-steps { flex: 1 1 100%; min-width: 0; gap: 4px; }
+@media (max-width: 420px) { .g-pturn .tg-step { padding: 0 6px 0 3px; font-size: 12px; } }
