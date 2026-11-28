@@ -2,14 +2,16 @@
 // input"; a player thinks "where is the nearest ore (or Plate) I can bring to this input?",
 // so this searches from every usable source at once with the same model as findRoute
 // (a belt joins two points of one piece more than two apart; material crosses a shared edge
-// for free; points facing a building reserved for its owners, or another player's belt, are
-// off limits). It also finds deliberately long routes for the Belt Weaver bonus.
+// for free; points facing a building reserved for its owner (one owner per building, #57), or
+// another player's belt, are off limits; an output carrying a teleporter is no source and a
+// teleported input no destination, #53/#55). It also finds deliberately long routes for the Belt
+// Weaver bonus.
 // Plans only: every belt is still placed through applyAction, which has the last word.
 
 import type { BoardPiece, GameState, Material, PlayerId } from '../../engine/state';
 import type { BeltPlacement } from '../../engine/routing';
 import { pieceTemplate } from '../../engine/config';
-import { adjAt, getRole, beltEndpointBlocked } from '../../engine/rules/flow';
+import { adjAt, getRole, beltEndpointBlocked, inputIndexAt, teleporterCutsOff } from '../../engine/rules/flow';
 import { PRODUCT, feedAt, owns } from './analysis';
 
 export interface PlannedRoute {
@@ -53,11 +55,17 @@ function seam(c: Ctx, piece: BoardPiece, pos: number): { piece: BoardPiece; pos:
 }
 
 /** What material a seam point supplies to `me`, if it is a source (a Mine ore exit or my building's output). */
+// An output with a teleporter carries nothing onto a belt: only the teleporter drains it (#53).
 function sourceMaterial(c: Ctx, n: { piece: BoardPiece; pos: number }): Material | null {
   const role = getRole(n.piece, n.pos);
   if (role === 'ore_output') return 'ore';
-  if (role === 'output_buffer' && owns(n.piece, c.me)) return PRODUCT[n.piece.type] ?? null;
+  if (role === 'output_buffer' && owns(n.piece, c.me) && !teleporterCutsOff(n.piece, 'output')) return PRODUCT[n.piece.type] ?? null;
   return null;
+}
+
+/** An input that carries a teleporter takes nothing from a belt (#53, per input since #55). */
+function teleportedInput(piece: BoardPiece, pos: number): boolean {
+  return teleporterCutsOff(piece, 'input', inputIndexAt(piece, pos));
 }
 
 interface Node { pieceId: string; pos: number; cost: number }
@@ -71,6 +79,7 @@ export function routeToInput(
   materials: readonly Material[], maxBelts: number,
 ): PlannedRoute | null {
   if (maxBelts < 1) return null;
+  if (teleportedInput(dest, destPos)) return null; // a belt there would carry nothing
   const c = ctxOf(state, me);
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null; material: Material; source: string }>();
   const queue: Node[] = [];
@@ -201,11 +210,43 @@ export function longRoute(
   state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget = 6000,
   cont: { piece: BoardPiece; pos: number; length: number } | null = null,
 ): BeltPlacement[] | null {
+  // The search reads only the pieces (with their claims and teleporters), the belts and the
+  // arguments, so an identical position gives an identical answer: remember recent answers. A
+  // failed search costs the whole budget and is otherwise repeated at every step of a turn.
+  const key = longRouteKey(state, me, minBelts, maxBelts, budget, cont);
+  const hit = longRouteMemo.get(key);
+  if (hit !== undefined) return hit === null ? null : [...hit];
+  const found = longRouteSearch(state, me, minBelts, maxBelts, budget, cont);
+  if (longRouteMemo.size >= 256) longRouteMemo.clear();
+  longRouteMemo.set(key, found === null ? null : [...found]);
+  return found;
+}
+
+const longRouteMemo = new Map<string, BeltPlacement[] | null>();
+
+function longRouteKey(
+  state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget: number,
+  cont: { piece: BoardPiece; pos: number; length: number } | null,
+): string {
+  const parts: string[] = [`${me}|${minBelts}|${maxBelts}|${budget}|${cont ? `${cont.piece.id}:${cont.pos}:${cont.length}` : '-'}`];
+  for (const p of state.board) {
+    parts.push(`${p.id}@${p.coord.q},${p.coord.r},${p.rotation ?? 0}:${p.claims.map(c => c.ownerId).join('')}:${JSON.stringify(p.input?.teleporters ?? [])}${JSON.stringify(p.output?.teleporters ?? [])}`);
+  }
+  for (const b of state.belts) parts.push(`${b.ownerId}${b.pieceId}:${b.fromPoint}-${b.toPoint}`);
+  return parts.join(';');
+}
+
+function longRouteSearch(
+  state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget: number,
+  cont: { piece: BoardPiece; pos: number; length: number } | null,
+): BeltPlacement[] | null {
   const c = ctxOf(state, me);
   const destKeys = new Set<string>();
   for (const p of state.board) {
     if (p.type === 'mine' || p.type === 'blank' || !owns(p, me) || !p.input) continue;
-    for (const pt of pieceTemplate(p).points) if (pt.enabled && pt.role === 'input_buffer') destKeys.add(`${p.id}:${pt.position}`);
+    for (const pt of pieceTemplate(p).points) {
+      if (pt.enabled && pt.role === 'input_buffer' && !teleportedInput(p, pt.position)) destKeys.add(`${p.id}:${pt.position}`);
+    }
   }
   if (destKeys.size === 0) return null;
 

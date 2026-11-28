@@ -4,6 +4,15 @@
 //   --mode field|all     field: each bot alone against a table of --baseline bots (default);
 //                        all: every table of distinct bots ("everyone against everyone");
 //                        mirror: tables of one bot only, one game per seed (seat effects)
+//                        gauntlet: each bot alone at tables of --field bots (one table per seed,
+//                        cycled; every seat); with two or more bots, a paired comparison of the
+//                        first bot with each other one on the same games
+//                        h2h: the first two bots head-to-head (2p both orders; 3p/4p each alone
+//                        against a table of the other)
+//                        takeover: --field tables play until a seeded move 150-450, then each bot
+//                        in turn takes over one seat (stand-in test); paired like gauntlet
+//   --field a,b,c        the gauntlet / takeover field (default: the six play styles)
+//   --timing             record the time of every decision; report median / 95th / worst
 //   --bots a,b,c         bot ids (default: every registry bot except Random Bot)
 //   --baseline id        the field's bot (default greedy = Smart Bot)
 //   --players 2,3,4      player counts (default 2,3,4)
@@ -25,13 +34,20 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { BOT_TYPES } from '../bots/registry';
+import { BOT_TYPES, SIM_ONLY_BOTS } from '../bots/registry';
+import { STYLES } from '../bots/styles/profiles';
 import type { BotFn } from '../bots/botInterface';
 import type { Entrant, GameRecord, GameSpec, PlayerCount } from './tournament';
 import { aggregate, fieldSchedule, formatReport, mirrorSchedule, playGame, roundRobinSchedule } from './tournament';
+import {
+  formatHeadToHead, formatPaired, formatSpeed, gauntletSchedule, headToHead, headToHeadSchedule, pairedCompare,
+  speedTable, takeoverSchedule,
+} from './compare';
 
 interface Opts {
-  mode: 'field' | 'all' | 'mirror';
+  mode: 'field' | 'all' | 'mirror' | 'gauntlet' | 'h2h' | 'takeover';
+  field: string[];
+  timing: boolean;
   bots: string[];
   baseline: string;
   players: PlayerCount[];
@@ -47,7 +63,7 @@ interface Opts {
 
 function parse(argv: readonly string[]): Opts {
   const o: Opts = {
-    mode: 'field', bots: [], baseline: 'greedy', players: [2, 3, 4], seeds: 10, start: 1,
+    mode: 'field', field: [], timing: false, bots: [], baseline: 'greedy', players: [2, 3, 4], seeds: 10, start: 1,
     maxActions: 12_000, jobs: 1, shard: null, imports: [], out: null, merge: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -58,7 +74,16 @@ function parse(argv: readonly string[]): Opts {
       return x;
     };
     switch (k) {
-      case '--mode': { const m = v(); if (m !== 'field' && m !== 'all' && m !== 'mirror') throw new Error('--mode is field, all or mirror'); o.mode = m; break; }
+      case '--mode': {
+        const m = v();
+        if (m !== 'field' && m !== 'all' && m !== 'mirror' && m !== 'gauntlet' && m !== 'h2h' && m !== 'takeover') {
+          throw new Error('--mode is field, all, mirror, gauntlet, h2h or takeover');
+        }
+        o.mode = m;
+        break;
+      }
+      case '--field': o.field = v().split(',').filter(Boolean); break;
+      case '--timing': o.timing = true; break;
       case '--bots': o.bots = v().split(',').filter(Boolean); break;
       case '--baseline': o.baseline = v(); break;
       case '--players': o.players = v().split(',').map(Number).filter((n): n is PlayerCount => n === 2 || n === 3 || n === 4); break;
@@ -80,7 +105,7 @@ function parse(argv: readonly string[]): Opts {
 const write = (s: string): void => { process.stdout.write(`${s}\n`); };
 
 async function entrants(o: Opts): Promise<Map<string, BotFn>> {
-  const m = new Map<string, BotFn>(BOT_TYPES.map(b => [b.id, b.fn]));
+  const m = new Map<string, BotFn>([...BOT_TYPES, ...SIM_ONLY_BOTS].map(b => [b.id, b.fn]));
   for (const f of o.imports) {
     const mod = (await import(pathToFileURL(resolve(f)).href)) as { default?: readonly Entrant[] };
     for (const e of mod.default ?? []) m.set(e.id, e.fn);
@@ -94,18 +119,40 @@ function schedule(o: Opts): GameSpec[] {
   for (const pc of o.players) {
     if (o.mode === 'all') specs.push(...roundRobinSchedule(ids, pc, o.seeds, o.start));
     else if (o.mode === 'mirror') specs.push(...mirrorSchedule(ids, pc, o.seeds, o.start));
+    else if (o.mode === 'gauntlet') for (const id of ids) specs.push(...gauntletSchedule(id, fieldOf(o), pc, o.seeds, o.start));
+    else if (o.mode === 'takeover') for (const id of ids) specs.push(...takeoverSchedule(id, fieldOf(o), pc, o.seeds, o.start));
+    else if (o.mode === 'h2h') specs.push(...headToHeadSchedule(ids[0]!, ids[1]!, pc, o.seeds, o.start));
     else specs.push(...fieldSchedule(ids.filter(id => id !== o.baseline), o.baseline, pc, o.seeds, o.start));
   }
   return specs;
 }
 
-function label(id: string): string {
-  return BOT_TYPES.find(b => b.id === id)?.label ?? id;
+function fieldOf(o: Opts): string[] {
+  return o.field.length > 0 ? o.field : STYLES.map(s => s.id);
 }
 
-function report(records: readonly GameRecord[]): void {
-  const agg = aggregate(records);
-  write(formatReport(agg, label));
+function label(id: string): string {
+  return [...BOT_TYPES, ...SIM_ONLY_BOTS].find(b => b.id === id)?.label ?? id;
+}
+
+function report(records: readonly GameRecord[], o: Opts): void {
+  const agg = aggregate(records.filter(r => !r.takeover));
+  if (agg.bots.length > 0) write(formatReport(agg, label));
+  const heroes = o.bots;
+  if (o.mode === 'gauntlet' || o.mode === 'takeover') {
+    for (const h of heroes.slice(1)) write(formatPaired(pairedCompare(records, heroes[0]!, h), heroes[0]!, h));
+  }
+  if (o.mode === 'takeover') {
+    for (const h of heroes) {
+      const rs = records.filter(r => r.takeover?.bot === h);
+      const won = rs.reduce((s, r) => s + (r.takeover && r.winners.includes(r.takeover.seat) ? 1 / r.winners.length : 0), 0);
+      const unfinished = rs.filter(r => r.ending === 'actionLimit').length;
+      const errors = rs.filter(r => r.ending === 'error').length;
+      write(`  stand-in ${h}: ${rs.length} games, won ${won.toFixed(1)}, unfinished ${unfinished}, errors ${errors}`);
+    }
+  }
+  if (o.mode === 'h2h' && heroes.length >= 2) write(formatHeadToHead(headToHead(records, heroes[0]!, heroes[1]!), heroes[0]!, heroes[1]!));
+  if (records.some(r => r.moves)) write(formatSpeed(speedTable(records)));
   const errors = records.filter(r => r.ending === 'error');
   for (const r of errors.slice(0, 20)) write(`ERROR seed ${r.seed} ${r.playerCount}p [${r.seats.join(', ')}]: ${r.error ?? ''}`);
   const timed = records.filter(r => r.ms !== undefined);
@@ -146,7 +193,7 @@ async function main(): Promise<void> {
   if (o.merge.length > 0) {
     const records: GameRecord[] = [];
     for (const f of o.merge) records.push(...(JSON.parse(readFileSync(f, 'utf8')) as { games: GameRecord[] }).games);
-    report(records);
+    report(records, o);
     if (o.out) save(o.out, null, records);
     return;
   }
@@ -159,9 +206,9 @@ async function main(): Promise<void> {
     const bots = await entrants(o);
     const specs = schedule(o).filter((_, i) => !o.shard || i % o.shard[1] === o.shard[0]);
     records = [];
-    for (const spec of specs) records.push(playGame(spec, bots, o.maxActions, () => performance.now()));
+    for (const spec of specs) records.push(playGame(spec, bots, o.maxActions, () => performance.now(), o.timing));
   }
-  if (!o.shard) report(records);
+  if (!o.shard) report(records, o);
   if (o.out) save(o.out, o, records);
 }
 

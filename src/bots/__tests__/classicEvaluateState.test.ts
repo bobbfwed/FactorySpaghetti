@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../../engine/rules/setup';
 import { MATERIAL_VALUES } from '../../engine/config';
-import { evaluateState, winProgress, inventoryValue, expectedProduction, bufferedOutput, meepleHarvest, claimReserve, powerBalance } from '../evaluateState';
+import { evaluateState, winProgress, inventoryValue, expectedProduction, bufferedOutput, meepleHarvest, claimReserve, powerBalance } from '../classic/evaluateState';
 import type { GameState, PlayerId, Material, PieceType, BoardPiece, Buffer } from '../../engine/state';
 
 // B2: the scorer is tested in isolation — nothing chooses moves yet. We start from a
@@ -41,7 +41,7 @@ describe('evaluateState (B2 scorer)', () => {
   });
 
   it('winProgress is convex — the gap from 2→3 Tesseracts exceeds 0→1', () => {
-    const wp = (t: number) => winProgress(withInventory(base, ME, { tesseract: t }), ME);
+    const wp = (t: number): number => winProgress(withInventory(base, ME, { tesseract: t }), ME);
     expect(wp(3) - wp(2)).toBeGreaterThan(wp(1) - wp(0));
   });
 
@@ -262,7 +262,7 @@ describe('produce → collect is net-positive under the weights', () => {
 
   it('collecting output into inventory scores higher than leaving it buffered', () => {
     // Same plate, once sitting in the (meeple) building's output, once already collected.
-    const board = (output: Array<Material | null>) => withBoard(base, [factory('f', 'plateFact', buf([null]), buf(output))], 1);
+    const board = (output: Array<Material | null>): GameState => withBoard(base, [factory('f', 'plateFact', buf([null]), buf(output))], 1);
     const buffered  = withMeeple(board(['plate']), ME, 'f');
     const collected = withInventory(withMeeple(board([null]), ME, 'f'), ME, { plate: 1 });
     expect(evaluateState(collected, ME)).toBeGreaterThan(evaluateState(buffered, ME));

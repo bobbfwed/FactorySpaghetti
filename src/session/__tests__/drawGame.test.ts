@@ -12,8 +12,9 @@ import { MAX_LINK_CHARS, isTableEvent, packLink, toSave } from '../save';
 import type { ManualScheduler } from './helpers';
 import { join, newLobby, settle } from './helpers';
 
-// Greedy bots open a second stack while the first still has pieces with this seed.
-const SEED = 2;
+// Smart Bots open a second stack while the first still has pieces with this seed (7 since the
+// Smart Bot was rebuilt on 2026-11-28; it was 2 for the classic Smart Bot).
+const SEED = 7;
 
 async function quick(): Promise<void> {
   for (let i = 0; i < 3; i++) await new Promise<void>(r => setImmediate(r));
