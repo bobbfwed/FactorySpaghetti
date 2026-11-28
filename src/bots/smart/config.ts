@@ -35,12 +35,10 @@ export const SMART_STYLE: SmartConfig = {
   ...BASE_STYLE,
   id: 'greedy',
   label: 'Smart Bot',
-  // Attempt 3 (kept): go for the Bonus Tesseracts as the Bonus Hunter does — each weighed above a
-  // real Tesseract, one more claimed building worth more (Factory Empire), the meeple's Mine
-  // upgrade point preferred, and long chains for Belt Weaver.
-  // Attempt 5a (kept): stronger still — The Investor 2.0 and Factory Empire 1.7 Tesseracts, one
-  // more claimed building worth 5.
-  // Attempt 11e (kept, weight sweep): Factory Empire back down to 1.4.
+  // Go for the Bonus Tesseracts: each is weighed above a real Tesseract (attempt 3e took the Bonus
+  // Hunter's weights; 5a raised The Investor to 2.0 and Factory Empire to 1.7 Tesseracts; the
+  // sweep brought Factory Empire back to 1.4 in 11e). Belt Weaver at 1.2 (≥ 1) means the bot lays
+  // deliberately long chains for it. One more claimed building is worth 5 (5a).
   bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.4 },
   breadth: 5,
   // Attempt 8f (kept, weight sweep): a smaller bias for the Mine upgrade point (3 -> 1).
