@@ -10,6 +10,7 @@ import type { PlayerId } from '../engine/state';
 import { tesseractCount } from '../engine/rules/scoring';
 import type { Room, Seat } from '../session/room';
 import { activeSeat } from '../session/room';
+import { shownRound } from '../session/rounds';
 import { CARD_NAME, CARD_TEXT, W } from '../play/words';
 import { piecesExhausted } from '../engine';
 import type { Child } from './dom';
@@ -75,7 +76,7 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
 
   const header = h('header', { class: 'gamebar tray' },
     h('div', { class: 'gb-code' }, h('span', { class: 'label', text: 'Room' }), h('b', { class: 'num', text: ctrl.state.online?.code ?? room.code })),
-    h('div', { class: 'gb-round' }, h('span', { class: 'label', text: 'Round' }), h('b', { class: 'num', text: String(g.round) })),
+    h('div', { class: 'gb-round' }, h('span', { class: 'label', text: shownRound(g).roundEnd ? 'End of round' : 'Round' }), h('b', { class: 'num', text: String(shownRound(g).round) })),
     h('div', { class: 'gb-phase' },
       h('div', { class: `gb-turn${myTurn ? ' mine' : ''}`, style: turn !== null ? `--seat:${COLORS[room.seats[turn]!.color]}` : '' },
         turn !== null && !g.gameOver ? h('span', { class: 'sw' }) : null, turnText),

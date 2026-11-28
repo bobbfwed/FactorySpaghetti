@@ -180,7 +180,14 @@ export function recordRecent(recent: readonly { seat: number; id: string }[], se
   });
 }
 
+/**
+ * The longest log line kept. A save whose log has a longer line is refused when it is loaded
+ * (save.ts), so every line is clipped to it as it is added.
+ */
+export const LOG_TEXT_MAX = 200;
+
 export function appendLog(log: readonly LogEntry[], entries: readonly LogEntry[]): LogEntry[] {
-  const next = [...log, ...entries];
+  const clipped = entries.map(e => (e.text.length > LOG_TEXT_MAX ? { ...e, text: `${e.text.slice(0, LOG_TEXT_MAX - 1)}…` } : e));
+  const next = [...log, ...clipped];
   return next.length > LOG_CAP ? next.slice(next.length - LOG_CAP) : next;
 }

@@ -70,7 +70,7 @@ describe('a replay file', () => {
     // Stepping back one move at a time from the end goes through every position.
     for (let p = cursor.length; p > cursor.length - 40; p--) expect(cursor.stateAt(p - 1)).toEqual(replayTo(finished.journal, p - 1));
     expect(cursor.lineAt(0)).toBe('The game begins.');
-    expect(cursor.lineAt(1)).toMatch(/^(Ann|Bea|Cy) claimed the Plate Factory .* of the first Mine with Control Module 3$/);
+    expect(cursor.lineAt(1)).toMatch(/^(Ann|Bea|Cy) claimed the Plate Factory .* of the first Mine with Control Module 3, a free starting claim$/);
     expect(cursor.lineAt(1)).not.toMatch(/-?\d+,-?\d+/);
   });
 
@@ -103,7 +103,7 @@ describe('a replay file', () => {
     expect(cursor.seqAt(0)).toBe(at);
     expect(cursor.seqAt(cursor.length)).toBe(finished.journal.moves.length);
     expect(cursor.stateAt(cursor.length)).toEqual(finished.state);
-    expect(cursor.lineAt(0)).toMatch(/^The replay starts at move 150, in round \d+\.$/);
+    expect(cursor.lineAt(0)).toMatch(/^The replay starts at move 150, in (the round-end turns of )?round \d+\.$/);
   });
 
   it('stops at a refused move, with its move number and the engine\'s error', async () => {

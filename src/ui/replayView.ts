@@ -18,6 +18,7 @@ import { actorOf } from '../session/replay';
 import type { Room } from '../session/room';
 import { activeSeat, defaultSettings, newLobbyRoom, openSeat } from '../session/room';
 import { describeAction, MATERIAL_NAME } from '../session/describe';
+import { roundLabel } from '../session/rounds';
 import { rulesFingerprint } from '../session/save';
 import type { PlayerColor, Table, ViewInsets } from '../table/types';
 import type { Child } from './dom';
@@ -267,7 +268,7 @@ export function replayView(ctrl: AppController): View {
     return [
       h('span', { class: 'num', text: `Move ${c.seqAt(local.pos)}` }),
       h('span', { class: 'muted', text: ` of ${c.seqAt(c.length)}` }),
-      h('span', { class: 'muted rv-round', text: ` · Round ${state.round}` }),
+      h('span', { class: 'muted rv-round', text: ` · ${roundLabel(state)}` }),
     ];
   }
 

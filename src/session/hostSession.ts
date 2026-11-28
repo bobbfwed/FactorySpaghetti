@@ -15,7 +15,7 @@ import {
 import type { ClientMsg, ClosedWhy, HostMsg, WireError } from './protocol';
 import { PROTOCOL, parseClientMsg } from './protocol';
 import { dedupeName, firstOpenSeat, hasAwayHumanSeat, namesInUse, resizeSeats } from './seating';
-import { describeAction } from './describe';
+import { describeAction, roundLines } from './describe';
 import { moveEvents } from './events';
 import { diceRngFromSeed, rollDice } from './dice';
 import type { Scheduler } from './scheduler';
@@ -542,7 +542,9 @@ export class HostSession {
 
     const after = res.state;
     const seq = r.seq + 1;
-    const log: LogEntry[] = [{ seq, seat, text: describeAction(game, action, this.seatName(seat)) }];
+    const log: LogEntry[] = [{ seq, seat, text: describeAction(game, action, this.seatName(seat), after) }];
+    // The end of a round and the start of the next get lines of their own.
+    for (const text of roundLines(game, after)) log.push({ seq, seat: null, text });
     const events = moveEvents(game, after, action, seat);
     let phase = r.phase;
     if (after.gameOver) {

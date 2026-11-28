@@ -20,6 +20,8 @@ export { realScheduler, randomId } from './scheduler';
 export { MemoryConn, memoryPair } from './memoryConn';
 export { describeAction, BUILDING_NAME, CARD_NAME, MATERIAL_NAME } from './describe';
 export { diceRngFromSeed, rollDice } from './dice';
+export type { ShownRound } from './rounds';
+export { roundFileTag, roundLabel, shownRound } from './rounds';
 export type { SaveEnvelope, SaveErrorKind } from './save';
 export {
   MAX_LINK_CHARS, MAX_SAVE_BYTES, RULES_REVISION, SaveError, packLink, parseSaveFile, rulesFingerprint, sameRules, saveFromHash, saveSummary,

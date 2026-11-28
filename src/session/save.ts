@@ -4,7 +4,8 @@
 import * as config from '../engine/config';
 import type { GameState } from '../engine/state';
 import type { Room, SeatColor } from './room';
-import { NAME_MAX, SEAT_COLORS, cleanName } from './room';
+import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
+import { shownRound } from './rounds';
 import type { JournalData } from './journal';
 import { parseJournal } from './journal';
 
@@ -305,11 +306,18 @@ export function saveFromHash(hash: string): string | null {
   return null;
 }
 
-export function saveSummary(save: SaveEnvelope): { code: string; round: number; names: string[]; savedAt: number; phase: Room['phase'] } {
+/**
+ * What a save list shows about a save (worked out when listing, never stored). `round` is the round
+ * as players see it (session/rounds.ts): during the round-end turns, the round that has just ended,
+ * with `roundEnd` true.
+ */
+export function saveSummary(save: SaveEnvelope): { code: string; round: number; roundEnd: boolean; names: string[]; savedAt: number; phase: Room['phase'] } {
   const room = save.room;
+  const shown = room.game ? shownRound(room.game) : { round: 0, roundEnd: false };
   return {
     code: room.code,
-    round: room.game?.round ?? 0,
+    round: shown.round,
+    roundEnd: shown.roundEnd,
     names: room.seats.map(s => s.name),
     savedAt: save.savedAt,
     phase: room.phase,
@@ -335,7 +343,7 @@ const MATERIALS = new Set(Object.keys(config.MATERIAL_VALUES));
 const PHASES = new Set(['setupClaimPF', 'setupClaimPP', 'placePiece', 'roll', 'actions', 'placeMeeple', 'roundEnd']);
 
 const MAX_NAME = 40;
-const MAX_LOG_TEXT = 200;
+const MAX_LOG_TEXT = LOG_TEXT_MAX;
 const MAX_ID = 64;
 
 function check(cond: boolean, what: string): asserts cond {
