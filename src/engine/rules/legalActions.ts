@@ -9,7 +9,7 @@ import { freeTeleporterSlots } from './teleporters';
 import type { Action, OperateBuildingAction } from '../actions';
 import { canonicalAction, sameMove } from '../actions';
 import { scoutingDronePieceIndex, cardsLeftToDraw, leavesMeepleUnowned } from './cards';
-import { mayAddClaim } from './ownership';
+import { mayAddClaim, settleLostClaims } from './ownership';
 import { minePlacementError } from './buildings';
 import type { CardType } from '../config';
 import { MINE_COSTS, cardCost, pieceTemplate, BELT_COST, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, teleporterCost } from '../config';
@@ -28,8 +28,11 @@ const ROTATIONS = [0, 1, 2, 3, 4, 5] as const;
 
 // ── Public ────────────────────────────────────────────────────────────────────
 
-export function legalActions(state: GameState, playerId: PlayerId): Action[] {
-  if (state.gameOver) return [];
+export function legalActions(incoming: GameState, playerId: PlayerId): Action[] {
+  if (incoming.gameOver) return [];
+  // Judged on the settled state, as applyAction judges a move (#58; the same object when nothing
+  // needs settling).
+  const state = settleLostClaims(incoming);
 
   // Pending factory activations block everything else until resolved. ANY owner — including
   // a non-active player whose factory matched someone else's roll — may resolve THEIR own

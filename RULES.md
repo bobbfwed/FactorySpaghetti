@@ -39,7 +39,7 @@ factory to **operate**):
   (e.g. you cannot load a second Ore into a Sphere Factory — there is no Ore+Ore recipe).
 
 ## Ownership: nothing crosses between players
-The designer's rule for the whole game (2026-11-27): material never passes from one player to another across the board. Each part of it, and what guarantees it:
+The designer's rule for the whole game (2026-11-27): nothing passes from one player to another through buildings, belts or Teleporters. Leverage cards still do what their text says; Asset Forfeiture is the one card that takes other players' material (the Plates in every output buffer). Each part of the rule, and what guarantees it:
 - **One owner per building.** All the Control Modules on a building belong to one player (up to 3 of theirs). Nothing puts your Control Module on a building another player has claimed: not a claim, not Short Sale, not Changing Priorities, not the setup claims. A saved game holding a building shared by two players (possible before `RULES_CHANGES.md` #46) cannot be opened (`RULES_CHANGES.md` #57).
 - **Another player's belt never feeds your building, and never draws from it.** A belt end facing the input or output of a building its owner does not own is a dead end (`RULES_CHANGES.md` #38), and belts of different players never join.
 - **Your building never feeds another player's building or belt.** An output touching an input moves material only between buildings of the same player (`RULES_CHANGES.md` #51), and your input or output is a dead end for another player's belt (#38).

@@ -196,8 +196,11 @@ export function operateSupplies(state: GameState, pieceId: string, ownerId: Play
 }
 
 // Run `piece` for `ownerId` (the operator), with `supply` from their inventory through their
-// input teleporter. Power Plants and factories alike; the result says why it cannot run.
+// input teleporter. Power Plants and factories alike; the result says why it cannot run. A
+// building runs only for a player who holds a claim on it (#58), so operateSupplies (every "can it
+// run?" question: roll decisions, the skip of a Power Plant, legalActions) answers no for anyone else.
 function runBuilding(state: GameState, piece: BoardPiece, ownerId: PlayerId, supply: ReadonlyArray<Material>): ActionResult {
+  if (!piece.claims.some(c => c.ownerId === ownerId)) return notYours();
   return piece.type === 'powerPlant'
     ? operatePowerPlant(state, piece, ownerId, supply)
     : operateFactory(state, piece, ownerId, supply);
@@ -683,9 +686,8 @@ export function applyOperateBuilding(
 
   const piece = state.board.find(p => p.id === action.pieceId);
   if (!piece) return err('PIECE_NOT_FOUND', `No piece with id ${action.pieceId}`);
-  // Only a building the operator holds a claim on runs for them (#58; a pending decision about a
-  // building its player no longer owns is dropped after every move, settleLostClaims).
-  if (!piece.claims.some(c => c.ownerId === operatorId)) return notYours();
+  // Only a building the operator holds a claim on runs for them (#58; runBuilding refuses it, and
+  // a pending decision about a building its player does not own is dropped by settleLostClaims).
 
   // What the operator supplies from their inventory through their input teleporter (nothing is
   // taken unless named here; RULES_CHANGES.md #45).

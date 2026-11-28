@@ -81,10 +81,16 @@ function decisionPending(state: GameState, action: Action): ApplyResult | null {
   };
 }
 
-export function applyAction(state: GameState, action: Action): ApplyResult {
-  if (state.gameOver) {
+export function applyAction(incoming: GameState, action: Action): ApplyResult {
+  if (incoming.gameOver) {
     return { ok: false, error: { code: 'GAME_OVER', message: 'The game is already over' } };
   }
+  // Whatever state the engine is given (an older save, a hand-made one), a building without an
+  // owner is settled before the move is judged: its material goes to the bank, its Teleporters
+  // back to their placers, and a decision about a building its player does not own is dropped
+  // (#58). The same object comes back when nothing needs settling (every state the engine makes);
+  // legalActions judges the same settled state, so the two agree.
+  const state = settleLostClaims(incoming);
   const pending = decisionPending(state, action);
   if (pending) return pending;
 

@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
 import { resolveDirectAdjacency } from '../rules/flow';
+import { applySkipFactoryRoll, operateSupplies } from '../rules/production';
 import { hasTwoOwners, lossIfModuleLeaves, mayAddClaim, settleLostClaims } from '../rules/ownership';
 import { teleporterCost } from '../config';
 import type { Material } from '../config';
@@ -152,7 +153,7 @@ describe('a building that loses its owner forfeits its material to the bank (#58
     }
   });
 
-  it('an older save with material in an unclaimed building is emptied by the first move', () => {
+  it('an older save with material in an unclaimed building is emptied by (in fact, before) the first move', () => {
     const old = onBoard([building('X', 'plateFact', [], 50, { input: ['ore'], output: 'plate' })], 'actions');
     const after = expectOk(applyAction(patchPlayer(old, 0, { inventory: { ore: 3, plate: 0, sphere: 0, tesseract: 0 } }), { type: 'BUY_BELT' }));
     expect(find(after, 'X').input!.slots).toEqual([null]);
@@ -166,10 +167,82 @@ describe('a building that loses its owner forfeits its material to the bank (#58
       ...onBoard([building('X', 'plateFact', [], 50, { input: ['ore'] })], 'actions'),
       pendingFactoryOps: [{ pieceId: 'X', ownerId: 1 }],
     };
-    expect(code(s, { type: 'OPERATE_BUILDING', pieceId: 'X', ownerId: 1 })).toBe('NOT_YOUR_BUILDING');
+    // The engine settles the state first: the decision is gone, so there is nothing to run.
+    expect(code(s, { type: 'OPERATE_BUILDING', pieceId: 'X', ownerId: 1 })).toBe('NOT_PENDING');
     expect(legalActions(s, 1).some(a => a.type === 'OPERATE_BUILDING')).toBe(false);
     const after = expectOk(applyAction(patchPlayer(s, 0, { inventory: { ore: 3, plate: 0, sphere: 0, tesseract: 0 } }), { type: 'BUY_BELT' }));
     expect(after.pendingFactoryOps).toEqual([]);
+  });
+
+  it('a leftover decision about an ownerless Power Plant with Ore in it does not lock the game', () => {
+    // The reviewer's case: player 0 to move, with their own pending run of an ownerless Power Plant.
+    const s: GameState = patchPlayer({
+      ...onBoard([building('P', 'powerPlant', [], 50, { input: ['ore'] })], 'actions'),
+      pendingFactoryOps: [{ pieceId: 'P', ownerId: 0 }],
+    }, 0, { inventory: { ore: 3, plate: 0, sphere: 0, tesseract: 0 } });
+    // A building runs only for a player who holds a claim on it: it cannot run, so a skip is fine.
+    expect(operateSupplies(s, 'P', 0)).toEqual([]);
+    expect(applySkipFactoryRoll(s, { type: 'SKIP_FACTORY_ROLL', pieceId: 'P', ownerId: 0 }).ok).toBe(true);
+    // Through the engine the decision is dropped first: the normal moves are listed and accepted.
+    const listedNow = legalActions(s, 0);
+    expect(listedNow.some(a => a.type === 'SKIP_FACTORY_ROLL' || a.type === 'OPERATE_BUILDING')).toBe(false);
+    expect(listedNow.some(a => a.type === 'BUY_BELT')).toBe(true);
+    for (const a of listedNow) expect(code(s, a), JSON.stringify(a)).toBeNull();
+    expect(expectOk(applyAction(s, { type: 'BUY_BELT' })).pendingFactoryOps).toEqual([]);
+  });
+});
+
+// ── Older saves: an ownerless building with material is settled before anything else ──
+
+describe('a save from the older rules: an ownerless building is emptied before anyone can claim it (#58)', () => {
+  // Player 0 left X under the old rules: X has no claim but still holds Ore and a Plate, and
+  // player 0's Teleporter on its output. Player 1 to move.
+  const X = building('X', 'plateFact', [], 50, { input: ['ore'], output: 'plate', outTele: 0 });
+  const Z = building('Z', 'plateFact', of(1, 5), 58);
+  const old = (phase: GameState['phase'], patch: Partial<Player>, extra: Partial<GameState> = {}): GameState => patchPlayer(
+    patchPlayer({ ...onBoard([X, Z], phase, 1), globalTeleporterCount: 1, ...extra }, 0, { teleportersRemaining: 3 }),
+    1, patch,
+  );
+  const routes: Array<[string, GameState, Action]> = [
+    ['CLAIM_BUILDING (Production Increase)', old('actions', {}, { productionIncreaseBudget: 4 }),
+      { type: 'CLAIM_BUILDING', pieceId: 'X', controlModule: 2, fromProductionIncrease: true }],
+    ['CLAIM_BUILDING (free claim at round end)', old('roundEnd', { freeActionCredits: 3, freeClaimUsed: false }),
+      { type: 'CLAIM_BUILDING', pieceId: 'X', controlModule: 2, fromFreeClaim: true }],
+    ['Short Sale', old('actions', { hand: ['shortSale'] }), { type: 'PLAY_CARD', cardType: 'shortSale', pieceId: 'X' }],
+    ['Changing Priorities', old('actions', { hand: ['changingPriorities'] }),
+      { type: 'PLAY_CARD', cardType: 'changingPriorities', pieceId: 'Z', toPieceId: 'X', controlModule: 5 }],
+  ];
+
+  for (const [name, ready, claim] of routes) {
+    it(`the first move claims X by ${name}: X holds nothing of player 0's`, () => {
+      expect(listed(ready, claim, 1), name).toBe(true);
+      const claimed = expectOk(applyAction(ready, claim));
+      const x = find(claimed, 'X');
+      expect(x.claims.map(c => c.ownerId)).toEqual([1]);
+      expect(x.input!.slots).toEqual([null]);
+      expect(x.output).toEqual({ slots: [null], teleporters: [] });
+      expect(claimed.players[1]!.inventory).toEqual(ready.players[1]!.inventory);
+      expect(claimed.players[0]!.teleportersRemaining).toBe(4);
+      expect(claimed.globalTeleporterCount).toBe(0);
+    });
+  }
+
+  it('Asset Forfeiture as the first move takes no Plate from it', () => {
+    const ready = old('actions', { hand: ['assetForfeiture'] });
+    const after = expectOk(applyAction(ready, { type: 'PLAY_CARD', cardType: 'assetForfeiture' }));
+    expect(after.players[1]!.inventory.plate).toBe(ready.players[1]!.inventory.plate);
+    expect(find(after, 'X').output!.slots).toEqual([null]);
+  });
+
+  it('the engine lists and accepts the same moves on the old state as on its settled form, with the same results', () => {
+    const ready = old('actions', { hand: ['shortSale', 'assetForfeiture'] }, { productionIncreaseBudget: 4 });
+    const settledState = settleLostClaims(ready);
+    expect(settledState).not.toBe(ready);
+    expect(legalActions(ready, 1)).toEqual(legalActions(settledState, 1));
+    for (const a of legalActions(ready, 1)) {
+      const r1 = applyAction(ready, a), r2 = applyAction(settledState, a);
+      expect(r1.ok && r2.ok && JSON.stringify(r1.state) === JSON.stringify(r2.state), JSON.stringify(a)).toBe(true);
+    }
   });
 });
 
@@ -213,13 +286,13 @@ describe('no sequence of legal moves lets material of player A be used by player
     patchPlayer({ ...s, phase, turnOrder: [1, 0], activePlayerIndex: 0, cardsPlayedThisTurn: 0, ...extra }, 1, patch);
 
   const routes: Array<[string, (s: GameState) => GameState, Action]> = [
-    ['CLAIM_BUILDING (Production Increase)', s => bTurn(s, 'actions', {}, { productionIncreaseBudget: 4 }),
+    ['CLAIM_BUILDING (Production Increase)', (s): GameState => bTurn(s, 'actions', {}, { productionIncreaseBudget: 4 }),
       { type: 'CLAIM_BUILDING', pieceId: 'X', controlModule: 2, fromProductionIncrease: true }],
-    ['CLAIM_BUILDING (free claim at round end)', s => bTurn(s, 'roundEnd', { freeActionCredits: 3, freeClaimUsed: false }),
+    ['CLAIM_BUILDING (free claim at round end)', (s): GameState => bTurn(s, 'roundEnd', { freeActionCredits: 3, freeClaimUsed: false }),
       { type: 'CLAIM_BUILDING', pieceId: 'X', controlModule: 2, fromFreeClaim: true }],
-    ['Short Sale', s => bTurn(s, 'actions', { hand: ['shortSale'] }),
+    ['Short Sale', (s): GameState => bTurn(s, 'actions', { hand: ['shortSale'] }),
       { type: 'PLAY_CARD', cardType: 'shortSale', pieceId: 'X' }],
-    ['Changing Priorities', s => bTurn(s, 'actions', { hand: ['changingPriorities'] }),
+    ['Changing Priorities', (s): GameState => bTurn(s, 'actions', { hand: ['changingPriorities'] }),
       { type: 'PLAY_CARD', cardType: 'changingPriorities', pieceId: 'Z', toPieceId: 'X', controlModule: 5 }],
   ];
 

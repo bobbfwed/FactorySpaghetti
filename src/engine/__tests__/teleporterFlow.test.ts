@@ -299,7 +299,8 @@ describe('placing teleporters on inputs (#55)', () => {
   it('legalActions lists each free input of an own building, by its index, and the output', () => {
     expect(listed(rich(actionsState([T()])))).toEqual(['T:input0', 'T:input1', 'T:input2', 'T:output']);
     expect(listed(rich(actionsState([teleIn(T(), 0, 1)])))).toEqual(['T:input0', 'T:input2', 'T:output']);
-    expect(listed(rich(actionsState([teleOut(teleIn(teleIn(teleIn(T(), 1, 0), 0, 1), 1, 2))])))).toEqual([]);
+    // Every input and the output taken (by the owner: another player's teleporter is never on it, #57).
+    expect(listed(rich(actionsState([teleOut(teleIn(teleIn(teleIn(T(), 0, 0), 0, 1), 0, 2))])))).toEqual([]);
     // A Plate Factory has one input: it is input 0.
     expect(listed(rich(actionsState([piece('P', 'plateFact', 4, 0, P0)])))).toEqual(['P:input0', 'P:output']);
   });

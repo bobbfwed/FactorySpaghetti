@@ -4,6 +4,7 @@
 import * as config from '../engine/config';
 import type { GameState, PieceType } from '../engine/state';
 import { makeBuffers } from '../engine/rules/pieces';
+import { settleLostClaims } from '../engine/rules/ownership';
 import type { Room, SeatColor } from './room';
 import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import { shownRound } from './rounds';
@@ -439,7 +440,7 @@ function checkRoom(room: unknown): Room {
     check(isObj(room.game), 'game');
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
     checkGame(room.game, pc);
-    const game = withUsableDraw(withTeleporterSlots(room.game));
+    const game = settled(withUsableDraw(withTeleporterSlots(room.game)));
     if (game !== room.game) return { ...current, game } as unknown as Room;
   }
   return current as unknown as Room;
@@ -598,7 +599,7 @@ export function asGameState(x: unknown): GameState | null {
     const pc = x.playerCount;
     if (pc !== 2 && pc !== 3 && pc !== 4) return null;
     checkGame(x, pc);
-    return withTeleporterSlots(x) as unknown as GameState;
+    return settled(withTeleporterSlots(x)) as unknown as GameState;
   } catch {
     return null;
   }
@@ -634,6 +635,18 @@ function isBuffer(b: unknown, pid: (p: unknown) => boolean): boolean {
     && (Array.isArray(b.teleporters)
       ? b.teleporters.length <= b.slots.length && b.teleporters.every(o => o === null || pid(o))
       : b.teleporterOwner === null || pid(b.teleporterOwner)));
+}
+
+/**
+ * The game with every building that has no owner settled, as the engine does after every move
+ * (settleLostClaims, RULES_CHANGES.md #58): a save made under older rules may hold material, a
+ * Teleporter or a pending decision on a building its player does not own. Settled on loading, so
+ * the player sees it emptied at once, and a journal's starting state is settled the same way (the
+ * engine settles any state it is given first, so the moves replay to the same states). Returns `g`
+ * itself when nothing changes. Call after checkGame (the shapes are checked).
+ */
+function settled(g: Obj): Obj {
+  return settleLostClaims(g as unknown as GameState) as unknown as Obj;
 }
 
 /**
