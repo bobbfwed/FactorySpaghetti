@@ -200,6 +200,8 @@ export function playGame(spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, m
       break;
     }
     // Facts for the study (read from the states before and after; nothing here changes the game).
+    // A claim card onto another player's building ("co-cl"): refused since #46/#57, so always 0 now;
+    // kept as a check that the rule holds.
     if (action.type === 'PLAY_CARD' && (action.cardType === 'shortSale' || action.cardType === 'changingPriorities')) {
       const target = state.board.find(b => b.id === (action.cardType === 'shortSale' ? action.pieceId : action.toPieceId));
       if (target && target.claims.some(c => c.ownerId !== who)) coClaims[who]!++;

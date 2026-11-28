@@ -21,6 +21,7 @@ import {
 } from '../../engine/config';
 import { payMaterials } from '../../engine/rules/flow';
 import { freeTeleporterSlots, withTeleporter } from '../../engine/rules/teleporters';
+import { lossIfModuleLeaves, mayAddClaim } from '../../engine/rules/ownership';
 import { adjAt, getRole } from '../../engine/rules/flow';
 import { canLoadMaterial, factoryProduct } from '../../engine/rules/recipes';
 import { findInputCompletion } from '../../engine/rules/production';
@@ -111,9 +112,16 @@ function econ(ctx: Ctx, s: GameState): number {
   v += powerWorth(ctx, p.powerTokens);
   for (const b of s.board) {
     if (b.type === 'mine' || !owns(b, ctx.me)) continue;
-    if (b.output) for (const x of b.output.slots) if (x) v += 0.75 * worth(ctx, x);
-    if (b.input) for (const x of b.input.slots) if (x && x !== 'ore') v += 0.4 * MATERIAL_VALUES[x];
+    v += buffersWorth(ctx, b);
   }
+  return v;
+}
+
+/** What the material in one of my buildings' buffers is worth to me (as econ counts it). */
+function buffersWorth(ctx: Ctx, b: BoardPiece): number {
+  let v = 0;
+  if (b.output) for (const x of b.output.slots) if (x) v += 0.75 * worth(ctx, x);
+  if (b.input) for (const x of b.input.slots) if (x && x !== 'ore') v += 0.4 * MATERIAL_VALUES[x];
   return v;
 }
 
@@ -473,6 +481,8 @@ function claimChangeGain(ctx: Ctx, a: Action, base: number): number {
     fm.splice(fm.indexOf(a.controlModule), 1);
     changes.set(from.id, fm);
     changes.set(to.id, [...myModules(to, me), a.controlModule]);
+    // Moving my last module off it: its material goes to the bank (RULES_CHANGES.md #58).
+    if (lossIfModuleLeaves(from, me).materials > 0) return claimSetWorth(ctx, changes) - base - buffersWorth(ctx, from);
   } else if (a.type === 'PLAY_CARD' && a.cardType === 'shortSale' && a.pieceId) {
     const b = state.board.find(x => x.id === a.pieceId);
     const low = [...ctx.p.controlModules].filter(m => m >= state.mineCount).sort((x, y) => x - y)[0];
@@ -493,7 +503,7 @@ function creditsWorth(ctx: Ctx, credits: number): number {
   const mods = ctx.p.controlModules.filter(m => m >= floor);
   for (const b of state.board) {
     if (!isBuilding(b)) continue;
-    if (b.claims.length > 0 && b.claims[0]!.ownerId !== me) continue;
+    if (!mayAddClaim(b, me)) continue;
     if (myModules(b, me).length >= 3) continue;
     for (const m of mods) {
       if (m - floor + 1 > credits) continue;
@@ -903,7 +913,7 @@ function piWorth(ctx: Ctx, base: number): number {
   for (const b of state.board) {
     if (!isBuilding(b)) continue;
     const mods = myModules(b, me);
-    if (b.claims.length > 0 && b.claims[0]!.ownerId !== me) continue;
+    if (!mayAddClaim(b, me)) continue;
     if (mods.length < 3) {
       for (const m of ctx.p.controlModules) {
         if (m < floor || m - floor + 1 > 4) continue;
