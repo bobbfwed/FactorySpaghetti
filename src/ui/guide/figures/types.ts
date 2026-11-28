@@ -179,6 +179,8 @@ export interface PlayStart {
   readonly players?: readonly PlayHoldings[];
   /** Staged boards: the pieces left in stack 1, top first (default none; stacks 2 and 3 stay empty). */
   readonly stack?: readonly PieceType[];
+  /** At the start (before step 1): light what the player whose turn it is may choose (example starts only). */
+  readonly glow?: 'legal';
 }
 
 /** One step of an example. Every caption is shown in the step list from the start. */

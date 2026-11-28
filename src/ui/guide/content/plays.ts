@@ -10,7 +10,7 @@ import type { FigureBlock, PlayExample } from '../figures/types';
 
 export const FIRST_CLAIMS_PLAY: PlayExample = {
   id: 'first-claims',
-  start: { setup: { seed: 7, players: 3 } },
+  start: { setup: { seed: 7, players: 3 }, glow: 'legal' },
   colors: ['blue', 'red', 'green'],
   aspect: 4 / 3,
   keepMarks: true,
@@ -80,7 +80,7 @@ export const PLACE_PLAY: PlayExample = {
     {
       caption: 'Green picks one of the glowing spaces, turns the piece the way Green wants (any of the six ways), and places it.',
       moves: [{ act: { type: 'PLACE_PIECE', stackIndex: 0, coord: { q: -1, r: 3 }, rotation: 4 } }],
-      callouts: [{ mark: '2', at: { piece: 's0-sphereFact-8', centre: true }, text: 'Green\'s new Sphere Factory' }],
+      callouts: [{ mark: '2', at: { piece: 's0-sphereFact-8', centre: true, dx: 20, dz: 14 }, text: 'Green\'s new Sphere Factory' }],
     },
     {
       caption: 'After Green\'s turn it is **Blue**\'s: the next piece, a Plate Factory, is turned over, and every free space touching the board, the new piece included, glows.',
@@ -90,7 +90,7 @@ export const PLACE_PLAY: PlayExample = {
     {
       caption: 'Blue places it somewhere else: any free space that touches the board will do.',
       moves: [{ act: { type: 'PLACE_PIECE', stackIndex: 0, coord: { q: -2, r: 0 }, rotation: 0 } }],
-      callouts: [{ mark: '4', at: { piece: 's0-plateFact-6', centre: true }, text: 'Blue\'s new Plate Factory' }],
+      callouts: [{ mark: '4', at: { piece: 's0-plateFact-6', centre: true, dx: 20, dz: 14 }, text: 'Blue\'s new Plate Factory' }],
     },
   ],
 };

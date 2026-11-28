@@ -239,7 +239,7 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-pups { display: flex; flex-direction: column; gap: 6px; align-self: center; }
 .g-pchip { display: inline-flex; align-items: baseline; gap: 6px; padding: 6px 10px; border-radius: 10px; background: #1a1a1d; font-size: 13.5px; font-weight: 700; color: var(--text-2); }
 .g-pchip b { font-size: 18px; color: var(--gold); font-variant-numeric: tabular-nums; }
-.g-phold { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; padding: 6px 10px; border-radius: 10px; background: #1a1a1d; min-height: 36px; }
+.g-phold { flex: 1 1 150px; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 6px 10px; border-radius: 10px; background: #1a1a1d; min-height: 36px; }
 .g-pname { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13.5px; }
 .g-pname .sw { width: 12px; height: 12px; border-radius: 3px; background: var(--seat); }
 .g-proll { flex: 1 1 100%; }

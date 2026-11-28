@@ -157,7 +157,8 @@ export function createPlayView(host: PlayViewHost, lib: ModelLib): PlayView & { 
       table.fx = animator.active ? animator : null;
       const moving = table.animating || wasAnimating;
       if (moving || dirty) { table.rebuild(now, az); dirty = false; }
-      renderer.setSize(look.w, look.h, false);
+      // Resizing clears the canvas: only when another picture (a still) left it another size.
+      if (canvas.width !== Math.floor(look.w * ratio) || canvas.height !== Math.floor(look.h * ratio)) renderer.setSize(look.w, look.h, false);
       renderer.render(scene, rig.camera);
       try {
         out.clearRect(0, 0, out.canvas.width, out.canvas.height);

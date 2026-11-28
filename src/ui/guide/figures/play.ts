@@ -214,7 +214,7 @@ export function buildTimeline(ex: PlayExample): Timeline {
     });
     s = cur;
   });
-  return { start, startGlow: [], steps, colors: ex.colors ?? DEFAULT_COLORS };
+  return { start, startGlow: ex.start.glow === 'legal' ? legalTargets(start) : [], steps, colors: ex.colors ?? DEFAULT_COLORS };
 }
 
 // ── Camera frame and what stands beside the board ──────────────────────────────────────────────
