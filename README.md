@@ -4,7 +4,7 @@ An online, isometric 3D version of the board game **Factory Spaghetti** (2–4 p
 
 **Play it now: https://bobbfwed.github.io/FactorySpaghetti/**
 
-The version there to play is **0.1.1**, an early playtest build. The site is rebuilt from the `main` branch on every push, and the start menu shows the version under the title, a large "0.1" followed by a small ".01" for version 0.1.1 (the game menu shows it too), so you can always tell which one you have; save files, replays and rules-problem reports record the exact build.
+The version there to play is **0.1.1**, an early playtest build, and it plays **rules v0.70**. Two numbers are kept: the game's own version (0.1.x) follows the digital game, and the rules version follows the rules themselves. The printed rulebook is rules v0.61 (its footer says so), and every rule change since is listed in [RULES_CHANGES.md](RULES_CHANGES.md); the start menu and the guide show the rules version so you can compare it with your printed copy. The site is rebuilt from the `main` branch on every push, and the start menu shows the version under the title, a large "0.1" followed by a small ".01" for version 0.1.1 (the game menu shows it too), so you can always tell which one you have; save files, replays and rules-problem reports record the exact build.
 
 **Status: playable, in development.** A full game can be played against bots or online with a room code on the 3D table, with animation and sound, saved as a link or a file, resumed on another device, and replayed move by move afterwards. It installs from the browser and plays solo offline. It has not yet been tested on real phones or between real networks: [docs/TESTING.md](docs/TESTING.md) is the checklist for that. The plan is in [docs/PLAN.md](docs/PLAN.md).
 

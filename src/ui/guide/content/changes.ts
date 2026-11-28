@@ -2,7 +2,8 @@
 // To add a release: put a new entry at the TOP of RELEASES (the test checks the order).
 
 import {
-  CARD_COUNTS, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
+  CARD_COUNTS, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, PRINTED_RULES_VERSION, RULES_VERSION, TELEPORTER_COUNT,
+  TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import type { Block, PrintedGroup, Release, Topic } from '../types';
 import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, piecePoints, stackSize, upgradePointWords } from './facts';
@@ -391,6 +392,7 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
 
 function releaseBlocks(): Block[] {
   const out: Block[] = [
+    { k: 'p', t: `Two numbers keep track of the game. The **version of the game** (0.1.x, shown on the start menu) follows the digital game: the interface and how it shows the rules. The **rules version** (v${RULES_VERSION}) follows the rules themselves, and moves only when a rule is new, not when one is merely clarified.` },
     { k: 'p', t: 'Each release of the game, newest first, with every rule that changed: what it used to be, and how it works now. For how this version differs from the paper game, see [[printed|Differences from the printed rulebook]].' },
   ];
   for (const r of RELEASES) {
@@ -409,7 +411,8 @@ function releaseBlocks(): Block[] {
 
 function printedBlocks(): Block[] {
   const out: Block[] = [
-    { k: 'p', t: 'This version follows the designer\'s current rules, which have moved on since the printed rulebook (v1.1). If you know the paper game, these are the differences you will notice. Where the two disagree, the game on your screen is the one that counts.' },
+    { k: 'p', t: `This game plays **rules v${RULES_VERSION}**. The printed rulebook is **rules v${PRINTED_RULES_VERSION}**: its version is printed in the footer of the rulebook ("Rules v${PRINTED_RULES_VERSION}"), so you can compare it with your copy.` },
+    { k: 'p', t: 'This version follows the designer\'s current rules, which have moved on since the printed rulebook. If you know the paper game, these are the differences you will notice. Where the two disagree, the game on your screen is the one that counts.' },
   ];
   for (const g of PRINTED_GROUPS) {
     out.push({ k: 'h', t: g.subject, id: g.id });
@@ -434,7 +437,7 @@ export const changes: Topic = {
 export const printed: Topic = {
   id: 'printed',
   title: 'Differences from the printed rulebook',
-  summary: 'Where this version plays differently from the paper game (rulebook v1.1).',
+  summary: `Where this version plays differently from the paper game (rules v${PRINTED_RULES_VERSION}).`,
   blocks: printedBlocks(),
   see: ['changes'],
 };

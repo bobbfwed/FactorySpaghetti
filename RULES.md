@@ -1,4 +1,4 @@
-> Authored by Brandon Nimon. This reflects v0.61 **with all confirmed changes applied.** Where a value is "tunable," it lives in `config.ts`.
+> Authored by Brandon Nimon. These are **Rules v0.70**: the printed rulebook (PDF) is v0.61, and every change since is recorded in `RULES_CHANGES.md`. Where a value is "tunable," it lives in `config.ts`.
 
 ## Components (per player)
 - 18 **Control Modules** (numbered 1–18) — *formerly "Number Tiles."*

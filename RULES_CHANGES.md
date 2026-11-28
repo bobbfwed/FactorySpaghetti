@@ -1,3 +1,9 @@
+## Rule versions
+- **v0.61** is the printed rulebook (footer date 10/20/2025).
+- **v0.70** is v0.61 plus every entry below, up to and including #58. It was named on 2026-11-27.
+- From now on each new entry says whether it is a **clarification** (the rules version stays) or a **new rule** (the rules version goes up, and the entry names the new number), as the owner states it.
+- The rules version (`RULES_VERSION` in `src/engine/config.ts`) is separate from the app version in `package.json`, which tracks the digital game.
+
 ## Confirmed & baked in
 1. **Teleporters** added (4/player, permanent, input/output behavior, global incrementing cost). Non-removability collapses the earlier "current vs ever-placed" question — they're identical.
 2. **"Number Tiles" → "Control Modules"** everywhere (code + rules + card text: Short Sale, Changing Priorities, The Investor, claim/upgrade).

@@ -158,6 +158,10 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .version-line .v-label { margin-right: 2px; }
 .version-line .v-big { font-weight: 800; color: var(--text-2); }
 .version-line .v-small { font-size: 10.5px; color: var(--text-2); }
+.version-tag .v-sep, .version-tag .v-rules { font-size: 13px; font-weight: 700; color: var(--text-2); white-space: nowrap; }
+.version-tag .v-sep { margin: 0 6px; color: var(--text-3); }
+.version-line .v-rules { font-size: 12px; color: var(--text-2); }
+.menu .title .version-tag { flex-wrap: wrap; justify-content: center; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 .input {
   height: 52px; border-radius: 12px; background: #0d0d0f; display: flex; align-items: center; padding: 0 14px; gap: 10px;

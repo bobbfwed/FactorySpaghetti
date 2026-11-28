@@ -2,7 +2,7 @@
 
 import {
   BELT_COUNT, CONTROL_MODULE_MAX, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MAX_CARDS_PLAYED_PER_TURN,
-  POWER_TOKEN_CAP, STACK_COMPOSITION, STARTING_POWER_TOKENS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
+  POWER_TOKEN_CAP, RULES_VERSION, STACK_COMPOSITION, STARTING_POWER_TOKENS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import type { Topic } from '../types';
 import {
@@ -25,6 +25,7 @@ export const goal: Topic = {
   title: 'The goal of the game',
   summary: `Make ${TESSERACTS_TO_WIN} Tesseracts before anyone else does.`,
   blocks: [
+    { k: 'p', t: `This guide describes **rules v${RULES_VERSION}**, the rules this game plays. (The printed rulebook is older: see [[printed|Differences from the printed rulebook]].)` },
     { k: 'p', t: 'Welcome, glorious pioneers, to asteroid A535b88R. Your homeland, in its infinite wisdom, has sent you — its most expendable asset — to manufacture the legendary Tesseract. The buildings were dropped near the main Mine by a pilot with one working eye, so they lie scattered about, and the other pioneers want them too.' },
     { k: 'p', t: `You win by holding **${TESSERACTS_TO_WIN} Tesseracts** during your own turn. Bonus cards for special achievements each count as one Tesseract toward that total.` },
     { k: 'h', t: 'How you get there' },

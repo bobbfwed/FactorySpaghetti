@@ -1,5 +1,20 @@
 // All tunables live here as data. Logic in rules/ never hardcodes these values.
 
+// ── Rules version ────────────────────────────────────────────────────────────
+
+/**
+ * The version of the rules this engine plays. The printed rulebook is v0.61 (PRINTED_RULES_VERSION);
+ * the rules played today, with every change recorded in RULES_CHANGES.md, are called v0.70. It goes up
+ * only when the owner says a change is a new rule, never for a clarification. It is separate from the
+ * app version (`version` in package.json, which tracks the digital game) and from RULES_REVISION in
+ * session/save.ts (an internal counter for the saved-game rules fingerprint, which changes whenever
+ * rule behaviour changes in code). It is not part of saves, the fingerprint or the network protocol.
+ */
+export const RULES_VERSION = '0.70';
+
+/** The rules version in the footer of the paper rulebook ("Rules v0.61, 10/20/2025"). */
+export const PRINTED_RULES_VERSION = '0.61';
+
 // ── Domain types (define what the game has) ──────────────────────────────────
 
 export type PieceType =
