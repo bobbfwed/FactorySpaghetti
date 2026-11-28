@@ -1,11 +1,6 @@
 # Phone audit (Android, from the browser)
 
-**Where I am / what is next (work in progress, 28 Nov 2026):** every screen has been photographed
-before the fixes; the fixes below marked "fixed" are committed on `wp/phone`. A full "after" run of
-all browser scripts is going (screenshots `*-after.png`). Next: read the after measurements, fill
-the 44 px list, write `INDEX.md` beside the screenshots, run the four checks, report.
-
-How it was checked: headless Chrome (Playwright) with touch emulation and an Android user agent, at
+Done 28 Nov 2026 on branch `wp/phone`. How it was checked: headless Chrome (Playwright) with touch emulation and an Android user agent, at
 360 x 640, 390 x 844 and 412 x 915 (device pixel ratio 2 to 3), landscape 844 x 390, and desktop
 1440 x 900. Every tappable thing was measured with `getBoundingClientRect`, checked for being
 covered with `elementFromPoint` at its centre, the page for horizontal scroll, and visible text for
@@ -48,6 +43,18 @@ hidden, cut off or misleading; **Low** = small, cosmetic, or desktop-only. Scree
 | F26 | Game, chip status "next" | phones | With three opponents the "next" tag on a chip is cut ("NE…"). | Low | open (room is short; the turn order row shows it) | `turn-actions-360` |
 | F27 | Game, camera buttons | phones | Icon-only (rotate, re-centre, top-down, guide); their names are only in tooltips and screen-reader labels. | Low | open: design question | — |
 | F28 | Material icons on dark wells | phones | Sphere (#237228) and Tesseract (#114218) icons are dim on the black wells, worse when greyed at 0. | Low | open: colours not to be changed; report | `sheet-tray-390` |
+
+## What is still under 44 px or covered (after the fixes, all viewports)
+
+- Phones and landscape: nothing under 44 px, nothing covered, no horizontal scroll on any screen
+  measured (menu, load a save, join, lobby, setup, a whole turn, sheet tabs, game menu, details,
+  building menu, belt route, cards, decision prompt, round end, game over, guide, text view, replay).
+- Desktop with a mouse: the Control Modules in the small desktop tray (19 x 19). They are 44 x 44 on
+  any touch screen; enlarging them for a mouse would change the bottom panel's layout (left as is).
+- Guide: an underlined link inside running text ("Belts", 37 x 45) is narrower than 44 px; links
+  inside text are the usual exception, and the "See also" list below each page is 44 px.
+- "Covered" reports that remain are panels deliberately opened over other controls (the pulled-up
+  sheet over the camera buttons, the game menu over the table) and each closes with one control.
 
 ## Installed-app checks
 
