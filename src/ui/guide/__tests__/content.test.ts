@@ -123,8 +123,9 @@ describe('guide content', () => {
   it('describes the newest release with its rule changes, each as before and now', () => {
     const newest = RELEASES[0]!;
     expect(newest.version).toBe('0.1.2');
-    // The designer's decisions (#35-#39, #42, #44-#50) and the moves the engine now refuses (#43): 22 in all.
-    expect(newest.rules.length).toBe(22);
+    // The designer's decisions (#35-#39, #42, #44-#51, #53, #54), the moves the engine now
+    // refuses (#43) and the Mine-belt fix (#52): 26 in all.
+    expect(newest.rules.length).toBe(26);
     for (const c of newest.rules) {
       expect(c.before.length).toBeGreaterThan(10);
       expect(c.now.length).toBeGreaterThan(10);

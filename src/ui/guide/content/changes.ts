@@ -48,10 +48,34 @@ export const RELEASES: readonly Release[] = [
         see: 'belts#whose',
       },
       {
+        title: 'Your buildings feed only your own buildings',
+        before: 'A building\'s output touching another building\'s input passed its material across, whoever owned the two buildings.',
+        now: 'It passes only into another building of the same player. Next to another player\'s input, your material stays in your output. An unclaimed building\'s output still passes into the claimed building it touches, and Mines feed every claimed building.',
+        see: 'moving',
+      },
+      {
+        title: 'A teleporter cuts its buffer off from belts',
+        before: 'Material waiting in a teleported output (you at your limit) could still go down a belt or into a touching input, and a teleported input still took Ore from a Mine and material from belts and touching outputs.',
+        now: 'A teleported output empties only to you. The input of a Plate Factory or Power Plant with a teleporter takes nothing by itself; you supply it. Belts there stay but carry nothing. Sphere and Tesseract Factories are unchanged for now.',
+        see: 'teleporters',
+      },
+      {
         title: 'The one-belt-per-turn Mine limit counts only ore exits',
         before: 'Any belt end facing any part of a Mine counted toward the limit of one per turn.',
         now: 'Only belt ends facing an ore exit of a Mine count.',
         see: 'belts#rules',
+      },
+      {
+        title: 'Removing this turn\'s Mine belt lets you lay another',
+        before: 'Only **Undo belts** let you lay a belt at a Mine again; removing the one belt you had laid there this turn did not.',
+        now: 'Removing it frees the limit too. Removing a Mine belt laid on an earlier turn gives no extra one.',
+        see: 'belts#buying',
+      },
+      {
+        title: 'A removed belt goes back to the bank',
+        before: 'Every belt you removed came back to your own belts, free to lay again.',
+        now: 'As in the printed rulebook, a belt laid on an earlier turn goes back to the bank: placing a belt there again means buying one. A belt you laid this turn still comes back to your own belts, and **Take back this turn\'s belts** is unchanged.',
+        see: 'belts#buying',
       },
       {
         title: 'Your own factory decision comes first',
@@ -279,7 +303,7 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         here: `Every hole on the printed building pieces takes a belt: ${beltHoles('plateFact')} on a Plate Factory or Power Plant, ${beltHoles('sphereFact')} on a Sphere Factory, ${beltHoles('tesseractFact')} on a Tesseract Factory.`,
         see: 'belts#points',
       },
-      { title: 'Removing belts', printed: 'Removed belts go back to the bank and must be bought again.', here: 'Removed belts go back to your own supply, free to lay again.', see: 'belts#buying' },
+      { title: 'Removing belts', printed: 'Removed belts go back to the bank and must be bought again.', here: 'The same, except that a belt you laid this turn comes back to your own belts, free to lay again.', see: 'belts#buying' },
       { title: 'Reserved points', printed: 'Belts cannot be placed next to the input or output of another player\'s claimed building.', here: 'The same, but a player who shares the building may use those points.', see: 'belts#rules' },
       { title: 'One Mine belt per turn', printed: 'Only one belt can be connected to a Mine per turn.', here: 'Only belt ends facing a Mine\'s ore exit count.', see: 'belts#rules' },
       {

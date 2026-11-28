@@ -107,8 +107,12 @@ function stable(x: unknown): unknown {
  *      Plants with one become a decision), Short Sale and Changing Priorities only onto unclaimed
  *      or own buildings, a Mine may touch the board with either hex, the discard pile is
  *      reshuffled, a Mine's upgrade point gives its printed number, and cards in every step.
+ *   4: the designer's third set (#51–#54): a building's output touching an input moves material
+ *      only between buildings of the same player, picking up this turn's Mine belt frees the
+ *      one-Mine-belt limit, a teleporter cuts its buffer off from belts and direct contact, and a
+ *      removed belt goes back to the bank unless it was laid this turn.
  */
-export const RULES_REVISION = 3;
+export const RULES_REVISION = 4;
 
 let fingerprint: string | null = null;
 

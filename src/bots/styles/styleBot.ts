@@ -299,7 +299,8 @@ const TYPE_SCALE: Record<PieceType, number> = { tesseractFact: 2, sphereFact: 1.
 /**
  * How good a spot is for a piece of `type`: inputs facing Mine ore or a fitting output of the
  * bot's own buildings, the output facing one of its own inputs, belt points next to its unfed
- * inputs (for blanks); spots that would feed an opponent's building are worse.
+ * inputs (for blanks). An opponent's building touching it neither feeds it nor draws from it
+ * (RULES_CHANGES.md #51), so such a neighbour counts as neutral.
  */
 function placementScore(ctx: Ctx, type: PieceType, coord: { q: number; r: number }, rot: number, unfed: Set<string>): number {
   const board = ctx.state.board;
@@ -314,14 +315,16 @@ function placementScore(ctx: Ctx, type: PieceType, coord: { q: number; r: number
       if (n.role === 'ore_output') s += accepts(type, 'ore') ? 1 : -0.2;
       else if (n.role === 'output_buffer') {
         const m = PRODUCT[n.piece.type];
-        if (m && accepts(type, m)) s += owns(n.piece, me) ? 1.6 : n.piece.claims.length > 0 ? 0.2 : 0.4;
+        // Another player's output no longer passes into my building (#51): neutral (0).
+        if (m && accepts(type, m)) s += owns(n.piece, me) ? 1.6 : n.piece.claims.length > 0 ? 0 : 0.4;
         else s -= 0.3;
       } else if (n.role === 'belt') s += 0.15;
       else s -= 0.3;
     } else if (pt.role === 'output_buffer') {
       if (!n) { s += 0.1; continue; }
       if (n.role === 'input_buffer') {
-        if (product && accepts(n.piece.type, product)) s += owns(n.piece, me) ? 1.6 : n.piece.claims.length > 0 ? -0.6 : 0.3;
+        // My output no longer leaks into another player's building (#51): neutral (0).
+        if (product && accepts(n.piece.type, product)) s += owns(n.piece, me) ? 1.6 : n.piece.claims.length > 0 ? 0 : 0.3;
         else s -= 0.3;
       } else if (n.role === 'belt') s += 0.15;
       else s -= 0.2;

@@ -2,11 +2,13 @@
 // along the chain of belts that touches a building's input, as a polyline in world millimetres.
 // Pure geometry on the drawn table (which belts touch which holes); it decides nothing about the
 // rules: the engine already moved the material, this only shows the way it went. The one rule it
-// needs — a belt end facing a building it may not serve is a dead end — is the engine's own
-// predicate (isReservedPoint), so the drawn way never passes where the material could not.
+// needs — a belt end facing a building it may not serve is a dead end, and an output passes
+// straight into a touching input only of the same player's building — are the engine's own
+// predicates (isReservedPoint, directFlowAllowed), so the drawn way never passes where the
+// material could not.
 
 import type { BoardPiece, GameState } from '../engine/state';
-import { isReservedPoint } from '../engine/rules/flow';
+import { directFlowAllowed, isReservedPoint, teleporterCutsOff } from '../engine/rules/flow';
 import {
   beltCurve, bufferSlotWorld, pointWorld, positionsWithRole, sampleCurve, type XZ,
 } from './layout';
@@ -53,8 +55,17 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   });
   const startOf = (i: number): XZ => sourceWorld(game, sources[i]!)!;
 
+  // A building's output passes into this input only from an unclaimed building or one of the
+  // same player's (the engine's rule, directFlowAllowed; RULES_CHANGES.md #51). A Mine's ore is
+  // anyone's, so it is never held back here.
+  // A teleporter cuts its buffer off: nothing leaves a teleported output by itself, and a
+  // teleported single input takes nothing by itself (teleporterCutsOff; #53).
+  if (teleporterCutsOff(dest, 'input')) return null;
+  const passes = (from: BoardPiece): boolean =>
+    from.type === 'mine' || (directFlowAllowed(from, dest) && !teleporterCutsOff(from, 'output'));
+
   // Directly adjacent: a source hole meets the input hole.
-  const direct = srcPts.find(s => near(s.p, destEdge));
+  const direct = srcPts.find(s => near(s.p, destEdge) && passes(s.piece));
   if (direct) return { source: direct.i, points: [startOf(direct.i), destEdge, destSlot], belts: 0 };
 
   // Belts: each has two ends on tile edges. Walk from the input outwards, breadth first.
@@ -80,7 +91,7 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
     for (const n of frontier) {
       const owner = belts[n.belt]!.b.ownerId;
       const out = belts[n.belt]!.ends[n.enter === 0 ? 1 : 0];
-      const s = srcPts.find(sp => near(sp.p, out) && !isReservedPoint(sp.piece, sp.pos, owner));
+      const s = srcPts.find(sp => near(sp.p, out) && !isReservedPoint(sp.piece, sp.pos, owner) && passes(sp.piece));
       if (s) { found = { node: n, src: s.i }; break; }
       belts.forEach((x, k) => {
         if (seen.has(`${k}`)) return;

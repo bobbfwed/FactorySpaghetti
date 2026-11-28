@@ -11,7 +11,7 @@ export {
   mineSlotReward, cappedAmount, MINE_RESOURCE_REWARDS, MINE_UPGRADE_REWARDS, type MineSlotReward,
 } from './rules/mineRewards';
 export { listedForm, isListedMove } from './rules/legalActions';
-export { payMaterials, canAfford, isReservedPoint } from './rules/flow';
+export { payMaterials, canAfford, isReservedPoint, directFlowAllowed, beltLaidThisTurn } from './rules/flow';
 export { moduleBelowFloor } from './rules/modules';
 
 export type {
