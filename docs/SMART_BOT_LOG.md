@@ -93,3 +93,16 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 5c | Placement denial (3i, 4c) on top of 4d | batch 5 | 1.468 → 1.499; +0.031 (95% −0.048 to +0.111) | dropped: third inconclusive measurement |
 | 5d | Bonus denial (3d, 4b) on top of 4d | batch 5 | 1.468 → 1.494; +0.026 (95% −0.000 to +0.052) | inconclusive (small but always positive); again on top of 5a |
 | **5e** | **Belt Weaver search budget 1500 steps instead of 6000** (speed) | batch 5 | 1.468 → 1.465; −0.003 (95% −0.014 to +0.008) | **kept for speed** (commit 07d5c34): no measurable loss, and failed Belt Weaver searches were the slowest decisions |
+
+### Weight sweep (each tunable one step up and one step down from the current bot)
+
+| # | What was tried | Command (seeds) | Before → after | Kept? |
+|---|---|---|---|---|
+| 6a | Mine appetite 0.4 → 0.7 | batch 6: `--mode gauntlet --bots greedy,mine+,mine-,tele+,tele-,card+,card-,deny,lock --import cand/sweep1.ts --seeds 120 --start 403000 --jobs 8` | 1.610 → 1.601; −0.009 (95% −0.032 to +0.014) | dropped |
+| 6b | Mine appetite 0.4 → 0.1 | batch 6 | 1.610 → 1.604; −0.006 (95% −0.016 to +0.003) | dropped |
+| 6c | Teleporter appetite 0.5 → 0.8 | batch 6 | 1.610 → 1.569; −0.042 (95% −0.107 to +0.024) | dropped |
+| **6d** | **Teleporter appetite 0.5 → 0.2** | batch 6 | 1.610 → **1.756**; **+0.146 (95% +0.084 to +0.208)**; 3p +6.1, 4p +4.8 points | **kept** (commit 2fd2f69) |
+| 6e | Card appetite 0.35 → 0.6 | batch 6 | 1.610 → 1.466; **−0.144 (95% −0.216 to −0.073)** | dropped (worse) |
+| 6f | Card appetite 0.35 → 0.1 | batch 6 | 1.610 → 1.747; +0.137 (95% +0.044 to +0.230); 4p +6.3 points | qualified, smaller than 6d; measured again on top of 6d |
+| 6g | Bonus denial, fourth time | batch 6 | 1.610 → 1.617; +0.006 (95% −0.007 to +0.020) | dropped: never shown to help in four measurements |
+| 6h | Investor lock, third time | batch 6 | 1.610 → 1.637; +0.027 (95% −0.041 to +0.094) | dropped: inconclusive again |
