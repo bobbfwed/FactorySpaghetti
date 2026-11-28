@@ -71,7 +71,7 @@ void main() {
   float a = atan(vP.y, vP.x);
   float t = uTime + vSeed;
   // A spiral coordinate: the angle, twisted more towards the centre, slowly turning.
-  float s = a / TAU + 0.55 * log(r + 0.06) - 0.06 * t;
+  float s = a / TAU + 0.55 * log(r + 0.06) - 0.09 * t;
   // Soft wavy bands along the spiral arms, wobbling in and out.
   float wob = 0.18 * sin(r * 11.0 - t * 1.1) + 0.08 * sin(a * 3.0 + t * 0.7);
   float bands = 0.5 + 0.5 * sin(TAU * (3.0 * s + wob));

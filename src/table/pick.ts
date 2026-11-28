@@ -85,8 +85,8 @@ export function boardCandidates(
     let best = Math.hypot(anchor.x - x, anchor.z - z);
     for (let i = 0; i < buf.slots.length; i++) {
       const s = bufferSlotWorld(piece, which, i);
-      // A teleporter stands beside the material of its own input (or of the output); a tap on it
-      // means that input. It is hit-tested where the tap ray crosses its mid-height.
+      // A teleporter stands on the stub of its own input (or of the output), its material beside
+      // it; a tap on either means that input. It is hit-tested where the tap ray crosses its mid-height.
       const t = teleporterOn(buf, i) !== null ? teleporterPlacement(piece, which, i) : null;
       const d = Math.min(Math.hypot(s.x - x, s.z - z), t ? Math.hypot(t.x - teleporterAt.x, t.z - teleporterAt.z) : Infinity);
       best = Math.min(best, d);

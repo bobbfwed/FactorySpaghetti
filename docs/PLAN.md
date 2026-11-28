@@ -187,7 +187,7 @@ Every physical component is a 3D object, either on the board or in front of a pl
 | Meeple | 3D meeple in the owner's colour, standing on a building or a mine slot |
 | Ore, Plate, Sphere, Tesseract | 3D pieces in the print shapes (triangle, parallelogram, disc, cube) on buffers and in the player's area |
 | Power Tokens | Round lightning-bolt tokens |
-| Teleporters | The designer's teleporter piece in the owner's colour, standing beside the input it is on (each input of a Sphere or Tesseract Factory has its own, RULES_CHANGES.md #55) or beside the output (see D4) |
+| Teleporters | The designer's teleporter piece in the owner's colour, standing on the stub of the input it is on (each input of a Sphere or Tesseract Factory has its own, RULES_CHANGES.md #55) or of the output, near the tile edge, its portal facing the building; the portal glows with a slowly swirling rainbow (see D4) |
 | Leverage cards | A deck and discard pile on the table; your hand fanned at the bottom of the screen |
 | Bonus Tesseract cards | Face-up cards in front of the holder |
 | Dice | One die per mine, rolled on the table |
@@ -274,7 +274,7 @@ Feedback that makes the game readable:
 | Tesseract | Yellow-green open cross made of intersecting square frames | 10 mm |
 | Power Token | Yellow disc with an inlaid black lightning bolt | 22 mm |
 | Starting-player piece | Tall yellow-green piece in the tesseract's shape | 46 mm |
-| Teleporter | A small arched block in the player's colour, like a tunnel, with a round swirl-shaped portal on one end and a shallow foot under it. It has its own print file, `Teleporter.3mf`, in one colour. On the table it is drawn at three quarters of its printed size, lying beside the material of the input (or output) it is on and parallel to that stub, with the portal facing out towards the tile edge; each input of a Sphere or Tesseract Factory has its own spot (RULES_CHANGES.md #55). | 15 × 10.4 × 11.9 mm |
+| Teleporter | A small arched block in the player's colour, like a tunnel, with a round swirl-shaped portal on one end and a shallow foot under it. It has its own print file, `Teleporter.3mf`, in one colour. On the table it is drawn at 0.65 of its printed size, standing on the stub of the input (or output) it is on, near the tile edge where the stand-in ring used to be, with the portal facing in along the stub towards the building (owner's decision, 2026-11-27); that stub's material lies beside it, and each input of a Sphere or Tesseract Factory has its own spot (RULES_CHANGES.md #55). Unlike the print, the portal is drawn as a glowing, slowly swirling rainbow disc (unlit, so it glows in shadow too; still with reduced motion); the body stays plainly the owner's colour. | 15 × 10.4 × 11.9 mm |
 
 The material pieces are the same greens as the symbols on the tiles, so a symbol and the piece it stands for match by sight.
 
