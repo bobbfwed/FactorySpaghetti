@@ -109,3 +109,13 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 7a | Card appetite 0.35 → 0.1, on top of 6d | batch 8: `--mode gauntlet --bots greedy,card-,card0,tele0 --import cand/batch8.ts --seeds 120 --start 404000 --jobs 6` | 1.677 → 1.801; +0.124 (95% +0.034 to +0.214) | qualified; 7b slightly better |
 | **7b** | **Card appetite 0.35 → 0** (a card is bought only when the cards left are worth more than 1.7 times the price on average) | batch 8 | 1.677 → **1.809**; **+0.132 (95% +0.041 to +0.224)**; 3p +6.4 points | **kept** (commit below) |
 | 7c | Teleporter appetite 0.2 → 0.05 | batch 8 | 1.677 → 1.715; +0.038 (95% −0.012 to +0.088) | inconclusive; measured again on top of 7b |
+| 8a | Power Token value 1.2 → 1.6 | batch 9: `--mode gauntlet --bots greedy,power+,power-,look+,look-,upg+,upg-,bonus++,weaver+,weaver-,tele0 --import cand/sweep2.ts --seeds 120 --start 405000 --jobs 8` | 1.821 → 1.955; +0.133 (95% +0.025 to +0.242) | qualified, smaller than 8f; again on top of 8f |
+| 8b | Power Token value 1.2 → 0.9 | batch 9 | 1.821 → 1.773; −0.048 (95% −0.154 to +0.058) | dropped |
+| 8c | Next-Mine dice look-ahead 0.5 → 0.9 | batch 9 | 1.821 → 1.844; +0.022 (95% −0.028 to +0.072) | dropped (inconclusive) |
+| 8d | Next-Mine dice look-ahead 0.5 → 0.2 | batch 9 | 1.821 → 1.805; −0.017 (95% −0.057 to +0.024) | dropped |
+| 8e | Meeple upgrade-point bias 3 → 5 | batch 9 | 1.821 → 1.648; **−0.173 (95% −0.262 to −0.084)** | dropped (worse) |
+| **8f** | **Meeple upgrade-point bias 3 → 1** | batch 9 | 1.821 → **2.074**; **+0.253 (95% +0.161 to +0.345)**; 3p +5.3, 4p +10.4 points | **kept** (commit below) |
+| 8g | Bonus weights up again (Investor 2.5, Factory Empire 2.1, a building 6) | batch 9 | 1.821 → 1.867; +0.045 (95% −0.032 to +0.122) | dropped (inconclusive) |
+| 8h | Belt Weaver weight 1.2 → 1.6 | batch 9 | identical games (the weight above 1 changes no decision) | dropped |
+| 8i | Belt Weaver weight 1.2 → 0.6 (no deliberate long chains) | batch 9 | 1.821 → 1.779; −0.043 (95% −0.146 to +0.061) | dropped |
+| 8j | Teleporter appetite 0.2 → 0.05 (7c again) | batch 9 | 1.821 → 1.935; +0.114 (95% +0.060 to +0.168) | qualified, smaller than 8f; again on top of 8f |
