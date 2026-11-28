@@ -42,7 +42,8 @@ export const SMART_STYLE: SmartConfig = {
   // more claimed building worth 5.
   bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.7 },
   breadth: 5,
-  meepleUpgrade: 3,
+  // Attempt 8f (kept, weight sweep): a smaller bias for the Mine upgrade point (3 -> 1).
+  meepleUpgrade: 1,
   // Attempt 6d (kept, weight sweep): buy teleporters more reluctantly (appetite 0.5 -> 0.2).
   teleporterAppetite: 0.2,
   // Attempt 7b (kept, weight sweep): buy a Leverage card only when the cards left are worth well
