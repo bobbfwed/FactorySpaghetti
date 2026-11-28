@@ -99,8 +99,18 @@ function loadPeer(): Promise<PeerCtor> {
 
 const errType = (e: unknown): string => String((e as { type?: unknown } | null)?.type ?? 'other');
 
+/** After a flushing close, the channel is ended for certain this long later (the other side may be gone). */
+export const FLUSH_CLOSE_MS = 3000;
+
+/** What wrapData uses of a PeerJS DataConnection (a fake in tests). */
+export type DataLink = Pick<DataConnection, 'send'> & {
+  close(options?: { flush?: boolean }): void;
+  on(event: 'data', fn: (m: unknown) => void): unknown;
+  on(event: 'close' | 'error', fn: () => void): unknown;
+};
+
 /** A PeerJS data connection as a raw Conn (before splitting). `onClosed` runs once when it closes. */
-function wrapData(dc: DataConnection, onClosed?: () => void): Conn {
+export function wrapData(dc: DataLink, onClosed?: () => void): Conn {
   let handler: ((msg: unknown) => void) | null = null;
   let queue: unknown[] = [];
   let open = true;
@@ -118,7 +128,12 @@ function wrapData(dc: DataConnection, onClosed?: () => void): Conn {
     },
     close(): void {
       if (!open) return;
-      try { dc.close(); } catch { /* already closing */ }
+      // A plain PeerJS close ends the connection at once and drops whatever is still on its way
+      // (such as the host's "you were removed" notice sent just before). With `flush`, PeerJS
+      // sends a close marker behind everything already sent, and the other side closes when it
+      // reads it. If the other side never does (it is gone), the channel is ended a little later.
+      try { dc.close({ flush: true }); } catch { /* already closing */ }
+      setTimeout(() => { try { dc.close(); } catch { /* already closed */ } }, FLUSH_CLOSE_MS);
       shut();
     },
   };

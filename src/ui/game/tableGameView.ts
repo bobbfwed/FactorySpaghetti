@@ -494,8 +494,11 @@ export function tableGameView(ctrl: AppController): View {
   const ignore = (): void => { blocked++; };
   const lockedInput: PlayInput = { tap: ignore, choose: ignore, primary: ignore, confirm: ignore, cancel: ignore, rotate: ignore };
 
-  /** Why input is locked now: a move in flight, or a bot (autoplay or the host's stand-in) plays my seat. */
-  function lockReason(): 'sending' | 'bot' | null {
+  /** Why input is locked now: the host closed the connection, a move in flight, or a bot (autoplay or the host's stand-in) plays my seat. */
+  function lockReason(): 'closed' | 'sending' | 'bot' | null {
+    // The host closed this device's connection (removed this player, ended the room, ...): the
+    // game shown is no longer live, and nothing can be sent.
+    if (ctrl.state.connection === 'closed') return 'closed';
     const me = ctrl.mySeat;
     if (me === null) return null;
     if (ctrl.state.autoplay || ctrl.room?.seats[me]?.autopilot) return 'bot';
@@ -533,7 +536,7 @@ export function tableGameView(ctrl: AppController): View {
     const lock = lockReason();
     // A bot plays this seat: nothing to press. A move in flight: nothing lit, and the controls stay
     // where they are (inert) so the pressed one can say it is sending.
-    let view = lock === 'bot' ? busyView(play.view) : lock === 'sending' ? { ...play.view, targets: [] } : play.view;
+    let view = lock === 'bot' || lock === 'closed' ? busyView(play.view) : lock === 'sending' ? { ...play.view, targets: [] } : play.view;
     if (busy) {
       if (displayGame !== shown.game || displaySeat !== me) {
         displayGame = shown.game;
@@ -577,7 +580,13 @@ export function tableGameView(ctrl: AppController): View {
     phone = isPhoneLayout();
     const ctx = context();
     if (!ctx) return;
-    const parts: Child[] = phone
+    // The connection was closed by the host (this player was removed, the room ended, ...): the
+    // table stays as a still picture behind a panel that says why, with the ways on. No turn
+    // bar, prompts or controls: nothing here is live any more.
+    const ended = lockReason() === 'closed';
+    const parts: Child[] = ended
+      ? [slot('ended', h('div', { class: 'tg-ended' }, connectionBanner(ctrl)))]
+      : phone
       ? [
         slot('banner', connectionBanner(ctrl)), slot('err', notes(ctx)),
         slot('top', h('div', { class: 'tg-toprow' }, menuButton(ctx), seatChips(ctx))), slot('queue', queueView(ctx)),
@@ -600,7 +609,7 @@ export function tableGameView(ctrl: AppController): View {
         slot('turnbar', turnBar(ctx)), slot('yours', yourPanel(ctx)), slot('handpop', handPopover(ctx)),
         slot('over', gameOverCard(ctx)), slot('modal', cardModal(ctx)),
       ];
-    const fresh = h('div', { class: `tg-hud ${phone ? 'phone' : 'desk'}${ctx.ui.sheetOpen ? ' sheet-open' : ''}${ctx.view.myTurn ? ' my-turn' : ''}${ctx.busy ? ' busy' : ''}` }, ...parts);
+    const fresh = h('div', { class: `tg-hud ${phone ? 'phone' : 'desk'}${ctx.ui.sheetOpen ? ' sheet-open' : ''}${ctx.view.myTurn && !ended ? ' my-turn' : ''}${ctx.busy ? ' busy' : ''}${ended ? ' ended' : ''}` }, ...parts);
     morph(hud, fresh);
     root.classList.toggle('phone', phone);
     root.classList.toggle('landscape', ctx.landscape);

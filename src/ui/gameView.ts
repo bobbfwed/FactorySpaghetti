@@ -50,7 +50,9 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
   const g = room.game!;
   const me = ctrl.mySeat;
   const turn = activeSeat(g);
-  const myTurn = turn !== null && turn === me && !g.gameOver;
+  // The host closed this device's connection: the game shown is no longer live.
+  const live = ctrl.state.connection !== 'closed';
+  const myTurn = live && turn !== null && turn === me && !g.gameOver;
   const turnName = turn === null ? '' : room.seats[turn]?.name ?? '';
   const turnText = g.gameOver ? 'Game over' : myTurn ? 'Your turn' : `${turnName}'s turn`;
 
@@ -97,8 +99,8 @@ function render(ctrl: AppController, room: Room, ui: UiState, redraw: () => void
     h('div', { class: 'game-grid' },
       h('div', { class: 'col-main' },
         g.gameOver ? gameOverPanel(ctrl, room) : null,
-        promptsBlock(ctrl, room),
-        optionsBlock(ctrl, room, ui, redraw)),
+        live ? promptsBlock(ctrl, room) : null,
+        live ? optionsBlock(ctrl, room, ui, redraw) : null),
       h('div', { class: 'col-side' },
         seatsBlock(ctrl, room),
         handBlock(room, me),

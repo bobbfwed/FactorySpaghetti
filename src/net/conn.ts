@@ -5,7 +5,10 @@
 export interface Conn {
   /** Send one message. Silently ignored after close. */
   send(msg: unknown): void;
-  /** Close the channel; the other side's onclose fires once. */
+  /**
+   * Close the channel; the other side's onclose fires once. What this end sent before closing
+   * still reaches the other side first (a host's `closed` notice is sent and then closed at once).
+   */
   close(): void;
   /** Message handler. Messages that arrive before a handler is set are queued and delivered when it is set. */
   onmessage: ((msg: unknown) => void) | null;

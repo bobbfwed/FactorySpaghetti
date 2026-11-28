@@ -90,19 +90,26 @@ export function seatChips(ctx: Ctx): HTMLElement {
   return h('div', { class: 'tg-chips', attrs: { role: 'list', 'aria-label': 'Other players' } }, opponents(ctx).map(s => {
     const st = status(ctx, s);
     const t = tesseractCount(ctx.game, s.index as PlayerId);
+    // An away player the host can remove: on a phone there is no room beside or under the chip
+    // (the turn order and the roll chip sit right below it), so the chip itself is the way in.
+    // It is marked with a remove badge and opens the player's details, which start with
+    // "Remove player".
     const remove = removeOnSeat(ctx.room, ctx.me, s.index);
-    return h('div', { class: `tg-li${remove ? ' has-remove' : ''}`, attrs: { role: 'listitem' } }, h('button', {
-      class: `tg-chip tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}`,
+    const name = s.name || `Player ${s.index + 1}`;
+    return h('div', { class: 'tg-li', attrs: { role: 'listitem' } }, h('button', {
+      class: `tg-chip tray${s.index === a && !ctx.game.gameOver ? ' turn' : ''}${remove ? ' can-remove' : ''}`,
       style: `--seat:${seatHex(ctx.room, s.index)}`,
-      attrs: { 'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index) },
+      attrs: {
+        'aria-expanded': String(ctx.ui.seat === s.index), 'data-seat': String(s.index),
+        ...(remove ? { 'aria-label': `${name} is away. Open to remove this player.` } : {}),
+      },
       onclick: () => { ctx.ui.seat = ctx.ui.seat === s.index ? null : s.index; ctx.redraw(); },
     },
     h('span', { class: 'stripe' }),
     h('span', { class: 'col' },
-      h('span', { class: 'nm', text: s.name || `Player ${s.index + 1}` }),
+      h('span', { class: 'nm', text: name }),
       h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of ${TESSERACTS_TO_WIN}`)),
-    pips(t)),
-    remove ? removePlayerButton(ctx.ctrl, s.index, 'btn btn-dark tg-remove') : null);
+    remove ? h('span', { class: 'tg-rmtag', attrs: { 'aria-hidden': 'true' } }, icon('cross')) : pips(t)));
   }));
 }
 
@@ -124,10 +131,20 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
     })();
   const bonuses = (Object.keys(p.bonusTesseracts) as (keyof typeof p.bonusTesseracts)[]).filter(k => p.bonusTesseracts[k]);
   const close = (): void => { ctx.ui.seat = null; ctx.redraw(); };
+  // The host can remove a player at any time; a bot plays their seat until they rejoin. For an
+  // away player (the reason to open this, on a phone) it comes first; otherwise it comes last.
+  const removable = canRemovePlayer(ctx.room, ctx.me, i);
+  const away = removable && !s.connected;
+  const removeRow = removable
+    ? h('div', { class: `tg-popacts${away ? ' top' : ''}` },
+      h('span', { class: 'hint', text: away ? `${s.name} is away. A bot plays their seat until they rejoin.` : 'A bot plays their seat until they rejoin.' }),
+      removePlayerButton(ctx.ctrl, i, 'btn btn-dark tg-remove'))
+    : null;
   return h('div', { class: 'tg-seatpop tray', style: `--seat:${seatHex(ctx.room, i)}`, attrs: { role: 'dialog', 'aria-label': `${s.name} details` } },
     h('div', { class: 'hd' }, h('span', { class: 'sw' }), h('b', { text: s.name || `Player ${i + 1}` }),
       h('span', { class: 'grow' }), pips(tesseractCount(g, i as PlayerId)),
       h('button', { class: 'x round small', title: 'Close', attrs: { 'aria-label': 'Close' }, onclick: close }, icon('cross'))),
+    away ? removeRow : null,
     h('div', { class: 'tg-kvs' },
       kv('Materials', h('span', { class: 'tg-counts' }, MATERIAL_LIST.map(m => count(MATERIAL_ICON[m], p.inventory[m], MATERIAL_NAME[m])))),
       kv('Power Tokens', String(p.powerTokens)),
@@ -138,12 +155,7 @@ export function seatDetails(ctx: Ctx): HTMLElement | null {
       kv('Control Modules in the tray', modulesInTrayWords(g, i)),
       kv('Control Modules on the board', onBoard.length ? onBoard.join(' · ') : 'none'),
       kv('Bonus cards', bonuses.length ? bonuses.map(b => BONUS_NAME[b]).join(', ') : 'none')),
-    // The host can remove a player at any time; a bot plays their seat until they rejoin.
-    canRemovePlayer(ctx.room, ctx.me, i)
-      ? h('div', { class: 'tg-popacts' },
-        h('span', { class: 'hint', text: 'A bot plays their seat until they rejoin.' }),
-        removePlayerButton(ctx.ctrl, i, 'btn btn-dark tg-remove'))
-      : null);
+    away ? null : removeRow);
 }
 
 function kv(k: string, v: Child): HTMLElement {

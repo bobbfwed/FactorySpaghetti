@@ -58,6 +58,7 @@ export function connectionBanner(ctrl: AppController): HTMLElement | null {
       case 'host-copy': return h('button', { class: 'btn btn-gold', onclick: () => { void ctrl.hostFromMyCopy(); } }, 'Host it from my copy');
       case 'reload': return h('button', { class: 'btn btn-gold', onclick: () => window.location.reload() }, 'Reload to update');
       case 'menu': return h('button', { class: 'btn btn-dark', onclick: () => ctrl.backToMenu() }, 'Back to menu');
+      case 'rejoin': return h('button', { class: 'btn btn-gold', onclick: () => { void ctrl.rejoin(); } }, 'Join again');
     }
   });
   const spinning = b.kind === 'reconnecting' || b.kind === 'taking-over';

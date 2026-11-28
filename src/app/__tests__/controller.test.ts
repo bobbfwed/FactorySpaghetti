@@ -436,24 +436,42 @@ describe('connection trouble', () => {
     expect(b.ctrl.banner).toBeNull();
   }, 60_000);
 
-  it('a removed player sees why, goes back to the menu, and can join again to take the seat back', async () => {
+  it('a removed player sees why at once, cannot play on, and can join again to take the seat back', async () => {
     const w = world();
     const [a, b] = await twoPlayerGame(w);
     const code = a.ctrl.state.online!.code;
+    // The views redraw when the controller's state changes: the removal must change it, even
+    // though the room this device holds does not change (the host sends it no more rooms).
+    const before = b.ctrl.state;
+    const roomBefore = b.ctrl.room;
     expect(await run(w, a.ctrl.kick(1))).toBe(true);
     await until(w, () => b.ctrl.banner?.kind === 'closed');
+    expect(b.ctrl.room).toBe(roomBefore);
+    expect(b.ctrl.state).not.toBe(before);
+    expect(b.ctrl.state.connection).toBe('closed');
     expect(b.ctrl.banner!.text).toBe(`The host removed you from this game; a bot plays your seat. You can join again with the room code ${code}.`);
-    expect(b.ctrl.banner!.actions).toEqual(['menu']);
+    expect(b.ctrl.banner!.actions).toEqual(['rejoin', 'menu']);
+    expect(await run(w, b.ctrl.act({ type: 'END_TURN' }))).toBe(false); // nothing more reaches the host
     await until(w, () => a.ctrl.room!.seats[1]!.autopilot);
     expect(a.ctrl.room!.seats[1]).toMatchObject({ connected: false, autopilot: true });
-    b.ctrl.backToMenu();
-    expect(b.ctrl.screen).toBe('menu');
 
-    await run(w, b.ctrl.join(code));
+    // "Join again" goes straight back into the same room, and the seat with it.
+    await run(w, b.ctrl.rejoin());
     expect(b.ctrl.mySeat).toBe(1);
+    expect(b.ctrl.state.connection).toBe('online');
     await until(w, () => a.ctrl.room!.seats[1]!.connected);
     expect(a.ctrl.room!.seats[1]).toMatchObject({ connected: true, autopilot: false });
     expect(b.ctrl.screen).toBe('game');
+    expect(b.ctrl.banner).toBeNull();
+
+    // Or back to the menu, and join with the code from there.
+    expect(await run(w, a.ctrl.kick(1))).toBe(true);
+    await until(w, () => b.ctrl.banner?.kind === 'closed');
+    b.ctrl.backToMenu();
+    expect(b.ctrl.screen).toBe('menu');
+    expect(b.ctrl.state.connection).toBeNull();
+    await run(w, b.ctrl.join(code));
+    expect(b.ctrl.mySeat).toBe(1);
   }, 30_000);
 });
 

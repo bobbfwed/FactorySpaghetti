@@ -10,7 +10,7 @@ import type { Action } from '../engine/actions';
 import type { JoinErrorKind, Transport } from '../net/conn';
 import { JoinError } from '../net/conn';
 import { CODE_LETTERS, codeFromLocation, inviteLink, normalizeCode } from '../net/roomCode';
-import type { OnlineOptions } from '../online/onlineRoom';
+import type { OnlineOptions, OnlineStatus } from '../online/onlineRoom';
 import { OnlineRoom } from '../online/onlineRoom';
 import { autoplay } from '../online/autoplay';
 import { DEFAULT_BOT_ID } from './lobby';
@@ -133,6 +133,12 @@ export interface AppState {
   saves: SaveListing[];
   resume: ResumeSetup | null;
   online: OnlineRoom | null;
+  /**
+   * The room's connection status (null with no room). Kept in the state, not only read from the
+   * room, so that a change of it (the host closed the connection, a reconnect began) is a change
+   * of the state: views redraw on that even when the room itself did not change.
+   */
+  connection: OnlineStatus | null;
   solo: boolean;
   autoplay: boolean;
   /** The last refused move of this player (the code says why; see refusalText in gameText.ts). */
@@ -154,7 +160,7 @@ export interface AppState {
 export interface Banner {
   kind: 'reconnecting' | 'taking-over' | 'lost' | 'closed';
   text: string;
-  actions: ('host-copy' | 'menu' | 'reload')[];
+  actions: ('host-copy' | 'menu' | 'reload' | 'rejoin')[];
 }
 
 export const NAME_KEY = 'fs.name';
@@ -248,7 +254,7 @@ export function connectionBanner(online: OnlineRoom): Banner | null {
       return {
         kind: 'closed',
         text: why === 'kicked' ? kickedText(room) : (why && CLOSED_TEXT[why]) || 'The room closed.',
-        actions: why === 'version' ? ['reload', 'menu'] : ['menu'],
+        actions: why === 'version' ? ['reload', 'menu'] : why === 'kicked' ? ['rejoin', 'menu'] : ['menu'],
       };
     }
   }
@@ -376,6 +382,7 @@ export class AppController {
       saves: listSaves(deps.saves),
       resume: null,
       online: null,
+      connection: null,
       solo: false,
       autoplay: false,
       moveError: null,
@@ -523,7 +530,7 @@ export class AppController {
     this.offRoom = online.subscribe(() => this.onRoomChange());
     // The room's ClientSession stays the same across reconnects and a host change.
     this.offPreview = online.client.onPreview((seat, p) => this.emitPreview(seat, p));
-    this.set({ online, solo, busy: null, error: null, resume: null, moveError: null, autoplay: false });
+    this.set({ online, connection: online.status, solo, busy: null, error: null, resume: null, moveError: null, autoplay: false });
   }
 
   private detach(): void {
@@ -540,6 +547,8 @@ export class AppController {
     if (o && o.status === 'closed') this.stopAutoplay();
     const cannotStore = !!o?.client.storageFailed;
     if (cannotStore !== this.state.cannotStore) this.state = { ...this.state, cannotStore };
+    const connection = o?.status ?? null;
+    if (connection !== this.state.connection) this.state = { ...this.state, connection };
     const undone = o?.client.takeRollback();
     if (undone) {
       this.notify(rollbackText(undone));
@@ -610,12 +619,19 @@ export class AppController {
     online?.leave(solo ? { endRoom: true } : {});
     if (untouched && room) this.forget(saveKey(room.code), room.code);
     this.set({
-      online: null, solo: false, error: null, moveError: null, linkBox: null, report: null, saves: listSaves(this.deps.saves), focus: null,
+      online: null, connection: null, solo: false, error: null, moveError: null, linkBox: null, report: null, saves: listSaves(this.deps.saves), focus: null,
     });
   }
 
   backToMenu(): void {
     this.leave();
+  }
+
+  /** After the host removed this player: join the same room again (they get their seat back). */
+  async rejoin(): Promise<void> {
+    const code = this.state.online?.code ?? null;
+    this.leave();
+    if (code) await this.join(code);
   }
 
   // ── Previews (what the active player is considering) ──────────────────────────────

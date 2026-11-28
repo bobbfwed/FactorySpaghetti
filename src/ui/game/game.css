@@ -428,6 +428,11 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-toast[hidden] { display: none; }
 .tg-toast.show { animation: tg-toast 4.5s ease forwards; }
 @keyframes tg-toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 6% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
+/* The host closed the connection (removed this player, ended the room): the table is a still
+   picture behind a panel that says why; nothing on it can be pressed. */
+.tg-ended { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; padding: 16px; background: rgba(0, 0, 0, 0.55); }
+.tg-ended .banner { width: min(560px, 100%); margin: 0; padding: 16px 18px; font-size: 15.5px; background: #2b1d20; box-shadow: inset 0 0 0 1px rgba(224, 69, 79, 0.6), 0 16px 40px rgba(0, 0, 0, 0.6); }
+.tg-ended .banner-actions { width: 100%; justify-content: flex-end; }
 .tg-slot.banner .banner { position: absolute; top: 96px; left: 50%; transform: translateX(-50%); width: min(680px, calc(100% - 24px)); z-index: 50; margin: 0; }
 .tg-error { position: absolute; top: 150px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100% - 24px)); z-index: 50; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 14px; border-radius: 12px; }
 
@@ -574,14 +579,15 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-hand.fan > .tg-li:hover, .tg-hand.fan > .tg-li:focus-within { transform: rotate(0deg) translateY(-26px); z-index: 2; }
 .tg-hand.grid > .tg-li { display: flex; }
 
-/* ---- the host's "Remove player": beside an away player's countdown, and in a player's details ---- */
+/* ---- the host's "Remove player": beside an away player's countdown (desktop plates), and in a
+   player's details. On a phone the away chip carries a remove badge and opens the details. ---- */
 .tg-li.has-remove { gap: 6px; align-items: center; }
 .tg-remove { flex: none; min-height: 44px; padding: 0 12px; font-size: 13px; font-weight: 800; white-space: nowrap; }
-.tg-hud.phone .tg-toprow, .tg-chips { align-items: flex-start; }
-.tg-chips > .tg-li.has-remove { flex-direction: column; align-items: stretch; }
-.tg-chips > .tg-li.has-remove > .tg-chip { flex: none; }
-.tg-chips .tg-remove { padding: 0 6px; font-size: 12px; white-space: normal; }
+.tg-chip.can-remove { box-shadow: 0 0 0 2px var(--warn), 0 12px 32px rgba(0, 0, 0, 0.5); }
+.tg-rmtag { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #c8323c; color: #fff; }
+.tg-rmtag .ic { width: 12px; height: 12px; color: #fff; }
 .tg-popacts { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.tg-popacts.top { margin: 0 0 10px; padding: 0 0 10px; border-top: 0; border-bottom: 1px solid var(--line); }
 .tg-popacts .hint { font-size: 12.5px; color: var(--text-2); }
 
 /* ---- a move on its way to the host: the pressed control says so ---- */
