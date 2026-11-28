@@ -84,6 +84,12 @@ export const RELEASES: readonly Release[] = [
         see: 'belts#buying',
       },
       {
+        title: 'Sink Hole sends belts to the bank',
+        before: 'The belts on a piece removed by Sink Hole went back to their owners\' supplies.',
+        now: 'As in the printed rulebook, they go back to the bank: their owners do not get them back and must buy belts again — even a belt laid this turn.',
+        see: 'cards#sinkHole',
+      },
+      {
         title: 'Your own factory decision comes first',
         before: 'The interface already made you decide Run it or Skip for your own activated factory before anything else, but the rules engine did not insist.',
         now: 'The rules require it, and online the host accepts only moves the game offers.',
@@ -349,7 +355,6 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         here: `${listWords((['personalJetPack', 'assetForfeiture', 'rdTaxWriteOff', 'solarFlare'] as const).map(c => `[[cards#${c}|${CARD_NAME[c]}]] (${CARD_COUNTS[c]} copies)`))}.`,
       },
       { title: 'Embezzlement', printed: 'A Sphere with one or two Mines, a Tesseract with three.', here: 'Always a Sphere.', see: 'cards#embezzlement' },
-      { title: 'Sink Hole and belts', printed: 'Belts on the removed piece go back to the bank.', here: 'They go back to their owners\' supplies.', see: 'cards#sinkHole' },
     ],
   },
   {

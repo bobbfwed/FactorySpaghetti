@@ -305,7 +305,7 @@ describe('shortSale', () => {
 // ── sinkHole ──────────────────────────────────────────────────────────────────
 
 describe('sinkHole', () => {
-  it('removes an unclaimed board piece and returns its belts', () => {
+  it('removes an unclaimed board piece; its belts go to the bank (#56)', () => {
     let s = actionsState();
     const pid = s.turnOrder[s.activePlayerIndex]!;
     s = giveCard(s, 'sinkHole');
@@ -331,8 +331,8 @@ describe('sinkHole', () => {
     const ns = (r as { ok: true; state: GameState }).state;
     expect(ns.board.find(p => p.id === 'blank-1')).toBeUndefined();
     expect(ns.belts.find(b => b.id === 'belt-1')).toBeUndefined();
-    // Belt returned to player
-    expect(ns.players[pid]!.beltsRemaining).toBe(prevBeltsRemaining + 1);
+    // The belt went to the bank: its owner does not get it back (RULES_CHANGES.md #56).
+    expect(ns.players[pid]!.beltsRemaining).toBe(prevBeltsRemaining);
   });
 
   it('rejects sinking a claimed piece', () => {

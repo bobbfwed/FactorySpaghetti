@@ -62,3 +62,12 @@ describe('removing this turn\'s Mine belt frees the limit (#52)', () => {
     expect(titles()).toContain('Removing this turn\'s Mine belt lets you lay another');
   });
 });
+
+describe('Sink Hole sends belts to the bank (#56)', () => {
+  it('the card, Belts and the change list say so, and no topic says the belts go back to their owners', () => {
+    expect(text('cards')).toContain('Belts lying on it go back to the bank: their owners do not get them back');
+    expect(text('belts')).toContain('those belts go back to the bank, as in the printed rulebook');
+    expect(everywhere()).not.toContain("go back to their owners' supplies");
+    expect(titles()).toContain('Sink Hole sends belts to the bank');
+  });
+});

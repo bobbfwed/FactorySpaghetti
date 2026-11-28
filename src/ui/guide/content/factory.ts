@@ -261,7 +261,7 @@ export const belts: Topic = {
         { k: 'p', t: 'The Mine limit counts only belt ends facing an ore exit. A belt end facing a part of a Mine with no exit does not count, and carries nothing.' },
         { k: 'p', t: 'Reserved points: if a building has several owners, each of them may lay belts to its input and output. Anyone may lay belts to an unclaimed building.' },
         { k: 'p', t: 'A chain is always one player\'s belts, because belts of different players cannot meet.' },
-        { k: 'p', t: 'If Sink Hole removes a piece with belts on it, those belts go back to their owners\' supplies.' },
+        { k: 'p', t: 'If Sink Hole removes a piece with belts on it, those belts go back to the bank, as in the printed rulebook: their owners do not get them back, even a belt laid this turn.' },
         { k: 'p', t: 'Belts count toward the Belt Weaver bonus. See [[bonuses|Bonus Tesseracts]].' },
       ],
     },

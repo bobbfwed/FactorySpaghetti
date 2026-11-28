@@ -53,7 +53,7 @@ export const CARD_TEXT: Record<CardType, string> = {
   scoutingDrone: 'Look through the stacks, choose a piece and place it on the board now.',
   shortSale: 'Claim an unclaimed building (or add to one you hold a claim on) with your lowest Control Module that is not below the number of Mines.',
   embezzlement: 'Take 1 Sphere from the bank.',
-  sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to their owners.',
+  sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to the bank.',
   overstockSupplies: 'Draw 3 pieces and place them next to the board. Played as soon as it is drawn.',
   netSurplusSellOff: 'Each other player gives you 3 Power Tokens (or all they have), until you reach 10.',
   changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on.',
@@ -408,7 +408,9 @@ export const W = {
   shortSalePick: (module: number): string => `Short Sale: tap a building to claim it with your Control Module ${module}.`,
   shortSaleConfirm: (building: string, module: number): string => `Claim this ${building} with Control Module ${module}?`,
   sinkHolePick: 'Sink Hole: tap an unclaimed piece to remove it.',
-  sinkHoleConfirm: (what: string): string => `Remove this ${what} from the board?`,
+  /** "Remove this blank tile from the board? The 2 belts on it go back to the bank: …" (#56). */
+  sinkHoleConfirm: (what: string, belts = 0): string =>
+    `Remove this ${what} from the board?${belts > 0 ? ` ${belts === 1 ? 'The belt on it goes' : `The ${belts} belts on it go`} back to the bank: their owners do not get them back.` : ''}`,
   cpPickFrom: 'Changing Priorities: tap the building to move a Control Module from.',
   cpPickTo: 'Now tap the building to move it to.',
   cpPickModule: 'Which Control Module moves?',

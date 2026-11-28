@@ -1526,7 +1526,7 @@ export class PlayController {
           const a = plays.find(x => x.pieceId === m.a);
           const piece = pieceById(g, m.a);
           if (!a || !piece) return false;
-          ready(a, m.card === 'shortSale' ? W.shortSaleConfirm(pieceName(piece.type), module) : W.sinkHoleConfirm(pieceName(piece.type)));
+          ready(a, m.card === 'shortSale' ? W.shortSaleConfirm(pieceName(piece.type), module) : W.sinkHoleConfirm(pieceName(piece.type), g.belts.filter(x => x.pieceId === piece.id).length));
         }
         return true;
       }

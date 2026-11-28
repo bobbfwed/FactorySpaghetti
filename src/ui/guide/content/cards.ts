@@ -57,7 +57,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
   sinkHole: {
     short: 'Remove a piece nobody has claimed.',
     blocks: [
-      p('Remove a board piece that nobody has claimed: a blank tile or an unclaimed building, never a Mine. Belts lying on it go back to their owners\' supplies.'),
+      p('Remove a board piece that nobody has claimed: a blank tile or an unclaimed building, never a Mine. Belts lying on it go back to the bank: their owners do not get them back and must buy belts again — even a belt laid this turn.'),
       p('Play it from your hand, tap the piece and confirm.'),
     ],
     details: [

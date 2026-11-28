@@ -655,7 +655,7 @@ export function beltLaidThisTurn(state: Pick<GameState, 'beltsPlacedThisTurn'>, 
 
 // True when one of the belts with an id in `ids` has an end facing a Mine ore exit (the test
 // PLACE_BELT uses for the one-Mine-belt-per-turn limit).
-function mineBeltAmong(
+export function mineBeltAmong(
   board: ReadonlyArray<BoardPiece>,
   belts: ReadonlyArray<Belt>,
   ids: ReadonlyArray<string>,

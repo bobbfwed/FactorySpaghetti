@@ -937,9 +937,14 @@ function sinkHoleWorth(ctx: Ctx, a: Action): number {
   if (a.type !== 'PLAY_CARD' || !a.pieceId) return -Infinity;
   const b = ctx.state.board.find(x => x.id === a.pieceId);
   if (!b || !isBuilding(b)) return -Infinity;
+  // The belts lying on the piece go to the bank (RULES_CHANGES.md #56): mine are lost (a belt
+  // must be bought again), an opponent's loss is a small gain.
+  const beltsHere = ctx.state.belts.filter(x => x.pieceId === b.id);
+  const mine = beltsHere.filter(x => x.ownerId === ctx.me).length;
+  const beltLoss = mine * BELT_COST - (beltsHere.length - mine) * 0.3 * BELT_COST;
   // Deny an unclaimed Tesseract Factory that sits fed next to an opponent's output.
-  if (b.type !== 'tesseractFact') return 0;
-  let s = 0.5;
+  if (b.type !== 'tesseractFact') return -beltLoss;
+  let s = 0.5 - beltLoss;
   for (const pos of pointsWithRole(b, 'input_buffer')) {
     const f = feedAt(ctx.state, b, pos, ctx.me);
     if (f && f.material !== 'ore') {
