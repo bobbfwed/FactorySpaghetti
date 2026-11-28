@@ -43,6 +43,8 @@ export const SMART_STYLE: SmartConfig = {
   bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.7 },
   breadth: 5,
   meepleUpgrade: 3,
+  // Attempt 6d (kept, weight sweep): buy teleporters more reluctantly (appetite 0.5 -> 0.2).
+  teleporterAppetite: 0.2,
   maxRouteBelts: 6,
   endgameThrift: false,
   denyWeight: 0,
