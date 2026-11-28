@@ -31,6 +31,13 @@ export const SMART_STYLE: SmartConfig = {
   ...BASE_STYLE,
   id: 'greedy',
   label: 'Smart Bot',
+  // Attempt 3 (kept): go for the Bonus Tesseracts as the Bonus Hunter does — each weighed above a
+  // real Tesseract, one more claimed building worth more (Factory Empire), the meeple's Mine
+  // upgrade point preferred, longer belt routes, and long chains for Belt Weaver.
+  bonusWeight: { investor: 1.5, beltWeaver: 1.2, factoryEmpire: 1.3 },
+  breadth: 4,
+  meepleUpgrade: 3,
+  maxRouteBelts: 6,
   endgameThrift: false,
   denyWeight: 0,
   endgamePower: false,
