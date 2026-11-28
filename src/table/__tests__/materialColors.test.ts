@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MATERIAL_VALUES, type Material } from '../../engine/config';
-import { parseGlb } from '../glb';
+import { parseGlb, type GlbPart } from '../glb';
 import { MATERIAL_COLOR, MATERIAL_EDGE, MATERIALS_BY_VALUE, mixHex, relativeLuminance } from '../materialColors';
 
 const ROOT = join(__dirname, '..', '..', '..');
@@ -63,7 +63,7 @@ describe('material colours', () => {
 
 describe('one set of colours everywhere', () => {
   it('the baked models carry the same colours (material piece and Mine symbols)', () => {
-    const parts = (name: string) => parseGlb(new Uint8Array(readFileSync(join(MODELS_DIR, `${name}.glb`))));
+    const parts = (name: string): GlbPart[] => parseGlb(new Uint8Array(readFileSync(join(MODELS_DIR, `${name}.glb`))));
     const check = (name: string, m: Material): void => {
       const p = parts(name).find(x => x.material === m);
       expect(p, `${name} has a ${m} part`).toBeDefined();
@@ -97,9 +97,9 @@ describe('one set of colours everywhere', () => {
     let iconHtml: (name: 'ore' | 'plate' | 'sphere' | 'tess') => string;
     beforeAll(async () => {
       // icons.ts builds an element; a bare stand-in for document is enough to read its markup.
-      (globalThis as { document?: unknown }).document ??= { createElement: () => ({ className: '', innerHTML: '' }) };
+      (globalThis as { document?: unknown }).document ??= { createElement: (): object => ({ className: '', innerHTML: '' }) };
       const { icon } = await import('../../ui/icons');
-      iconHtml = (name) => (icon(name) as unknown as { innerHTML: string }).innerHTML;
+      iconHtml = (name): string => (icon(name) as unknown as { innerHTML: string }).innerHTML;
     });
 
     it('fill with the material colour and edge with the lighter edge colour', () => {
