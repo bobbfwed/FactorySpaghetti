@@ -161,6 +161,26 @@ describe('playing a game', () => {
     expect({ ...strip(r1), seats: [] }).toEqual({ ...strip(r2), seats: [] });
   });
 
+  it('collects the extra balance statistics consistently with the rest of the record', () => {
+    const r = playGame({ seed: 42, playerCount: 2, seats: ['hoarder', 'teleporter'] }, bots);
+    const x = r.extra!;
+    expect(x).toBeDefined();
+    for (let seat = 0; seat < 2; seat++) {
+      const placed = Object.values(x.meeple[seat]!).reduce((s, n) => s + n, 0);
+      // One meeple decision (a spot or none) per own turn, at most; a game can end mid-turn.
+      expect(placed).toBeGreaterThan(0);
+      expect(placed).toBeLessThanOrEqual(r.turns![seat]!);
+      expect(x.turnsAtPowerCap[seat]).toBeLessThanOrEqual(r.turns![seat]!);
+      expect(x.powerAtTurnStart[seat]).toBeLessThanOrEqual(10 * r.turns![seat]!);
+      expect(x.finalPower[seat]).toBeGreaterThanOrEqual(0);
+      expect(x.cardsPlayed[seat]).toBeGreaterThanOrEqual(0);
+      expect(x.buildings[seat]).toBeGreaterThanOrEqual(1); // the two setup claims (unless lost)
+      expect(x.topModule[seat]).toBeGreaterThanOrEqual(2);
+    }
+    // The Teleporter Bot places teleporters.
+    expect(x.teleportersPlaced[1]).toBeGreaterThan(0);
+  });
+
   it('records a refused move as an error with its action number', () => {
     const bad: BotFn = () => ({ type: 'END_TURN' });
     const r = playGame({ seed: 3, playerCount: 2, seats: ['bad', 'hoarder'] }, new Map([...bots, ['bad', bad]]));

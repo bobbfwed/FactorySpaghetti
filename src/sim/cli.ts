@@ -33,7 +33,7 @@ import { spawn } from 'node:child_process';
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { BOT_TYPES, SIM_ONLY_BOTS } from '../bots/registry';
 import { STYLES } from '../bots/styles/profiles';
 import type { BotFn } from '../bots/botInterface';
@@ -107,7 +107,9 @@ const write = (s: string): void => { process.stdout.write(`${s}\n`); };
 async function entrants(o: Opts): Promise<Map<string, BotFn>> {
   const m = new Map<string, BotFn>([...BOT_TYPES, ...SIM_ONLY_BOTS].map(b => [b.id, b.fn]));
   for (const f of o.imports) {
-    const mod = (await import(pathToFileURL(resolve(f)).href)) as { default?: readonly Entrant[] };
+    // A plain path, not a file URL: vite-node cannot load a file URL whose path has a space
+    // (it is percent-encoded), and the repo sits in "Factory Spaghetti".
+    const mod = (await import(/* @vite-ignore */ resolve(f).replace(/\\/g, '/'))) as { default?: readonly Entrant[] };
     for (const e of mod.default ?? []) m.set(e.id, e.fn);
   }
   return m;

@@ -1,0 +1,85 @@
+# npm run sim -- --mode all --bots greedy,planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter,greedy-classic --seeds 6 --start 1100000 --jobs 8 --out <scratch>/R1-all-eight.json
+Sat Nov 28 03:47:37 PST 2026
+
+> factory-spaghetti@0.1.5 sim
+> vite-node src/sim/cli.ts -- --mode all --bots greedy,planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter,greedy-classic --seeds 6 --start 1100000 --jobs 8 --out C:/Users/BNIMO~1.BNI/AppData/Local/Temp/claude/bce9939815b905b6/***/scratchpad/runs/R1-all-eight.json
+
+(8 processes, 618 s wall clock)
+
+2 players (even share 50.0%)
+bot                  games  wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Bonus Hunter Bot        84  72.0     85.7%  76.7%–91.6%     1.71    22.6      71        1    43.5  1.71   17.1   2.08  90.5%  20.2%  97.6%    1.2   0.11   0.00      0      0              78.6% / 92.9%
+Smart Bot               84  72.0     85.7%  76.7%–91.6%     1.71    21.0      72        0    44.5  1.81   16.9   1.94  88.1%  23.8%  82.1%    0.0   0.13   0.00      0      0              81.0% / 90.5%
+Mine Rusher Bot         84  48.0     57.1%  46.5%–67.2%     1.14    21.3      47        1    54.1  2.02   14.6   1.06  48.8%   2.4%  54.8%    1.1   0.64   0.00      0      0              52.4% / 61.9%
+Planner Bot             84  43.0     51.2%  40.7%–61.6%     1.02    22.6      42        1    59.9  2.15   14.8   0.86  39.3%   0.0%  46.4%    4.1   0.32   0.00      0      0              45.2% / 57.1%
+Card Shark Bot          84  42.0     50.0%  39.5%–60.5%     1.00    22.2      38        4    54.3  1.94   15.3   0.83  38.1%   0.0%  45.2%    7.4   0.12   0.00      0      0              45.2% / 54.8%
+Teleporter Bot          84  34.0     40.5%  30.6%–51.2%     0.81    22.1      31        3    53.2  1.82   17.1   0.67  33.3%   1.2%  32.1%    3.3   0.32   0.00      0      0              38.1% / 42.9%
+Hoarder Bot             84  22.0     26.2%  18.0%–36.5%     0.52    22.5      20        2    61.1  1.25   16.9   0.70  47.6%   0.0%  22.6%    6.0   0.50   0.00      0      0              23.8% / 28.6%
+Smart Bot (classic)     84   3.0      3.6%   1.2%–10.0%     0.07    22.5       1        2    42.3  0.85   20.1   0.14  14.3%   0.0%   0.0%    0.3   0.02   0.00      0      0                4.8% / 2.4%
+
+3 players (even share 33.3%)
+bot                  games   wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Smart Bot              378  283.0     74.9%  70.3%–79.0%     2.25    19.5     280        3    43.5  1.70   15.5   1.92  83.3%  33.9%  74.3%    0.0   0.07   0.00      0      0      68.3% / 76.2% / 80.2%
+Bonus Hunter Bot       378  232.0     61.4%  56.4%–66.1%     1.84    21.0     232        0    40.7  1.50   16.6   1.85  73.8%  22.0%  89.7%    1.6   0.10   0.00      0      0      55.6% / 61.9% / 66.7%
+Mine Rusher Bot        378  121.0     32.0%  27.5%–36.9%     0.96    20.1     108       13    56.7  1.96   13.6   0.54  22.5%   0.3%  31.0%    0.5   0.38   0.00      0      0      23.0% / 31.7% / 41.3%
+Planner Bot            378  116.0     30.7%  26.3%–35.5%     0.92    20.2      93       23    56.6  1.98   13.7   0.44  20.4%   0.3%  23.3%    3.1   0.24   0.00      0      0      31.0% / 31.0% / 30.2%
+Card Shark Bot         378  102.0     27.0%  22.8%–31.7%     0.81    20.4      81       21    52.3  1.81   14.3   0.48  21.2%   0.3%  27.0%    7.6   0.14   0.00      0      0      28.6% / 24.6% / 27.8%
+Teleporter Bot         378   69.0     18.3%  14.7%–22.5%     0.55    20.6      51       18    56.4  1.85   15.6   0.28  14.6%   0.0%  13.0%    1.1   0.43   0.00      0      0      21.4% / 14.3% / 19.0%
+Hoarder Bot            378   65.0     17.2%  13.7%–21.3%     0.52    20.4      33       32    59.9  1.05   14.9   0.32  24.3%   0.3%   7.7%    3.7   0.51   0.00      0      0      19.8% / 15.9% / 15.9%
+Smart Bot (classic)    378   20.0      5.3%    3.5%–8.0%     0.16    20.6       2       18    40.9  0.68   16.8   0.07   6.6%   0.0%   0.0%    0.4   0.02   0.00      0      0         4.8% / 6.3% / 4.8%
+
+4 players (even share 25.0%)
+bot                  games   wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error      win rate by turn position
+Smart Bot              840  472.0     56.2%  52.8%–59.5%     2.25    19.1     450       22    44.4  1.68   14.5   1.65  73.7%  25.2%  65.7%    0.0   0.04   0.00      0      0  57.6% / 54.3% / 60.5% / 52.4%
+Bonus Hunter Bot       840  268.0     31.9%  28.8%–35.1%     1.28    19.7     259        9    38.5  1.34   15.4   1.55  57.7%  15.8%  81.2%    1.6   0.09   0.00      0      0  34.8% / 32.9% / 31.0% / 29.0%
+Card Shark Bot         840  207.0     24.6%  21.8%–27.7%     0.99    19.2     107      100    52.7  1.82   12.8   0.30  15.0%   0.4%  15.1%    6.1   0.15   0.00      0      0  28.1% / 24.3% / 21.0% / 25.2%
+Mine Rusher Bot        840  204.0     24.3%  21.5%–27.3%     0.97    19.1     130       74    55.9  1.96   12.9   0.28  13.0%   0.2%  15.2%    0.4   0.29   0.00      0      0  21.4% / 27.1% / 22.4% / 26.2%
+Planner Bot            840  200.0     23.8%  21.1%–26.8%     0.95    19.2     110       90    55.4  1.91   12.7   0.26  12.9%   0.1%  13.3%    2.7   0.19   0.00      0      0  22.9% / 27.6% / 23.8% / 21.0%
+Hoarder Bot            840  171.0     20.4%  17.8%–23.2%     0.81    19.4      65      106    59.8  1.25   13.8   0.20  16.1%   0.0%   3.6%    2.4   0.37   0.00      0      0  18.1% / 19.0% / 22.9% / 21.4%
+Teleporter Bot         840  102.0     12.1%  10.1%–14.5%     0.49    19.4      33       69    50.0  1.63   15.3   0.12   5.6%   0.2%   5.7%    0.6   0.35   0.00      0      0  11.0% / 12.9% / 11.0% / 13.8%
+Smart Bot (classic)    840   56.0      6.7%    5.2%–8.6%     0.27    19.4       1       55    36.9  0.49   15.3   0.06   6.1%   0.0%   0.0%    0.4   0.01   0.00      0      0      7.6% / 9.5% / 5.7% / 3.8%
+
+Win rate by turn position (all bots; 1st = starting player)
+  2 players, 336 games: 1st 46.1% (40.9%–51.5%), 2nd 53.9% (48.5%–59.1%)
+  3 players, 1008 games: 1st 31.5% (28.8%–34.5%), 2nd 32.7% (29.9%–35.7%), 3rd 35.7% (32.8%–38.7%)
+  4 players, 1680 games: 1st 25.2% (23.2%–27.3%), 2nd 26.0% (23.9%–28.1%), 3rd 24.8% (22.8%–26.9%), 4th 24.1% (22.1%–26.2%)
+
+Bonus Tesseracts
+players          bonus  held at end  first taken (round)  kept by first holder  changes of hands  holder won
+2             investor       100.0%                  5.5                 57.1%              1.54       78.9%
+2           beltWeaver        11.9%                 10.9                100.0%              0.00       87.5%
+2        factoryEmpire        95.2%                 10.5                 80.3%              0.25       87.2%
+3             investor       100.0%                  5.4                 39.4%              2.75       68.0%
+3           beltWeaver        21.3%                  9.6                 91.9%              0.01       87.0%
+3        factoryEmpire        99.7%                  8.6                 63.1%              0.50       73.0%
+4             investor       100.0%                  5.4                 25.0%              3.45       51.2%
+4           beltWeaver        21.0%                  8.4                 90.0%              0.01       77.3%
+4        factoryEmpire        99.9%                  8.0                 47.7%              0.76       52.2%
+
+Decision time (ms) and decisions per own turn
+  2p bonusHunter: 0 decisions, median NaN, 95th NaN, worst NaN; 8.3 decisions per turn
+  2p cardShark: 0 decisions, median NaN, 95th NaN, worst NaN; 8.4 decisions per turn
+  2p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.3 decisions per turn
+  2p greedy-classic: 0 decisions, median NaN, 95th NaN, worst NaN; 6.4 decisions per turn
+  2p hoarder: 0 decisions, median NaN, 95th NaN, worst NaN; 7.6 decisions per turn
+  2p mineRusher: 0 decisions, median NaN, 95th NaN, worst NaN; 8.1 decisions per turn
+  2p planner: 0 decisions, median NaN, 95th NaN, worst NaN; 8.3 decisions per turn
+  2p teleporter: 0 decisions, median NaN, 95th NaN, worst NaN; 7.8 decisions per turn
+  3p bonusHunter: 0 decisions, median NaN, 95th NaN, worst NaN; 8.6 decisions per turn
+  3p cardShark: 0 decisions, median NaN, 95th NaN, worst NaN; 9.0 decisions per turn
+  3p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.6 decisions per turn
+  3p greedy-classic: 0 decisions, median NaN, 95th NaN, worst NaN; 6.6 decisions per turn
+  3p hoarder: 0 decisions, median NaN, 95th NaN, worst NaN; 7.7 decisions per turn
+  3p mineRusher: 0 decisions, median NaN, 95th NaN, worst NaN; 8.4 decisions per turn
+  3p planner: 0 decisions, median NaN, 95th NaN, worst NaN; 8.6 decisions per turn
+  3p teleporter: 0 decisions, median NaN, 95th NaN, worst NaN; 7.9 decisions per turn
+  4p bonusHunter: 0 decisions, median NaN, 95th NaN, worst NaN; 8.8 decisions per turn
+  4p cardShark: 0 decisions, median NaN, 95th NaN, worst NaN; 9.1 decisions per turn
+  4p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.7 decisions per turn
+  4p greedy-classic: 0 decisions, median NaN, 95th NaN, worst NaN; 6.6 decisions per turn
+  4p hoarder: 0 decisions, median NaN, 95th NaN, worst NaN; 7.8 decisions per turn
+  4p mineRusher: 0 decisions, median NaN, 95th NaN, worst NaN; 8.5 decisions per turn
+  4p planner: 0 decisions, median NaN, 95th NaN, worst NaN; 8.8 decisions per turn
+  4p teleporter: 0 decisions, median NaN, 95th NaN, worst NaN; 8.0 decisions per turn
+
+3024 games; 1.59 s per game on average (one process).

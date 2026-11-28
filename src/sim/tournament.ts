@@ -15,6 +15,7 @@ import { applyAction } from '../engine/reducer';
 import { createRng, nextIntBelow } from '../engine/rng';
 import type { RngState } from '../engine/rng';
 import { resourcePoints } from '../engine/rules/scoring';
+import { POWER_TOKEN_CAP } from '../engine/config';
 
 export type PlayerCount = 2 | 3 | 4;
 
@@ -77,12 +78,48 @@ export interface GameRecord {
   readonly moves?: readonly number[];
   /** Own turns each seat began (round-end turns not counted). */
   readonly turns?: readonly number[];
+  /**
+   * Further facts for balance studies, per seat (read from the states; they change no game):
+   * where the meeple went, Teleporters placed, Power Tokens held, cards played, belts on the board
+   * and buildings claimed at the end.
+   */
+  readonly extra?: ExtraStats;
   /** Milliseconds per decision, per seat (only when timing is asked for). */
   readonly timing?: ReadonlyArray<readonly number[]>;
   /** What went wrong, with the action number, when ending = 'error'. */
   readonly error?: string;
   /** Wall-clock milliseconds (speed only; not part of the result). */
   readonly ms?: number;
+}
+
+/**
+ * Where a meeple was put: a Mine's resource point or upgrade point, a building of the given kind,
+ * or nowhere (the turn ended without one).
+ */
+export type MeepleSpot = 'mineResource' | 'mineUpgrade' | 'plateFact' | 'sphereFact' | 'tesseractFact' | 'powerPlant' | 'none';
+export const MEEPLE_SPOTS: readonly MeepleSpot[] = ['mineResource', 'mineUpgrade', 'plateFact', 'sphereFact', 'tesseractFact', 'powerPlant', 'none'];
+
+export interface ExtraStats {
+  /** Meeple placements by spot, per seat. */
+  readonly meeple: ReadonlyArray<Readonly<Record<MeepleSpot, number>>>;
+  /** Teleporters placed (bought, or by R&D Tax Write-Off), per seat. */
+  readonly teleportersPlaced: readonly number[];
+  /** Belts bought from the bank, per seat. */
+  readonly beltsBought: readonly number[];
+  /** Power Tokens held at the start of each own turn (at the roll), summed, per seat. */
+  readonly powerAtTurnStart: readonly number[];
+  /** Own turns begun with the Power Token cap (POWER_TOKEN_CAP) already reached, per seat. */
+  readonly turnsAtPowerCap: readonly number[];
+  /** Power Tokens at the end, per seat. */
+  readonly finalPower: readonly number[];
+  /** Leverage cards played (including those resolved on purchase), per seat. */
+  readonly cardsPlayed: readonly number[];
+  /** Belts on the board at the end, per seat. */
+  readonly beltsOnBoard: readonly number[];
+  /** Buildings carrying the seat's Control Modules at the end. */
+  readonly buildings: readonly number[];
+  /** The highest Control Module the seat has on a building at the end (0 = none). */
+  readonly topModule: readonly number[];
 }
 
 // ── Schedules ─────────────────────────────────────────────────────────────────
@@ -196,6 +233,11 @@ export function playGame(
   const firstTesseractRound = spec.seats.map(() => -1);
   const mines: Array<{ round: number; boughtBy: number }> = [];
   const coClaims = spec.seats.map(() => 0);
+  const meeple = spec.seats.map(() => Object.fromEntries(MEEPLE_SPOTS.map(s => [s, 0])) as Record<MeepleSpot, number>);
+  const teleportersPlaced = spec.seats.map(() => 0);
+  const beltsBought = spec.seats.map(() => 0);
+  const powerAtTurnStart = spec.seats.map(() => 0);
+  const turnsAtPowerCap = spec.seats.map(() => 0);
 
   while (!state.gameOver && actions < maxActions) {
     const who = mover(state);
@@ -206,6 +248,9 @@ export function playGame(
       dice = next;
       action = { type: 'ROLL_DICE', rolls: d };
       turns[who]!++; // one roll per own turn
+      const power = state.players[who]!.powerTokens;
+      powerAtTurnStart[who]! += power;
+      if (power >= POWER_TOKEN_CAP) turnsAtPowerCap[who]!++;
     } else {
       if (takeoverFn && spec.takeover && actions >= spec.takeover.atAction) bots[spec.takeover.seat] = takeoverFn;
       try {
@@ -230,6 +275,18 @@ export function playGame(
     if (action.type === 'PLAY_CARD' && (action.cardType === 'shortSale' || action.cardType === 'changingPriorities')) {
       const target = state.board.find(b => b.id === (action.cardType === 'shortSale' ? action.pieceId : action.toPieceId));
       if (target && target.claims.some(c => c.ownerId !== who)) coClaims[who]!++;
+    }
+    if (action.type === 'PLACE_MEEPLE') {
+      const piece = state.board.find(b => b.id === action.pieceId);
+      const spot: MeepleSpot = piece?.type === 'mine' ? (action.slotIndex === 1 ? 'mineUpgrade' : 'mineResource')
+        : (MEEPLE_SPOTS as readonly string[]).includes(piece?.type ?? '') ? piece!.type as MeepleSpot : 'none';
+      meeple[who]![spot]++;
+    } else if (action.type === 'END_TURN' && state.phase === 'placeMeeple' && state.players[who]!.meepleOnPieceId === null) {
+      meeple[who]!.none++;
+    } else if (action.type === 'PLACE_TELEPORTER' || (action.type === 'PLAY_CARD' && action.cardType === 'rdTaxWriteOff')) {
+      teleportersPlaced[who]!++;
+    } else if (action.type === 'BUY_BELT') {
+      beltsBought[who]!++;
     }
     const next = res.state;
     if (next.mineCount > state.mineCount) mines.push({ round: state.round, boughtBy: action.type === 'BUY_MINE' ? who : -1 });
@@ -273,6 +330,18 @@ export function playGame(
     ...(spec.takeover ? { takeover: spec.takeover } : {}),
     moves,
     turns,
+    extra: {
+      meeple,
+      teleportersPlaced,
+      beltsBought,
+      powerAtTurnStart,
+      turnsAtPowerCap,
+      finalPower: state.players.map(p => p.powerTokens),
+      cardsPlayed: state.players.map(p => p.stats.cardsPlayed),
+      beltsOnBoard: state.players.map(p => state.belts.filter(b => b.ownerId === p.id).length),
+      buildings: state.players.map(p => state.board.filter(b => b.claims.some(c => c.ownerId === p.id)).length),
+      topModule: state.players.map(p => Math.max(0, ...state.board.flatMap(b => b.claims.filter(c => c.ownerId === p.id).map(c => c.controlModule)))),
+    },
     ...(times ? { timing: times.map(t => t.map(x => Math.round(x * 1000) / 1000)) } : {}),
     ...(error ? { error } : {}),
     ...(t0 !== undefined && clock ? { ms: clock() - t0 } : {}),
