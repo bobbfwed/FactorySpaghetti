@@ -146,13 +146,13 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   for (const p of next.board) {
     const old = before.get(p.id);
     // Material that stays in its slot but moves aside (a teleporter lands on its stub, or leaves):
-    // it slides there just before the teleporter appears, instead of jumping.
+    // it slides there instead of jumping, in the phase before, so the teleporter lands on a clear stub.
     if (old) {
       for (const b of ['input', 'output'] as const) {
         (p[b]?.slots ?? []).forEach((m, i) => {
           if (!m || old[b]?.slots[i] !== m || (b === 'input' && used.has(p.id))) return;
           const from = bufferSlotWorld(old, b, i), to = bufferSlotWorld(p, b, i);
-          if (Math.hypot(to.x - from.x, to.z - from.z) > 0.5) phases[P_BUILD]!.push({ kind: 'slide', pieceId: p.id, buffer: b, slot: i, material: m, from, to });
+          if (Math.hypot(to.x - from.x, to.z - from.z) > 0.5) phases[P_PLACE]!.push({ kind: 'slide', pieceId: p.id, buffer: b, slot: i, material: m, from, to });
         });
       }
     }

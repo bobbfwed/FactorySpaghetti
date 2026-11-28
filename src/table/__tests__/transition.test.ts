@@ -251,7 +251,7 @@ describe('material moving aside for a teleporter (slide)', () => {
   const plain = { ...owned, input: { slots: ['ore' as const], teleporters: [] as Array<PlayerId | null> } };
   const teleported = { ...plain, input: withTeleporter(plain.input, 0, 0) };
 
-  it('a teleporter placed on a stub that holds material: the material slides aside, starting just before the teleporter appears', () => {
+  it('a teleporter placed on a stub that holds material: the material slides aside first, then the teleporter lands', () => {
     const plan = planTransition(withPiece(plain), withPiece(teleported), []);
     const slides = ofKind(plan, 'slide');
     expect(slides).toHaveLength(1);
@@ -261,8 +261,9 @@ describe('material moving aside for a teleporter (slide)', () => {
     expect(s.to).toEqual(bufferSlotWorld(teleported, 'input', 0));
     expect(Math.hypot(s.to.x - s.from.x, s.to.z - s.from.z)).toBeGreaterThan(5);
     const t = ofKind(plan, 'teleporter')[0]!;
-    expect(s.at).toBeLessThanOrEqual(t.at);
-    expect(s.at + s.dur).toBeGreaterThan(t.at);
+    expect(s.at).toBeLessThan(t.at);
+    // The phases overlap a little: the teleporter starts as the material arrives.
+    expect(s.at + s.dur).toBeLessThanOrEqual(t.at + DUR.overlap);
     // Nothing else happens to that material (no shrinking away and popping up).
     expect(ofKind(plan, 'consume')).toHaveLength(0);
     expect(ofKind(plan, 'appear')).toHaveLength(0);
