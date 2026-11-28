@@ -5,7 +5,7 @@ import type { Action } from '../engine/actions';
 import type { GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
-import { factoryOperatePowerCost } from '../engine/rules/production';
+import { factoryOperatePowerCost, powerPlantGains } from '../engine/rules/production';
 import { nextCardDrawn } from '../engine/rules/cards';
 import { buildingOwner } from '../engine/rules/ownership';
 import type { TableEvent } from './room';
@@ -82,6 +82,7 @@ function operateEvents(before: GameState, after: GameState, pieceId: string, ope
 function rollEvents(before: GameState, after: GameState, rolls: readonly number[], seat: number): TableEvent[] {
   const total = rolls.reduce((x, y) => x + y, 0);
   const out: TableEvent[] = [{ kind: 'roll', seat, dice: [...rolls], total }];
+  const gains = powerPlantGains(before, rolls);
 
   for (const beforePiece of before.board) {
     const afterPiece = after.board.find(p => p.id === beforePiece.id);
@@ -98,7 +99,9 @@ function rollEvents(before: GameState, after: GameState, rolls: readonly number[
       continue;
     }
     if (beforePiece.type === 'powerPlant') {
-      const gained = (after.players[owner]?.powerTokens ?? 0) - (before.players[owner]?.powerTokens ?? 0);
+      // This plant's own tokens (the engine's resolution, plant by plant, against the cap), not the
+      // owner's total for the roll: two plants of one player would each show the sum.
+      const gained = gains.get(beforePiece.id) ?? 0;
       out.push(gained > 0
         ? { ...base, outcome: 'power', amount: gained }
         : { ...base, outcome: 'power-capped', amount: 0 });
