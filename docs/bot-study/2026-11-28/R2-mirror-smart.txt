@@ -1,0 +1,6 @@
+# npm run sim -- --mode mirror --bots greedy --seeds 400 --start 1200000 --jobs 8 --out <scratch>/R2-mirror-smart.json
+Sat Nov 28 03:57:56 PST 2026
+
+> factory-spaghetti@0.1.5 sim
+> vite-node src/sim/cli.ts -- --mode mirror --bots greedy --seeds 400 --start 1200000 --jobs 8 --out C:/Users/BNIMO~1.BNI/AppData/Local/Temp/claude/bce9939815b905b6/***/scratchpad/runs/R2-mirror-smart.json
+
