@@ -134,15 +134,20 @@ function everySlot(buf: Buffer, owner: PlayerId): Buffer {
   return out;
 }
 let demoTeleporters = params.get('teleporters') === '1';
-const demoMaterials = params.get('materials') === '1';
+const demoMaterials = params.get('materials') === '1' || params.get('materials') === 'mix';
+/** materials=mix: every slot gets the next of the four materials in turn (for comparing their colours side by side). */
+const MIX: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
+let mixAt = 0;
 /** materials=1: the largest material each slot can hold (a Plate, or Ore on a Plate Factory or Power Plant input), and the product in the output. */
 function filled(buf: Buffer, p: BoardPiece, which: 'input' | 'output'): Buffer {
+  if (params.get('materials') === 'mix') return { ...buf, slots: buf.slots.map(x => x ?? MIX[mixAt++ % MIX.length]!) };
   const product: Record<string, Material> = { plateFact: 'plate', sphereFact: 'sphere', tesseractFact: 'tesseract' };
   const m: Material = which === 'output' ? product[p.type] ?? 'plate' : p.type === 'plateFact' || p.type === 'powerPlant' ? 'ore' : 'plate';
   return { ...buf, slots: buf.slots.map(x => x ?? m) };
 }
 function withTeleporters(s: GameState): GameState {
   if (!demoTeleporters && !demoMaterials) return s;
+  mixAt = 0;
   const board = s.board.map((p): BoardPiece => {
     const owner = p.claims[0]?.ownerId;
     if (owner === undefined || p.type === 'mine') return p;

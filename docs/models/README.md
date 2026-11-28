@@ -56,15 +56,15 @@ To see the result: `npx vite`, then open `/tools/gallery/index.html` (views: `?v
 | tile-sphere-factory | body, inlay-black, icon-green-light, bolt-yellow | 3,148 → 2,500 | 2,500 | 71.5 | 68.8 × 3.0 × 78.3 | triangles 3148 |
 | tile-tesseract-factory | body, inlay-black, icon-green-light, bolt-yellow | 3,372 → 2,500 | 2,500 | 74.3 | 68.8 × 3.0 × 78.3 | triangles 3372 |
 | tile-power-plant | body, inlay-black, bolt-yellow | 2,604 → 2,500 | 2,500 | 67.5 | 68.8 × 3.0 × 78.3 | triangles 2604 |
-| mine-1 | body, inlay-black, icon-blue, icon-green-light | 7,816 → 6,000 | 6,000 | 187.3 | 137.7 × 3.0 × 78.3 | name "Mine 1 AMS v3" |
-| mine-2 | body, inlay-black, icon-blue, icon-green | 14,140 → 6,000 | 6,000 | 180.7 | 137.7 × 3.0 × 78.3 | name "Mine 2 AMS v2" |
-| mine-3 | body, inlay-black, icon-blue, lime-green | 15,004 → 6,000 | 6,000 | 185.0 | 137.7 × 3.0 × 78.3 | name "Mine 3 AMS v2" |
+| mine-1 | body, inlay-black, icon-blue, ore | 7,816 → 6,000 | 6,000 | 187.3 | 137.7 × 3.0 × 78.3 | name "Mine 1 AMS v3" |
+| mine-2 | body, inlay-black, icon-blue, plate | 14,140 → 6,000 | 6,000 | 180.7 | 137.7 × 3.0 × 78.3 | name "Mine 2 AMS v2" |
+| mine-3 | body, inlay-black, icon-blue, sphere | 15,004 → 6,000 | 6,000 | 185.0 | 137.7 × 3.0 × 78.3 | name "Mine 3 AMS v2" |
 | belt | player | 5,516 → 1,500 | 1,500 | 51.0 | 6.6 × 5.3 × 74.1 | triangles 5516 |
 | meeple | player | 1,996 → 800 | 800 | 22.9 | 18.0 × 5.9 × 18.0 | triangles 1996 |
-| ore | icon-green-light | 578 → 578 | 800 | 15.8 | 11.7 × 3.5 × 10.5 | first copy in the ore assembly |
-| plate | icon-green | 480 → 480 | 800 | 13.0 | 16.5 × 4.0 × 12.0 | first copy in the plate assembly |
-| sphere | lime-green | 10,244 → 800 | 800 | 16.3 | 14.0 × 4.5 × 14.0 | first copy in the sphere assembly |
-| tesseract | yellow-green | 220 → 220 | 800 | 10.5 | 9.5 × 11.5 × 9.5 | first copy in the tesseract assembly |
+| ore | ore | 578 → 578 | 800 | 15.8 | 11.7 × 3.5 × 10.5 | first copy in the ore assembly |
+| plate | plate | 480 → 480 | 800 | 13.0 | 16.5 × 4.0 × 12.0 | first copy in the plate assembly |
+| sphere | sphere | 10,244 → 800 | 800 | 16.3 | 14.0 × 4.5 × 14.0 | first copy in the sphere assembly |
+| tesseract | tesseract | 220 → 220 | 800 | 10.5 | 9.5 × 11.5 × 9.5 | first copy in the tesseract assembly |
 | power-token | inlay-black, bolt-yellow | 10,752 → 800 | 800 | 21.4 | 22.0 × 2.4 × 22.0 | name "Power Tile AMS" (bolt on both faces) |
 | starting-player | yellow-green | 6,668 → 800 | 800 | 21.0 | 32.9 × 41.4 × 32.9 | triangles 6668 |
 | control-module | player | 4,100 → 120 | 120 | 5.0 | 16.0 × 2.0 × 16.0 | "Number Tiles AMS", part Body12 |
@@ -85,14 +85,17 @@ All colours come from the AMS file itself (`Metadata/project_settings.config` �
 | 2 | #D6D3D3 | `body` | tiles and all three mines |
 | 3 | #0086D6 | `icon-blue` | the stacked-square "+" icons on the mines |
 | 3 / 4 | #0086D6 / #71D0FF | `player` | meeple and Control Module tile (3), belt (4); tinted at runtime. The teleporter (its own file, no filament data) is all `player` too |
-| 5 | #B7EC00 | `yellow-green` | tesseract, starting-player piece |
-| 6 | #9DFB20 | `lime-green` | sphere, circle icon on mine 3 |
-| 7 | #6BFA27 | `icon-green` | plate, parallelogram icon on mine 2 |
-| 8 | #A4FFA6 | `icon-green-light` | ore, material icons on the factory tiles, double-triangle icon on mine 1 |
+| 5 | #B7EC00 | `yellow-green` | starting-player piece (the tesseract in the file; drawn as `tesseract`, see below) |
+| 6 | #9DFB20 | `lime-green` | nothing now (sphere and the circle icon on mine 3 in the file; drawn as `sphere`) |
+| 7 | #6BFA27 | `icon-green` | nothing now (plate and the parallelogram icon on mine 2 in the file; drawn as `plate`) |
+| 8 | #A4FFA6 | `icon-green-light` | the material icons on the factory tiles (ore and the double-triangle icon on mine 1 in the file; drawn as `ore`) |
+| — | from `src/table/materialColors.ts` | `ore`, `plate`, `sphere`, `tesseract` | the four materials and the material symbol on each Mine: #92DF7E, #4CA945, #237228, #114218 |
 | 9 | #F9FF09 | `bolt-yellow` | lightning bolts on the factory and power-plant tiles, power token |
 | 10 | #A0A0A0 | `body` (drawn #D6D3D3) | Mine 1 body: painted this grey in the file, drawn white like the other board pieces (see below) |
 
 Nothing was guessed by eye. Some choices were made on top of the file's data:
+
+- **The four materials** (2026-11-27). In the printed game each more valuable material is a darker green: Ore light green, Plate mid green, Sphere dark green, Tesseract very dark green. The file's slot colours for them (filaments 8, 7, 6, 5) are all very light and not in that order, so the materials have their own material names and colours, designed as one green hue at CIE L* 82 / 62 / 42 / 24 and kept in `src/table/materialColors.ts`. The converter imports that file (Node 22.18 or newer runs it as it is), the game's `models.ts` applies the same colours and surfaces at load time, and the 2D icons read it too. The material symbol on each Mine (ore on Mine 1, plate on Mine 2, sphere on Mine 3) is printed in the same filament as that material, so it uses the material's name and colour. The factory tiles' material icons are all one pale green (filament 8) and stay that colour.
 
 - The blue "+" icons on the mines use filament 3. That is the same slot as the meeple and Control Modules, but a mine belongs to nobody, so the icons are a fixed `icon-blue` and are not tinted.
 - The colours are Bambu Studio's filament-slot colours. They match the designer's current renders in `docs/reference/`. They are not the colours seen in the older photos (for example, the tesseracts there are black glitter).

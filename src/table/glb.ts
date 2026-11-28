@@ -1,6 +1,6 @@
 // Minimal .glb reader (no Three.js, no DOM): returns the vertex positions of each mesh primitive
-// with its material name. Used by the tests to measure the models; the browser loads models with
-// Three's GLTFLoader instead. Handles what tools/convert-3mf.mjs writes: float32 positions,
+// with its material name and base colour. Used by the tests to measure the models; the browser
+// loads models with Three's GLTFLoader instead. Handles what tools/convert-3mf.mjs writes: float32 positions,
 // interleaved or not, node transforms ignored (the converter writes none).
 
 export interface GlbPart {
@@ -8,13 +8,15 @@ export interface GlbPart {
   readonly positions: Float32Array; // x, y, z triples
   /** Triangle vertex indices, when the primitive has them (unsigned byte, short or int). */
   readonly indices?: Uint32Array;
+  /** The material's base colour, linear RGB (glTF baseColorFactor), when it has one. */
+  readonly color?: readonly [number, number, number];
 }
 
 interface GltfJson {
   meshes?: Array<{ primitives: Array<{ attributes: Record<string, number>; material?: number; indices?: number }> }>;
   accessors?: Array<{ bufferView?: number; byteOffset?: number; count: number; componentType: number; type: string }>;
   bufferViews?: Array<{ byteOffset?: number; byteLength: number; byteStride?: number }>;
-  materials?: Array<{ name?: string }>;
+  materials?: Array<{ name?: string; pbrMetallicRoughness?: { baseColorFactor?: number[] } }>;
 }
 
 export function parseGlb(bytes: Uint8Array): GlbPart[] {
@@ -49,7 +51,9 @@ export function parseGlb(bytes: Uint8Array): GlbPart[] {
           indices[i] = size === 4 ? view.getUint32(at + i * 4, true) : size === 2 ? view.getUint16(at + i * 2, true) : view.getUint8(at + i);
         }
       }
-      parts.push(indices ? { material, positions, indices } : { material, positions });
+      const f = prim.material !== undefined ? json.materials?.[prim.material]?.pbrMetallicRoughness?.baseColorFactor : undefined;
+      const color = f && f.length >= 3 ? [f[0]!, f[1]!, f[2]!] as const : undefined;
+      parts.push({ material, positions, ...(indices ? { indices } : {}), ...(color ? { color } : {}) });
     }
   }
   return parts;

@@ -176,8 +176,13 @@ html.guide-open, html.guide-open body { overflow: hidden; }
   font-weight: 750; color: var(--gold); border-radius: 12px;
 }
 .g-details > summary::-webkit-details-marker { display: none; }
-.g-details > summary::before { content: "+"; display: inline-grid; place-items: center; width: 22px; height: 22px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; font-weight: 900; line-height: 1; }
-.g-details[open] > summary::before { content: "−"; }
+/* The circled "+" / "−" is drawn with two bars, not a text glyph: a font's "+" sits on its baseline,
+   1.4 px low in the circle. Whole-pixel sizes keep the bars exactly centred at any text size. */
+.g-details > summary::before {
+  content: ""; width: 22px; height: 22px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor;
+  background: linear-gradient(currentColor, currentColor) center / 10px 2px no-repeat, linear-gradient(currentColor, currentColor) center / 2px 10px no-repeat;
+}
+.g-details[open] > summary::before { background: linear-gradient(currentColor, currentColor) center / 10px 2px no-repeat; }
 .g-details > summary:hover { background: rgba(232, 183, 48, 0.06); }
 .g-detailsbody { padding: 2px 14px 4px; font-size: 15px; }
 .g-detailsbody .g-tablewrap { background: #0a0a0b; }

@@ -158,7 +158,7 @@ describe('(d) model orientation table matches the measured models', () => {
   });
 
   it('meeple-slot icons on the mines are where MINE_SLOT_MODEL says', () => {
-    const green: Record<string, string> = { 'mine-1': 'icon-green-light', 'mine-2': 'icon-green', 'mine-3': 'lime-green' };
+    const green: Record<string, string> = { 'mine-1': 'ore', 'mine-2': 'plate', 'mine-3': 'sphere' }; // each Mine's material symbol, in that material's colour
     for (const mine of ['mine-1', 'mine-2', 'mine-3'] as const) {
       const parts = load(mine);
       const centre = (p: GlbPart): XZ => {
