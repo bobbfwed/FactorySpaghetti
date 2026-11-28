@@ -278,7 +278,7 @@ export const FIRST_MS = 700;
 /** A see-through piece turning on its space before it is placed (the player's choice). */
 export const LEAD_PLACE_MS = 900;
 /** A Control Module lighting in the tray and travelling to its building. */
-export const LEAD_TRAY_MS = DUR.flight + 260;
+export const LEAD_TRAY_MS = DUR.flight + 420;
 /** Between two moves of one step. */
 export const MOVE_GAP_MS = 260;
 /** A step without moves (the turn passes, the board jumps): long enough for a piece to turn over. */

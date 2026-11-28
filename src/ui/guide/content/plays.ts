@@ -135,6 +135,10 @@ export const ROLL_PLAY: PlayExample = {
     {
       caption: `Blue's Plate Factory has a 7 too. Blue runs it: ${PLATE_COST} Power Token, the Ore is used up and a Plate comes out. Blue's Power Plant (5) and Red's Sphere Factory (9) do nothing.`,
       moves: [{ act: { type: 'OPERATE_BUILDING', pieceId: 'pf', ownerId: 0 } }],
+      callouts: [
+        { mark: '✗', at: { piece: 'bpp', centre: true, dx: 20, dz: 14 }, text: 'Control Module 5: nothing on a 7' },
+        { mark: '✗', at: { piece: 'sf', centre: true, dx: 20, dz: 14 }, text: 'Control Module 9: nothing on a 7' },
+      ],
     },
     {
       caption: 'On Red\'s turn Red rolls 4 and 5: **9**. Only Red\'s Sphere Factory has a 9.',

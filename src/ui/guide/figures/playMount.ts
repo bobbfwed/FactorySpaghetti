@@ -244,7 +244,8 @@ class DomStage implements PlayStage {
     const from = this.side.cellPoint(n, this.fxEl);
     const to = piece ? this.picPoint(v, { kind: 'piece', pieceId: piece }, m.after) : null;
     if (!from || !to) return;
-    const t0 = at + 130 * k;
+    // The module is lit for a moment first, then lifts out of its pocket.
+    const t0 = at + 320 * k;
     this.flight(this.side.moduleToken(n), from, to, t0, DUR.flight * k, () => undefined, () => this.side?.leave(n));
   }
 
