@@ -31,10 +31,10 @@ export class FakeEl {
     const list = (): string[] => this.className.split(/\s+/).filter(Boolean);
     const set = (xs: string[]): void => { this.className = xs.join(' '); };
     return {
-      add: c => { if (!list().includes(c)) set([...list(), c]); },
-      remove: c => set(list().filter(x => x !== c)),
-      toggle: (c, on) => { const has = list().includes(c); if (on ?? !has) { if (!has) set([...list(), c]); } else set(list().filter(x => x !== c)); },
-      contains: c => list().includes(c),
+      add: (c: string): void => { if (!list().includes(c)) set([...list(), c]); },
+      remove: (c: string): void => set(list().filter(x => x !== c)),
+      toggle: (c: string, on?: boolean): void => { const has = list().includes(c); if (on ?? !has) { if (!has) set([...list(), c]); } else set(list().filter(x => x !== c)); },
+      contains: (c: string): boolean => list().includes(c),
     };
   }
   setAttribute(k: string, v: string): void {
@@ -106,9 +106,9 @@ export function installFakeDom(): () => void {
   const g = globalThis as unknown as { document?: unknown };
   const before = g.document;
   g.document = {
-    createElement: (t: string) => new FakeEl(t),
-    createElementNS: (_ns: string, t: string) => new FakeEl(t),
-    createTextNode: (s: string) => new FakeText(s),
+    createElement: (t: string): FakeEl => new FakeEl(t),
+    createElementNS: (_ns: string, t: string): FakeEl => new FakeEl(t),
+    createTextNode: (s: string): FakeText => new FakeText(s),
   };
   return () => { g.document = before; };
 }
