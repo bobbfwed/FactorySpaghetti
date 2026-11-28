@@ -135,15 +135,21 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   // ── The portals' swirl: a slow redraw while a Teleporter is on the board ──
   const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
   let portalTimer: number | undefined;
+  /** When the last frame was drawn (performance.now() ms). */
+  let lastFrameAt = 0;
   const portalsMove = (): boolean =>
     table.portalCount > 0 && document.visibilityState === 'visible' && !reducedMotion?.matches && !disposed && !contextLost;
-  /** Ask for the next portal frame in 1/PORTAL_FPS s, if the portals are to move at all. */
+  /**
+   * Ask for the next portal frame 1/PORTAL_FPS s after the last frame, if the portals are to move
+   * at all (the frame itself then waits for the screen's next refresh, about half a refresh on average).
+   */
   function schedulePortals(): void {
     if (portalTimer !== undefined || !portalsMove()) return;
+    const wait = Math.max(0, 1000 / PORTAL_FPS - (performance.now() - lastFrameAt) - 8);
     portalTimer = window.setTimeout(() => {
       portalTimer = undefined;
       if (portalsMove()) requestFrame();
-    }, 1000 / PORTAL_FPS);
+    }, wait);
   }
   function stopPortals(): void {
     if (portalTimer !== undefined) window.clearTimeout(portalTimer);
@@ -197,6 +203,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   function frame(now: number): void {
     frameRequested = false;
     if (disposed || contextLost) return;
+    lastFrameAt = performance.now();
     if (draw(now)) invalidate();
     else schedulePortals();
   }
