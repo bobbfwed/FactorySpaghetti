@@ -3,7 +3,8 @@
 // while the user drags / zooms. The one exception is the Teleporters' glowing portals (portal.ts):
 // while at least one is on the board and the page is visible, they are redrawn a few times a second
 // (PORTAL_FPS), without redrawing the shadow map; never when the player turned "Moving Teleporter
-// portals" off (setPortalMotion) or, by default, with prefers-reduced-motion.
+// portals" off (setPortalMotion) or, by default, with prefers-reduced-motion, nor while the game
+// guide covers the table (setCovered).
 
 import * as THREE from 'three';
 import type { GameState } from '../engine/state';
@@ -18,7 +19,7 @@ import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from '.
 import { frameAll, frameArea, freshView, keepInView as keepAreaInView, shownGame, turnPivot, turnRefitArea, type FramingTable, type ShownGame } from './framing';
 import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, TELEPORTER_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
-import { PORTAL_STILL_TIME } from './portal';
+import { PORTAL_STILL_TIME, portalsRun } from './portal';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
 const DEFAULT_COLORS: readonly PlayerColor[] = ['blue', 'red', 'orange', 'green'];
@@ -144,8 +145,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let portalTimer: number | undefined;
   /** When the last frame was drawn (performance.now() ms). */
   let lastFrameAt = 0;
-  const portalsMove = (): boolean =>
-    table.portalCount > 0 && document.visibilityState === 'visible' && portalsSwirl() && !disposed && !contextLost;
+  /** Something covers the whole table (the guide): the portals rest (setCovered). */
+  let covered = false;
+  const portalsMove = (): boolean => portalsRun({
+    portals: table.portalCount, visible: document.visibilityState === 'visible', swirl: portalsSwirl(), disposed, contextLost, covered,
+  });
   /**
    * Ask for the next portal frame 1/PORTAL_FPS s after the last frame, if the portals are to move
    * at all (the frame itself then waits for the screen's next refresh, about half a refresh on average).
@@ -573,6 +577,12 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       portalMotion = on;
       if (!portalsSwirl()) stopPortals();
       invalidate();
+    },
+    setCovered(on) {
+      if (on === covered) return;
+      covered = on;
+      // Covered: the slow portal redraw stops; uncovered: one frame, and it carries on from there.
+      if (on) stopPortals(); else invalidate();
     },
     renderNow() {
       if (contextLost) return;

@@ -6,6 +6,26 @@ import { h } from '../dom';
 import { icon } from '../icons';
 
 let host: HTMLElement | null = null;
+let guideOpen = false;
+const guideWatchers = new Set<(open: boolean) => void>();
+
+/** Whether the guide is open (it covers the whole screen, the 3D table included). */
+export function isGuideOpen(): boolean {
+  return guideOpen;
+}
+
+/** Be told when the guide opens or closes (the 3D table rests its portals meanwhile). Returns the way to stop. */
+export function onGuideOpen(fn: (open: boolean) => void): () => void {
+  guideWatchers.add(fn);
+  return () => { guideWatchers.delete(fn); };
+}
+
+/** The guide viewer says it opened or closed. */
+export function setGuideOpen(open: boolean): void {
+  if (open === guideOpen) return;
+  guideOpen = open;
+  for (const fn of [...guideWatchers]) fn(open);
+}
 
 /** Where the guide overlay goes (mount.ts gives it its own element beside the screens). */
 export function setGuideHost(el: HTMLElement): void {

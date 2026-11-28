@@ -110,6 +110,11 @@ export interface Table {
    * with reduced motion). Takes effect at once.
    */
   setPortalMotion(on: boolean | null): void;
+  /**
+   * Something covers the whole table (the game guide): the portals' slow redraw stops until it is
+   * uncovered. Frames asked for by anything else (an animation, a resize) are still drawn.
+   */
+  setCovered(on: boolean): void;
   // ── Additions (development aids) ──
   /** Draw a small marker on every connection point, coloured by engine role. */
   setDebugPoints(on: boolean): void;

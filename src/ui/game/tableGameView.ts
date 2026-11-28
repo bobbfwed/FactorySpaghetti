@@ -38,6 +38,7 @@ import { tableSeat } from '../../table/seat';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
 import { movingPortals, onPortalMotionChange } from '../portalPref';
+import { isGuideOpen, onGuideOpen } from '../guide/open';
 import { FxLayer } from './fx';
 import { Sound } from './sound';
 import { Stage, type Shown, type StageHost } from './stage';
@@ -1031,6 +1032,9 @@ export function tableGameView(ctrl: AppController): View {
       // The player's "Moving Teleporter portals" setting, now and whenever it is flipped.
       t.setPortalMotion(movingPortals());
       offs.push(onPortalMotionChange(() => t.setPortalMotion(movingPortals())));
+      // The guide covers the whole table while it is open: the portals rest meanwhile.
+      t.setCovered(isGuideOpen());
+      offs.push(onGuideOpen(on => t.setCovered(on)));
       offs.push(t.onPick((hit) => onPick(hit)));
       offs.push(ctrl.onPreview((seat, pv) => {
         if (pv) otherPreviews.set(seat, { p: pv, seq: ctrl.room?.seq ?? -1 });
