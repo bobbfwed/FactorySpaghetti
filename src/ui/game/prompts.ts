@@ -55,11 +55,11 @@ export function promptCards(ctx: Ctx): HTMLElement[] {
   // copies covered most of a small screen, the top row included.
   if (ctx.phone) {
     return shown.map(p => h('div', {
-      class: 'tg-prompt tray compact tag',
+      class: 'tg-prompt tray compact tg-ptag',
       attrs: { 'data-anchor': JSON.stringify(p.anchor), 'data-place': 'side', role: 'note', 'aria-label': p.title },
     },
     h('span', { class: 'tg-ptr' }),
-    h('div', { class: 't', text: p.title }),
+    h('div', { class: 't', text: 'This building was activated' }),
     h('div', { class: 'where', text: ctx.landscape ? 'Run it or skip it in the panel on the right.' : 'Run it or skip it in the panel below.' })));
   }
   return shown.map(p => h('div', {
