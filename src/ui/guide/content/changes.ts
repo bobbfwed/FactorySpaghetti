@@ -44,13 +44,13 @@ export const RELEASES: readonly Release[] = [
       {
         title: 'Other players\' belts do not serve your buildings',
         before: 'A belt laid next to a building\'s input or output before someone else claimed the building kept carrying material to or from it.',
-        now: 'A belt end facing the input or output of a building claimed only by other players is a dead end. The belt stays, and works again if its owner gains a claim there or the building becomes unclaimed.',
+        now: 'A belt end facing the input or output of another player\'s building is a dead end. The belt stays, and works again if that building becomes its owner\'s.',
         see: 'belts#whose',
       },
       {
         title: 'Your buildings feed only your own buildings',
         before: 'A building\'s output touching another building\'s input passed its material across, whoever owned the two buildings.',
-        now: 'It passes only into another building of the same player. Next to another player\'s input, your material stays in your output. An unclaimed building\'s output still passes into the claimed building it touches, and Mines feed every claimed building.',
+        now: 'It passes only into another building of the same player. Next to another player\'s input, your material stays in your output. Mines feed every claimed building; an unclaimed building feeds nothing.',
         see: 'moving',
       },
       {
@@ -141,6 +141,18 @@ export const RELEASES: readonly Release[] = [
         title: 'Short Sale and Changing Priorities stay off other players\' buildings',
         before: 'Both could put your Control Module on a building another player had claimed, so you shared it.',
         now: 'They go only to an unclaimed building or one you already hold a claim on. Changing Priorities may not move your last module off the building your meeple stands on this turn.',
+        see: 'cards#changingPriorities',
+      },
+      {
+        title: 'A building has one owner',
+        before: 'Moves no longer let two players claim one building, but a game saved with such a building still loaded and played on.',
+        now: 'All the Control Modules on a building belong to one player. A saved game with a building shared by two players cannot be opened.',
+        see: 'claiming',
+      },
+      {
+        title: 'A building without an owner loses its material',
+        before: 'When Changing Priorities moved your last Control Module off a building, your teleporters there came back but its material stayed, and an unclaimed building\'s output still fed a building it touched.',
+        now: 'Its material goes to the bank, and your teleporters there come back to you; the game says what you would lose before you confirm. An unclaimed building holds, receives and feeds nothing.',
         see: 'cards#changingPriorities',
       },
       {

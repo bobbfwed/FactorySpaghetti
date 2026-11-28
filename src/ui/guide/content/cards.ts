@@ -43,7 +43,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     details: [
       p('If your low modules are already on the board, your lowest one may be quite high — which can be useful.'),
       p(`It can add a claim to a building you already own, up to ${MAX_CLAIMS_PER_BUILDING} of your modules there.`),
-      p('It cannot claim a building another player has claimed: only an unclaimed building, or one you already hold a claim on, glows.'),
+      p('It cannot claim a building another player has claimed: only an unclaimed building, or one you already hold a claim on, glows. A building has one owner.'),
     ],
   },
   embezzlement: {
@@ -87,13 +87,13 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     short: 'Move one of your Control Modules to another building.',
     blocks: [
       p(`Move one of your Control Modules from one building to another. The receiving building can hold up to ${MAX_CLAIMS_PER_BUILDING} of your modules.`),
-      p('If the building you took it from has no Control Module left, it is unclaimed, and anyone can claim it later.'),
+      p('If the building you took it from has no Control Module left, it has no owner: every material in its inputs and output goes to the bank, your teleporters on it come back to you, and anyone can claim it later. Before you confirm, the game says what you would lose.'),
       p('Play it from your hand, tap the building to take the module from, then the building to move it to, choose the module, and confirm.'),
     ],
     details: [
       p('The module must not be below the number of Mines, and it must go to a different building.'),
-      p('If this takes away your last claim on a building, your teleporters on it come back to you. See [[teleporters|Teleporters]].'),
-      p('The receiving building can be one of yours or an unclaimed one (which you claim this way), never one claimed only by another player.'),
+      p('Keep a second module of yours on the building and nothing is lost: its material and teleporters stay. See [[teleporters|Teleporters]].'),
+      p('The receiving building can be one of yours or an unclaimed one (which you claim this way), never one another player has claimed.'),
       p('You cannot move your last Control Module off the building your meeple stands on this turn: your meeple may stand only on a building of yours.'),
     ],
   },

@@ -113,6 +113,41 @@ describe('Leverage cards', () => {
     expect(sent).toEqual([a]);
   });
 
+  it('changingPriorities: moving the last Control Module off a building says what is lost, with exact counts (#58)', () => {
+    const { state, player } = atActions(5, 3);
+    const from = state.board.find(p => p.type === 'plateFact' && p.claims.length === 1 && p.claims[0]!.ownerId === player)!;
+    const module = from.claims[0]!.controlModule;
+    // Ore in its input, a Plate in its output, and the player's teleporter on the output.
+    const loaded = (extraClaim: boolean): GameState => patchPlayer({
+      ...state, cardsPlayedThisTurn: 0, globalTeleporterCount: state.globalTeleporterCount + 1,
+      board: state.board.map(p => (p.id === from.id ? {
+        ...p, claims: extraClaim ? [...p.claims, { ownerId: player, controlModule: 17 }] : p.claims,
+        input: { slots: ['ore'], teleporters: [] }, output: { slots: ['plate'], teleporters: [player] },
+      } : p)),
+    }, player, { hand: ['changingPriorities'], teleportersRemaining: state.players[player]!.teleportersRemaining - 1 });
+    const confirmText = (s: GameState): string => {
+      const a = legalActions(s, player).find(x => x.type === 'PLAY_CARD' && x.cardType === 'changingPriorities' && x.pieceId === from.id && x.controlModule === module) as Extract<Action, { type: 'PLAY_CARD' }>;
+      const { c } = harness(s, player);
+      c.choose('card:changingPriorities');
+      c.tap({ kind: 'piece', pieceId: from.id });
+      c.tap({ kind: 'piece', pieceId: a.toPieceId! });
+      if (c.view.choices) c.choose(`cpModule:${module}`);
+      expect(c.view.confirmBar?.confirm).toBe(true);
+      return c.view.instruction;
+    };
+    const last = confirmText(loaded(false));
+    expect(last).toMatch(new RegExp(`^Move Control Module ${module} from the Plate Factory to the `));
+    expect(last).toContain('? The Plate Factory will have no owner: the 2 materials in it go to the bank and your teleporter there comes back to you.');
+    // With a second module of theirs left on it, nothing is lost and nothing more is said.
+    const kept = confirmText(loaded(true));
+    expect(kept).not.toContain('no owner');
+    expect(kept.endsWith('?')).toBe(true);
+    // The words for the other counts.
+    expect(W.cpLoss('Sphere Factory', { materials: 1, teleporters: 0 })).toBe(' The Sphere Factory will have no owner: the material in it goes to the bank.');
+    expect(W.cpLoss('Sphere Factory', { materials: 0, teleporters: 2 })).toBe(' The Sphere Factory will have no owner: your 2 teleporters there come back to you.');
+    expect(W.cpLoss('Sphere Factory', { materials: 0, teleporters: 0 })).toBe('');
+  });
+
   it('rdTaxWriteOff: tap a buffer, or tap a building and pick the buffer', () => {
     const { state, player } = atActions(5, 3);
     const s = patchPlayer({ ...state, cardsPlayedThisTurn: 0 }, player, { hand: ['rdTaxWriteOff'], teleportersRemaining: 3 });

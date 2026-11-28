@@ -19,6 +19,7 @@ import { cardsLeftToDraw } from '../engine/rules/cards';
 import { moduleBelowFloor } from '../engine/rules/modules';
 import { beltLaidThisTurn } from '../engine/rules/flow';
 import { hasTeleporter, teleportersOf } from '../engine/rules/teleporters';
+import { lossIfModuleLeaves } from '../engine/rules/ownership';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
@@ -547,8 +548,8 @@ export class PlayController {
       }
       const run = runs[0];
       const pv = runPreview(piece, player);
-      // legalActions keeps offering "run" even when the building can no longer run (e.g. a
-      // co-owner ran it first and filled its output); the engine then refuses. Say so.
+      // Should "run" be offered while the output is full (the building cannot run), the engine
+      // refuses it. Say so.
       const outFull = (piece.output?.slots ?? []).some(x => x !== null);
       const detail = outFull ? W.promptCannotRun
         : pv && pv.product ? W.runDetail(pv.power, materialList(pv.consumed), pv.product)
@@ -1584,7 +1585,8 @@ export class PlayController {
         const a = pairPlays.find(x => x.controlModule === m.module);
         const fp = pieceById(g, from), tp = pieceById(g, to);
         if (!a || !fp || !tp) return false;
-        ready(a, W.cpConfirm(m.module, pieceName(fp.type), pieceName(tp.type)));
+        // Moving their last Control Module off it: say what goes to the bank and what comes back (#58).
+        ready(a, W.cpConfirm(m.module, pieceName(fp.type), pieceName(tp.type), lossIfModuleLeaves(fp, player.id)));
         return true;
       }
       default:

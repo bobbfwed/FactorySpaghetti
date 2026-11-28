@@ -151,6 +151,27 @@ describe('the log says what paid for a claim or an upgrade', () => {
     const lines = await act(t, play!);
     expect(lines[0]).toMatch(new RegExp(` played Changing Priorities, moving Control Module ${(play as { controlModule: number }).controlModule} to the `));
   });
+
+  it('Changing Priorities that leaves a building without an owner says what went to the bank and what came back (#58)', async () => {
+    const base = withCard(quietActions(s => s.board.some(p => p.type === 'plateFact' && p.claims.length === 1 && p.claims[0]!.ownerId === activeSeat(s))), 'changingPriorities');
+    const me = activeSeat(base)!;
+    const from = base.board.find(p => p.type === 'plateFact' && p.claims.length === 1 && p.claims[0]!.ownerId === me)!;
+    // Ore in its input, a Plate in its output, and the player's teleporter on the output.
+    const g: GameState = {
+      ...base,
+      globalTeleporterCount: base.globalTeleporterCount + 1,
+      board: base.board.map(p => (p.id === from.id ? { ...p, input: { slots: ['ore'], teleporters: [] }, output: { slots: ['plate'], teleporters: [me] } } : p)),
+      players: base.players.map(p => (p.id === me ? { ...p, teleportersRemaining: p.teleportersRemaining - 1 } : p)),
+    };
+    const play = legal(g).find(a => a.type === 'PLAY_CARD' && a.cardType === 'changingPriorities' && a.pieceId === from.id) as Extract<Action, { type: 'PLAY_CARD' }>;
+    expect(play).toBeDefined();
+    const t = await table(g);
+    const lines = await act(t, play);
+    expect(lines[0]).toMatch(new RegExp(`^${nameOf(me)} played Changing Priorities, moving Control Module ${play.controlModule} to the .*; the building it left has no owner: 2 materials to the bank, their teleporter back to them$`));
+    expect(lines[0]!.length).toBeLessThanOrEqual(LOG_TEXT_MAX);
+    // With the longest name allowed, the line still fits the log without being cut.
+    expect(describeAction(g, play, 'N'.repeat(20)).length).toBeLessThanOrEqual(LOG_TEXT_MAX);
+  });
 });
 
 describe('the log marks the end and the start of each round', () => {

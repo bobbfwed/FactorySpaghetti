@@ -56,7 +56,7 @@ export const CARD_TEXT: Record<CardType, string> = {
   sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to the bank.',
   overstockSupplies: 'Draw 3 pieces and place them next to the board. Played as soon as it is drawn.',
   netSurplusSellOff: 'Each other player gives you 3 Power Tokens (or all they have), until you reach 10.',
-  changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on.',
+  changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on. If it was your last one there, the building you left has no owner: its material goes to the bank and your teleporters there come back to you.',
   productionIncrease: 'Spend 4 upgrades this turn on claims and upgrades (at most one claim).',
   mineInspection: 'Take 1 Plate from the bank for each Mine in play. Played as soon as it is drawn.',
   personalJetPack: 'Collect the output of all your factories into your materials.',
@@ -414,7 +414,20 @@ export const W = {
   cpPickFrom: 'Changing Priorities: tap the building to move a Control Module from.',
   cpPickTo: 'Now tap the building to move it to.',
   cpPickModule: 'Which Control Module moves?',
-  cpConfirm: (module: number, from: string, to: string): string => `Move Control Module ${module} from the ${from} to the ${to}?`,
+  cpConfirm: (module: number, from: string, to: string, loss: { materials: number; teleporters: number } = { materials: 0, teleporters: 0 }): string =>
+    `Move Control Module ${module} from the ${from} to the ${to}?${W.cpLoss(from, loss)}`,
+  /**
+   * What moving the last Control Module off a building gives up (#58), or '' when nothing is lost:
+   * " The Sphere Factory will have no owner: the 2 materials in it go to the bank and your teleporter there comes back to you."
+   */
+  cpLoss: (from: string, loss: { materials: number; teleporters: number }): string => {
+    const parts: string[] = [];
+    if (loss.materials === 1) parts.push('the material in it goes to the bank');
+    else if (loss.materials > 1) parts.push(`the ${loss.materials} materials in it go to the bank`);
+    if (loss.teleporters === 1) parts.push('your teleporter there comes back to you');
+    else if (loss.teleporters > 1) parts.push(`your ${loss.teleporters} teleporters there come back to you`);
+    return parts.length === 0 ? '' : ` The ${from} will have no owner: ${parts.join(' and ')}.`;
+  },
   rdPick: 'R&D Tax Write-Off: tap an input or the output of one of your buildings for a free teleporter.',
   rdConfirm: (spot: string, building: string, oneOfSeveral: boolean): string =>
     `Place a free teleporter on ${spot} of this ${building}?${oneOfSeveral ? ` ${W.teleporterOneInput}` : ''} You cannot take it back; it returns to you only if you lose your last claim on this building.`,

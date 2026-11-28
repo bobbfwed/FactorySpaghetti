@@ -1,14 +1,12 @@
 # Ownership work package (in progress; delete when done)
 
-Done:
-- Engine: `rules/ownership.ts` (mayAddClaim, settleLostClaims, lossIfModuleLeaves); claim routes use mayAddClaim;
-  settleLostClaims replaces returnOrphanedTeleporters in the reducer; unclaimed buildings feed nothing (directFlowAllowed,
-  chain sources, output-teleporter drain); round-end meeple actions and runs need a claim.
+Done (committed):
+- Engine #57/#58 + tests + RULES.md/RULES_CHANGES.md + OQ-10 + BOT_FINDINGS note (233b0d5)
+- Saves refuse shared buildings; replay/report/menu messages; tests (9660872)
+- Interface: Changing Priorities warning + log line, card text, guide texts, What changed (+2, count 30)
 
 Left:
-- Engine tests (designerDecisions, beltPoints, designerDecisions2, legalActions, sim.test invariants, new ownership tests)
-- Saves: checkGame refuses shared buildings ('shared-building'), replay/report/menu messages, session tests
-- RULES.md section + consistency, RULES_CHANGES #57 #58, OQ-10 answer, BOT_FINDINGS note
-- Interface: Changing Priorities warning + log line, card text, guide texts, What changed count
-- Bots: forfeit cost in Changing Priorities weighing; co-owner remnants
-- Sim before/after (before running/done in scratchpad/ownership)
+- Bots: forfeit cost in Changing Priorities weighing; co-owner remnants (styleBot, tournament co-cl column)
+- Sim after-run (before: scratchpad/ownership/before.log)
+- Full checks: typecheck, lint, test, build
+- Known conflict: src/table/__tests__/flowPath.test.ts (forbidden to me) pins unclaimed-source feeding (lines 63, 90)

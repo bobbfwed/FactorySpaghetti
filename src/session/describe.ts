@@ -5,9 +5,10 @@ import type { GameState } from '../engine/state';
 import type { CardType, Material, PieceType } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
 import { nextCardDrawn } from '../engine/rules/cards';
-import { applyAction } from '../engine';
+import { applyAction, lossIfModuleLeaves } from '../engine';
 import { whereWords } from './where';
 import { roundLabel } from './rounds';
+import { LOG_TEXT_MAX, NAME_MAX } from './room';
 
 export const BUILDING_NAME: Record<PieceType, string> = {
   mine: 'Mine',
@@ -203,7 +204,21 @@ function describeVerb(s: GameState, a: Action, after: GameState | null | undefin
           : played;
       }
       if (a.cardType === 'changingPriorities' && a.toPieceId !== undefined && a.controlModule !== undefined) {
-        return `${played}, moving Control Module ${a.controlModule} to ${pieceName(s, a.toPieceId)}`;
+        // Moving the player's last module off a building leaves it with no owner: its material
+        // goes to the bank and their teleporters there come back to them (RULES_CHANGES.md #58).
+        const me = activeOf(s);
+        const from = s.board.find(p => p.id === a.pieceId);
+        const loss = me && from ? lossIfModuleLeaves(from, me.id) : { materials: 0, teleporters: 0 };
+        const parts = [
+          ...(loss.materials > 0 ? [`${count(loss.materials, 'material', 'materials')} to the bank`] : []),
+          ...(loss.teleporters > 0 ? [`their ${loss.teleporters === 1 ? 'teleporter' : `${loss.teleporters} teleporters`} back to them`] : []),
+        ];
+        const lost = parts.length > 0 ? `; the building it left has no owner: ${parts.join(', ')}` : '';
+        const line = (to: string): string => `${played}, moving Control Module ${a.controlModule} to ${to}${lost}`;
+        const full = line(pieceName(s, a.toPieceId));
+        // Kept within the log's limit with the longest player name: the building without where it is.
+        const to = s.board.find(p => p.id === a.toPieceId);
+        return full.length + NAME_MAX + 1 > LOG_TEXT_MAX && to ? line(`the ${BUILDING_NAME[to.type]}`) : full;
       }
       if (a.cardType === 'rdTaxWriteOff' && a.pieceId !== undefined && a.bufferType !== undefined) {
         return `${played}, placing a free teleporter on ${teleporterSpot(s, a.pieceId, a.bufferType, a.inputIndex)} of ${pieceName(s, a.pieceId)}`;
