@@ -30,7 +30,7 @@ More screens of the built game are in [docs/screens](docs/screens); the converte
 - **Save and resume anywhere.** A game can be saved as a link or a small file, sent to another device, and resumed on a later day.
 - **A 3D table that matches the printed game.** Hex tiles with belt holes, black belt stubs, green material symbols and yellow power bolts, numbered Control Modules in a tray, chain-link belts, meeples and materials, modelled from the designer's own print files.
 - **An interface that follows the rulebook.** The four steps of a turn are always on screen, the pieces you may touch light up, and each move is "pick up, see where it can go, put down, confirm".
-- **A game guide in the app** (start menu and in the game): a table of contents, a page per topic written for how you play on screen, "How exactly does this work?" fine print taken from the rules engine, and what changed in each release and since the printed rulebook. Its text lives in `src/ui/guide/content`, with every number read from the engine's config.
+- **A game guide in the app** (start menu and in the game): a table of contents, a page per topic written for how you play on screen, "How exactly does this work?" fine print taken from the rules engine, and "What changed", a change log of the rules by rules version that starts from the printed rulebook. Its text lives in `src/ui/guide/content`, with every number read from the engine's config.
 - **Phone-friendly and installable** from the browser on Android.
 - **Hosted on GitHub Pages**, updated on every push to `main`.
 

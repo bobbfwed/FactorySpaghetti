@@ -3,11 +3,11 @@
 
 import { describe, expect, it } from 'vitest';
 import { GUIDE, findTopic } from '../content';
-import { RELEASES } from '../content/changes';
+import { RULES_LOG } from '../content/changes';
 
 const text = (id: string): string => JSON.stringify(findTopic(id)!.blocks);
-const everywhere = (): string => JSON.stringify(GUIDE.topics.filter(t => t.id !== 'changes' && t.id !== 'printed'));
-const titles = (): string[] => RELEASES[0]!.rules.map(r => r.title);
+const everywhere = (): string => JSON.stringify(GUIDE.topics.filter(t => t.id !== 'changes'));
+const titles = (): string[] => RULES_LOG[0]!.themes.flatMap(t => t.entries.map(e => e.title));
 
 describe('a building feeds only its own player\'s buildings (#51)', () => {
   it('Moving material says so; an unclaimed building feeds nothing (#58)', () => {
@@ -20,7 +20,7 @@ describe('a building feeds only its own player\'s buildings (#51)', () => {
     expect(everywhere()).not.toContain('or a building\'s output, touching the input of a claimed building');
   });
 
-  it('is listed among the changes of the newest release', () => {
+  it('is listed in What changed', () => {
     expect(titles()).toContain('Your buildings feed only your own buildings');
   });
 });
@@ -30,7 +30,7 @@ describe('a teleporter cuts its buffer off from belts and direct contact (#53)',
     const t = text('teleporters');
     expect(t).toContain('never down a belt or into a touching input, even while it waits because you are at your limit');
     expect(t).toContain('An input with a teleporter takes nothing from a Mine, a belt or a touching output');
-    expect(titles()).toContain('A teleporter cuts its buffer off from belts');
+    expect(titles()).toContain('A teleporter cuts its input or output off');
   });
 });
 
@@ -42,7 +42,7 @@ describe('a teleporter sits on one input (#55)', () => {
     expect(t).toContain('Each teleporter supplies only its own input');
     expect(everywhere()).not.toContain('still receive material as before, for now');
     expect(everywhere()).not.toContain('one per buffer');
-    expect(titles()).toContain('A teleporter sits on one input');
+    expect(titles()).toContain('Teleporters');
   });
 });
 
@@ -53,14 +53,14 @@ describe('a removed belt goes back to the bank unless laid this turn (#54)', () 
     expect(belts).toContain('A belt laid on an earlier turn goes back to the bank');
     expect(everywhere()).not.toContain('ready to be laid again for free. **Undo');
     expect(everywhere()).not.toContain('Free; it goes back to your supply');
-    expect(titles()).toContain('A removed belt goes back to the bank');
+    expect(titles()).toContain('A belt laid this turn can be taken back for free');
   });
 });
 
 describe('removing this turn\'s Mine belt frees the limit (#52)', () => {
   it('Belts says so, and the change is listed', () => {
     expect(text('belts')).toContain('Removing just the belt you laid at a Mine this turn does the same');
-    expect(titles()).toContain('Removing this turn\'s Mine belt lets you lay another');
+    expect(titles()).toContain('One Mine belt per turn counts only ore exits');
   });
 });
 
@@ -71,16 +71,17 @@ describe('one owner per building; a building without an owner loses its material
     expect(text('teleporters')).toContain('another player\'s teleporter is never on your building');
     expect(everywhere()).not.toContain('two players share');
     expect(everywhere()).not.toContain('several owners');
-    expect(titles()).toContain('A building has one owner');
-    expect(titles()).toContain('A building without an owner loses its material');
+    expect(titles()).toContain('Short Sale and Changing Priorities: an unclaimed building or one of yours');
+    expect(titles()).toContain('A building that loses its owner loses its material');
   });
 });
 
 describe('Sink Hole sends belts to the bank (#56)', () => {
-  it('the card, Belts and the change list say so, and no topic says the belts go back to their owners', () => {
+  it('the card and Belts say so, and no topic says the belts go back to their owners', () => {
     expect(text('cards')).toContain('Belts lying on it go back to the bank: their owners do not get them back');
     expect(text('belts')).toContain('those belts go back to the bank, as in the printed rulebook');
     expect(everywhere()).not.toContain("go back to their owners' supplies");
-    expect(titles()).toContain('Sink Hole sends belts to the bank');
+    // As in the printed rulebook, so not a change of the rules: What changed does not list it.
+    expect(titles()).not.toContain('Sink Hole sends belts to the bank');
   });
 });

@@ -7,7 +7,7 @@ import { roundEnd, stepActions, stepMeeple, stepPlace, stepRoll, turn } from './
 import { bank, belts, claiming, factories, moving, production, teleporters } from './factory';
 import { cards } from './cards';
 import { bonuses, mines, online, winning } from './more';
-import { changes, printed } from './changes';
+import { changes } from './changes';
 
 const TOPICS: readonly Topic[] = [
   goal, table, screen, starting,
@@ -15,7 +15,7 @@ const TOPICS: readonly Topic[] = [
   claiming, production, factories, moving, belts, teleporters, bank,
   cards, mines, bonuses, winning,
   online,
-  changes, printed,
+  changes,
 ];
 
 export const GUIDE: Guide = {
@@ -25,7 +25,7 @@ export const GUIDE: Guide = {
     { title: 'Running your factory', topics: ['claiming', 'production', 'factories', 'moving', 'belts', 'teleporters', 'bank'] },
     { title: 'Cards, Mines and winning', topics: ['cards', 'mines', 'bonuses', 'winning'] },
     { title: 'Playing online', topics: ['online'] },
-    { title: 'Changes', topics: ['changes', 'printed'] },
+    { title: 'Changes', topics: ['changes'] },
   ],
   topics: TOPICS,
 };

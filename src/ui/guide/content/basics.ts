@@ -25,7 +25,7 @@ export const goal: Topic = {
   title: 'The goal of the game',
   summary: `Make ${TESSERACTS_TO_WIN} Tesseracts before anyone else does.`,
   blocks: [
-    { k: 'p', t: `This guide describes **rules v${RULES_VERSION}**, the rules this game plays. (The printed rulebook is older: see [[printed|Differences from the printed rulebook]].)` },
+    { k: 'p', t: `This guide describes **rules v${RULES_VERSION}**, the rules this game plays. (The printed rulebook is older: see [[changes|What changed]].)` },
     { k: 'p', t: 'Welcome, glorious pioneers, to asteroid A535b88R. Your homeland, in its infinite wisdom, has sent you — its most expendable asset — to manufacture the legendary Tesseract. The buildings were dropped near the main Mine by a pilot with one working eye, so they lie scattered about, and the other pioneers want them too.' },
     { k: 'p', t: `You win by holding **${TESSERACTS_TO_WIN} Tesseracts** during your own turn. Bonus cards for special achievements each count as one Tesseract toward that total.` },
     { k: 'h', t: 'How you get there' },
@@ -199,7 +199,7 @@ export const starting: Topic = {
         { k: 'p', t: 'With one Mine, one die is rolled, so only 1 to 6 can come up. Your Plate Factory runs on a 3 and your Power Plant on a 2.' },
         { k: 'p', t: 'The order evens out the choice: the player who picks the first Plate Factory picks the last Power Plant.' },
         { k: 'p', t: 'Look at where Ore can reach your Plate Factory: one whose input touches an ore exit of the Mine fills with Ore by itself. See [[moving|Moving material]].' },
-        { k: 'p', t: 'The printed rulebook runs the two rounds of picks the other way round. See [[printed#setup|Differences from the printed rulebook]].' },
+        { k: 'p', t: 'The printed rulebook runs the two rounds of picks the other way round. See [[changes|What changed]].' },
       ],
     },
   ],

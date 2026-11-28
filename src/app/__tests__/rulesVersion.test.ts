@@ -51,12 +51,12 @@ describe('rules version', () => {
     expect(versionLineText('dev')).toBe(`Version dev · Rules v${RULES_VERSION}`);
   });
 
-  it('is stated in the guide: first topic and the printed-rulebook topic', () => {
+  it('is stated in the guide: the first topic and What changed, which names the printed rulebook\'s version', () => {
     expect(guideText('goal')).toContain(`rules v${RULES_VERSION}`);
-    const printed = guideText('printed');
-    expect(printed).toContain(`rules v${RULES_VERSION}`);
-    expect(printed).toContain(`rules v${PRINTED_RULES_VERSION}`);
-    expect(printed).toContain('footer');
-    expect(guideText('changes')).toContain(`rules version (v${RULES_VERSION})`);
+    const changes = guideText('changes');
+    expect(changes).toContain(`rules v${RULES_VERSION}`);
+    expect(changes).toContain(`rules v${PRINTED_RULES_VERSION}`);
+    expect(changes).toContain('footer');
+    expect(changes).toContain(`Rules v${RULES_VERSION}, compared with the printed rulebook (v${PRINTED_RULES_VERSION})`);
   });
 });

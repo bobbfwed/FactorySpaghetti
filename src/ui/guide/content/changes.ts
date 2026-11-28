@@ -1,443 +1,291 @@
-// What changed between releases, and how this version differs from the printed rulebook.
-// To add a release: put a new entry at the TOP of RELEASES (the test checks the order).
+// "What changed": a change log of the RULES by rules version, newest first. The oldest section
+// compares the rules with the printed rulebook. It lists only differences in how the game is
+// played: changes of the digital version (interface, saving, playing online) and corrections that
+// only make the digital game follow the rules do not go here.
+// To add a rules version: put a new entry at the TOP of RULES_LOG, compared with the version
+// before it (the test checks the order and the versions).
 
 import {
-  CARD_COUNTS, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, PLAY_ON_DRAW_CARDS, PRINTED_RULES_VERSION, RULES_VERSION, TELEPORTER_COUNT,
-  TESSERACTS_TO_WIN,
+  CARD_COUNTS, FACTORY_RECIPES, INVENTORY_CAP, MAX_CARDS_PLAYED_PER_TURN, MAX_CLAIMS_PER_BUILDING, PLAY_ON_DRAW_CARDS,
+  PRINTED_RULES_VERSION, RULES_VERSION, TELEPORTER_COUNT, TESSERACTS_TO_WIN, teleporterCost,
 } from '../../../engine/config';
-import type { Block, PrintedGroup, Release, Topic } from '../types';
-import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, piecePoints, stackSize, upgradePointWords } from './facts';
+import type { Block, RulesVersionLog, Topic } from '../types';
+import { CARD_NAME, CARD_TYPES, PLAYER_COUNTS, listWords, minePriceWords, piecePoints, recipeWords, stackSize } from './facts';
 
 const onDrawNames = listWords(CARD_TYPES.filter(c => PLAY_ON_DRAW_CARDS.has(c)).map(c => CARD_NAME[c]));
 
 const beltHoles = (type: 'plateFact' | 'sphereFact' | 'tesseractFact' | 'powerPlant'): number =>
   piecePoints().find(p => p.type === type)!.belt.length;
 
-export const RELEASES: readonly Release[] = [
-  {
-    version: '0.1.2',
-    summary: 'Rules settled with the designer, payment with change, and a set of interface improvements (including this guide).',
-    rules: [
-      {
-        title: 'Cards played as soon as they are drawn count toward your plays',
-        before: `${onDrawNames} did not count toward the ${MAX_CARDS_PLAYED_PER_TURN} Leverage cards you may play per turn.`,
-        now: `They use up one of your ${MAX_CARDS_PLAYED_PER_TURN} plays if you have one left. If you have already played ${MAX_CARDS_PLAYED_PER_TURN}, they still take effect. Buying is never blocked.`,
-        see: 'cards',
-      },
-      {
-        title: 'Teleporters come back when you lose the building',
-        before: 'Teleporters were permanent: one stayed on its building even after you no longer owned it, and the price counted every teleporter ever placed.',
-        now: 'When you no longer have a Control Module on a building (Changing Priorities can cause this), your teleporters on it return to your supply. The price is the number of teleporters on the board + 1, so it drops too. You still cannot remove a teleporter by choice.',
-        see: 'teleporters',
-      },
-      {
-        title: 'R&D Tax Write-Off uses one of your teleporters',
-        before: 'This was an open question, though the game already worked this way.',
-        now: `Confirmed: the free teleporter is one of your ${TELEPORTER_COUNT}, and it raises the teleporter price like a bought one.`,
-        see: 'cards#rdTaxWriteOff',
-      },
-      {
-        title: 'Embezzlement gives a Sphere',
-        before: 'This was an open question (keep the card giving a Sphere, or remove it), though the game already gave a Sphere.',
-        now: 'Confirmed: Embezzlement takes 1 Sphere from the bank.',
-        see: 'cards#embezzlement',
-      },
-      {
-        title: 'Other players\' belts do not serve your buildings',
-        before: 'A belt laid next to a building\'s input or output before someone else claimed the building kept carrying material to or from it.',
-        now: 'A belt end facing the input or output of another player\'s building is a dead end. The belt stays, and works again if that building becomes its owner\'s.',
-        see: 'belts#whose',
-      },
-      {
-        title: 'Your buildings feed only your own buildings',
-        before: 'A building\'s output touching another building\'s input passed its material across, whoever owned the two buildings.',
-        now: 'It passes only into another building of the same player. Next to another player\'s input, your material stays in your output. Mines feed every claimed building; an unclaimed building feeds nothing.',
-        see: 'moving',
-      },
-      {
-        title: 'A teleporter cuts its buffer off from belts',
-        before: 'Material waiting in a teleported output (you at your limit) could still go down a belt or into a touching input, and a teleported input still took Ore from a Mine and material from belts and touching outputs.',
-        now: 'A teleported output empties only to you. An input with a teleporter takes nothing by itself; you supply it. Belts there stay but carry nothing. On a Sphere or Tesseract Factory this is only the input the teleporter is on (see the next change).',
-        see: 'teleporters',
-      },
-      {
-        title: 'A teleporter sits on one input',
-        before: 'A teleporter went on "the input" of a building as a whole: on a Sphere or Tesseract Factory it supplied every empty input slot, and belts and touching pieces still filled those inputs.',
-        now: 'A teleporter goes on one input (or the output). A Sphere Factory\'s two inputs and a Tesseract Factory\'s three can each carry one, each using one of your teleporters at the usual price. It cuts off and supplies only its own input; the other inputs keep their belts, so such a factory runs once those inputs hold their material. A teleporter on every input works as before.',
-        see: 'teleporters#supply',
-      },
-      {
-        title: 'The one-belt-per-turn Mine limit counts only ore exits',
-        before: 'Any belt end facing any part of a Mine counted toward the limit of one per turn.',
-        now: 'Only belt ends facing an ore exit of a Mine count.',
-        see: 'belts#rules',
-      },
-      {
-        title: 'Removing this turn\'s Mine belt lets you lay another',
-        before: 'Only **Take back this turn\'s belts** let you lay a belt at a Mine again; removing the one belt you had laid there this turn did not.',
-        now: 'Removing it frees the limit too. Removing a Mine belt laid on an earlier turn gives no extra one.',
-        see: 'belts#buying',
-      },
-      {
-        title: 'A removed belt goes back to the bank',
-        before: 'Every belt you removed came back to your own belts, free to lay again.',
-        now: 'As in the printed rulebook, a belt laid on an earlier turn goes back to the bank: placing a belt there again means buying one. A belt you laid this turn still comes back to your own belts, and **Take back this turn\'s belts** is unchanged.',
-        see: 'belts#buying',
-      },
-      {
-        title: 'Sink Hole sends belts to the bank',
-        before: 'The belts on a piece removed by Sink Hole went back to their owners\' supplies.',
-        now: 'As in the printed rulebook, they go back to the bank: their owners do not get them back and must buy belts again — even a belt laid this turn.',
-        see: 'cards#sinkHole',
-      },
-      {
-        title: 'Your own factory decision comes first',
-        before: 'The interface already made you decide Run it or Skip for your own activated factory before anything else, but the rules engine did not insist.',
-        now: 'The rules require it, and online the host accepts only moves the game offers.',
-        see: 'production#off-turn',
-      },
-      {
-        title: 'Scouting Drone: any piece from any open stack',
-        before: 'The game offered only the top 5 pieces of each stack.',
-        now: 'Choose any kind of piece in any open stack.',
-        see: 'cards#scoutingDrone',
-      },
-      {
-        title: 'Paying with change keeps your best materials',
-        before: 'Change came back all in Ore, and teleporters had to be paid with the exact amount.',
-        now: `The game pays so that you keep the most valuable materials possible, breaking down only what it must: a Sphere and an Ore paying 3 leave a Plate and 2 Ore. Change that does not fit under your limit of ${INVENTORY_CAP} is lost, and the game picks the payment that loses the least. Anything your materials are worth in total can be bought, teleporters included.`,
-        see: 'bank#paying',
-      },
-      {
-        title: 'Exchanging in your round-end turn',
-        before: 'The game offered exchanges only in your actions step.',
-        now: 'You can also exchange in your round-end turn.',
-        see: 'bank#exchange',
-      },
-      {
-        title: 'You choose what goes in through an input teleporter',
-        before: 'When a building with your teleporter on its input ran, the game itself took the cheapest materials that completed a recipe from your inventory, without asking. A Power Plant ignored the teleporter.',
-        now: 'Nothing is taken unless you choose it: the game shows what the building needs and your materials, with one button for each way to run it (for example **Provide a Sphere and a Plate** or **Provide 2 Spheres**), **Run it with what is in it** when its input is full, and **Skip**. This works on any player\'s turn and in your round-end turn.',
-        see: 'teleporters#supply',
-      },
-      {
-        title: 'Power Plants with a teleporter on their input ask you',
-        before: 'A Power Plant always ran by itself, burning only what lay in its input.',
-        now: 'With your teleporter on its empty input it asks you: run it as it is, or provide one Ore, Plate or Sphere for more Power Tokens. It always runs, so there is no Skip unless you are already at the Power Token limit.',
-        see: 'production#power-plants',
-      },
-      {
-        title: 'An unanswered question never spends your materials',
-        before: 'When the operate timer ran out on another player\'s turn, the game ran your factory if it could, completing its recipe from your inventory through an input teleporter.',
-        now: 'The building runs only if it can without your materials (a Power Plant as it is); otherwise it is skipped.',
-        see: 'online#timers',
-      },
-      {
-        title: 'Leverage cards in every step of your turn',
-        before: 'Leverage cards could be played only in your actions step, and Production Increase spent only there.',
-        now: `Play up to ${MAX_CARDS_PLAYED_PER_TURN} per turn in any of the four steps of your own turn, before or after your meeple is down — never in another player\'s turn or a round-end turn. Production Increase can be spent in any step of the turn it is played in. Scouting Drone in step 1 only before you draw. Buying stays in step 3.`,
-        see: 'cards',
-      },
-      {
-        title: 'Short Sale and Changing Priorities stay off other players\' buildings',
-        before: 'Both could put your Control Module on a building another player had claimed, so you shared it.',
-        now: 'They go only to an unclaimed building or one you already hold a claim on. Changing Priorities may not move your last module off the building your meeple stands on this turn.',
-        see: 'cards#changingPriorities',
-      },
-      {
-        title: 'A building has one owner',
-        before: 'Moves no longer let two players claim one building, but a game saved with such a building still loaded and played on.',
-        now: 'All the Control Modules on a building belong to one player. A saved game with a building shared by two players cannot be opened.',
-        see: 'claiming',
-      },
-      {
-        title: 'A building without an owner loses its material',
-        before: 'When Changing Priorities moved your last Control Module off a building, your teleporters there came back but its material stayed, and an unclaimed building\'s output still fed a building it touched.',
-        now: 'Its material goes to the bank, and your teleporters there come back to you; the game says what you would lose before you confirm. An unclaimed building holds, receives and feeds nothing.',
-        see: 'cards#changingPriorities',
-      },
-      {
-        title: 'A Mine may touch the board with either half',
-        before: 'The game offered only places where a Mine\'s larger half touched the board.',
-        now: 'Either half may touch the board, in any of the six directions, as long as both spaces are free.',
-        see: 'mines#placing',
-      },
-      {
-        title: 'The empty Leverage deck is refilled from the discard pile',
-        before: 'Once the deck was empty, no more cards could be bought.',
-        now: 'When a card is bought from an empty deck, the discard pile is shuffled into a new deck first. Cards run out only when both are empty.',
-        see: 'cards',
-      },
-      {
-        title: 'A Mine\'s upgrade point gives the number printed on it',
-        before: 'Every Mine\'s upgrade point gave the number of Mines + 1.',
-        now: `It gives the number printed on that Mine: ${upgradePointWords()}, however many Mines are in play.`,
-        see: 'mines#points',
-      },
-      {
-        title: 'When the pieces run out, the round is finished',
-        before: 'The game ended at the end of the turn in which the last piece was placed; later players in that round lost their turn, and there were no round-end turns.',
-        now: 'Every remaining player takes their turn (starting at the roll, since there is nothing to place), the round-end turns are played, and then the game ends on points. A notice says when the final round has begun.',
-        see: 'winning#exhausted',
-      },
-      {
-        title: 'Your meeple must be placed',
-        before: 'The rules let a turn end without placing the meeple, although the game always asked you to place it.',
-        now: 'If your meeple has anywhere to go, your turn cannot end until it is placed, and it is placed once per turn.',
-        see: 'step-meeple',
-      },
-      {
-        title: 'Every claim is paid for',
-        before: 'The rules did not stop a claim paid by nothing in the actions step, although the game never offered one.',
-        now: 'A claim is paid with Mine credits or with Production Increase. Only your first claims before the first turn, and Short Sale, are free.',
-        see: 'claiming',
-      },
-      {
-        title: 'Changing Priorities moves to another building',
-        before: 'Moving a Control Module onto the building it came from removed the claim and lost the module (the game never offered it).',
-        now: 'The Control Module must move to a different building.',
-        see: 'cards#changingPriorities',
-      },
-    ],
-    interface: [
-      'This game guide, from the start menu and from the game.',
-      'Press a Plate, Sphere or Tesseract in your materials to exchange it down.',
-      'Your materials show their Total Value.',
-      'A purchase that gives change says what you will keep, right after you buy ("Paid 3. You keep 1 Plate and 2 Ore.").',
-      'Running a building through your input teleporter shows what it needs, your materials and one button for each way to run it.',
-      'Once the pieces run out, a notice says the final round has begun, and the game-over card says how the game ended.',
-      'The table tells everyone when the discard pile is shuffled into a new Leverage deck.',
-      'The Teleporters tile lights up when you can place one, and says why when you cannot.',
-      'Placing your meeple on a Mine point tells you what it will give you.',
-      'Belts on the table point the way material flows.',
-      'Each player first sees the table from their own side; the turn button turns it 60° at a time, keeping the board in view.',
-      'The host chooses the kind of bot for each bot seat, and the seat is named after its kind.',
-      'The start menu and the game menu show the version.',
-    ],
-  },
-  {
-    version: '0.1.1',
-    summary: 'Belt holes and Mines matched to the printed pieces, and drawing from a face-down stack.',
-    rules: [
-      {
-        title: 'More belt holes on buildings',
-        before: 'Belts could end only on 4 points of a building piece.',
-        now: `Every hole on the printed building pieces takes a belt, for any player: ${beltHoles('plateFact')} on a Plate Factory or Power Plant, ${beltHoles('sphereFact')} on a Sphere Factory, ${beltHoles('tesseractFact')} on a Tesseract Factory.`,
-        see: 'belts#points',
-      },
-      {
-        title: 'Reserved points include outputs, and co-owners may use them',
-        before: 'A belt end was refused next to the input of a building with any claim by another player, even one you shared; outputs were not protected.',
-        now: 'A belt end may not face the input or output of a building claimed only by other players. If you hold a claim on it, you may use them.',
-        see: 'belts#rules',
-      },
-      {
-        title: 'Mines 2 and 3 release Ore only from their larger half',
-        before: 'All three Mines had ore exits on their smaller half.',
-        now: 'Only the first Mine has exits on its smaller half, as on the printed pieces.',
-        see: 'belts#points',
-      },
-      {
-        title: 'Drawing from a face-down stack',
-        before: 'With several stacks open, you could see each stack\'s top piece and place whichever you liked.',
-        now: 'You first choose a stack, see its top piece only after drawing it, and must place it.',
-        see: 'step-place',
-      },
-    ],
-  },
-  {
-    version: '0.1.0',
-    summary: 'The first online version. Its rules are the ones under [[printed|Differences from the printed rulebook]], apart from the changes listed above.',
-    rules: [],
-  },
-];
+const tesseractRecipes = listWords((FACTORY_RECIPES.tesseractFact?.inputs ?? []).map(recipeWords), 'or');
 
-export const PRINTED_GROUPS: readonly PrintedGroup[] = [
+const teleporterPrice = (): string => {
+  const step = teleporterCost(1) - teleporterCost(0);
+  return `${teleporterCost(0)} while none is on the board, and ${step} more for each teleporter on the board (all players' together)`;
+};
+
+const NEW_CARDS = ['personalJetPack', 'assetForfeiture', 'rdTaxWriteOff', 'solarFlare'] as const;
+
+/** Where the printed rulebook is silent and the rules had to decide. */
+const silent = (what: string): string => `The printed rulebook does not say ${what}.`;
+const decided = (rule: string): string => `In v${RULES_VERSION} ${rule}`;
+
+export const RULES_LOG: readonly RulesVersionLog[] = [
   {
-    id: 'components',
-    subject: 'Names and components',
-    items: [
-      { title: 'Control Modules', printed: 'The numbered tiles are called Number Tiles.', here: 'They are called Control Modules.' },
-      { title: 'Teleporters', printed: 'There are no teleporters.', here: `Each player has ${TELEPORTER_COUNT} teleporters, each on one input or the output of one of their buildings.`, see: 'teleporters' },
+    version: RULES_VERSION,
+    comparedWith: PRINTED_RULES_VERSION,
+    summary: 'Teleporters, four new Leverage cards and one fewer, Mines that drop into play when a stack runs out, and nothing passing between players\' buildings.',
+    themes: [
       {
-        title: 'Smaller stacks with fewer players',
-        printed: 'Three stacks of 32 pieces; smaller stacks for 2 or 3 players are optional.',
-        here: `The smaller stacks are always used: ${listWords(PLAYER_COUNTS.map(n => `${stackSize(n, 0)} per stack with ${n} players`))}.`,
-        see: 'table#stacks',
-      },
-    ],
-  },
-  {
-    id: 'setup',
-    subject: 'Setup',
-    items: [
-      {
-        title: 'Order of the first claims',
-        printed: 'Plate Factories are claimed first, counter-clockwise from the player to the right of the starting player; then Power Plants, clockwise from the starting player.',
-        here: 'Plate Factories are claimed first in turn order, starting with the starting player; then Power Plants in reverse order, so the starting player picks last.',
-        see: 'starting#first-claims',
-      },
-    ],
-  },
-  {
-    id: 'turn',
-    subject: 'Your turn',
-    items: [
-      { title: 'Drawing a piece', printed: 'Draw a piece from any of the available stacks.', here: 'Choose a face-down stack first; you must place the piece you drew.', see: 'step-place' },
-      {
-        title: 'Cards played when drawn',
-        printed: `Only ${MAX_CARDS_PLAYED_PER_TURN} cards can be played per turn.`,
-        here: `Still ${MAX_CARDS_PLAYED_PER_TURN}; ${onDrawNames} count toward them when you have a play left, and take effect anyway when you do not.`,
-        see: 'cards',
+        id: 'setup',
+        subject: 'Setup',
+        entries: [
+          {
+            title: 'Number Tiles are now Control Modules',
+            before: 'The numbered tiles are called Number Tiles.',
+            now: 'They are called Control Modules. They work as before.',
+            see: 'claiming',
+          },
+          {
+            title: 'Smaller stacks with fewer players',
+            before: 'Three stacks of 32 pieces. Smaller stacks for 2 or 3 players are optional.',
+            now: `The smaller stacks are always used: ${listWords(PLAYER_COUNTS.map(n => `${stackSize(n, 0)} pieces per stack with ${n} players`))}.`,
+            see: 'table#stacks',
+          },
+          {
+            title: 'Order of the first claims',
+            before: 'The player to the right of the starting player claims a Plate Factory first, and the claims go counter-clockwise. Then the starting player claims a Power Plant first, and the claims go clockwise.',
+            now: 'Plate Factories are claimed first, in turn order beginning with the starting player. Then Power Plants, in the reverse order, so the starting player picks last.',
+            see: 'starting#first-claims',
+          },
+        ],
       },
       {
-        title: 'Using your meeple\'s building',
-        printed: 'For the rest of the round you can supply its inputs from your inventory and collect what it makes.',
-        here: 'You load, run and collect in your round-end turn.',
-        see: 'round-end',
-      },
-      { title: 'Trading', printed: 'Players may trade Power Tokens; trading materials is allowed but discouraged.', here: 'There is no trading between players.' },
-      { title: 'Timers', printed: 'No timers.', here: 'Online, unanswered off-turn questions about your buildings and idle round-end turns are settled by timers the host sets (never by spending your materials).', see: 'online#timers' },
-    ],
-  },
-  {
-    id: 'buildings',
-    subject: 'Running buildings',
-    items: [
-      {
-        title: 'The game asks before running your factory',
-        printed: 'When a building\'s number is rolled, its owner may choose not to operate it.',
-        here: 'The game asks you every time, on any player\'s turn. Online, a question on someone else\'s turn is decided for you if you do not answer in time.',
-        see: 'production',
+        id: 'turn',
+        subject: 'Your turn',
+        entries: [
+          {
+            title: 'Paying with materials worth more than the price',
+            before: silent('how to pay when your materials are worth more than the price; it only lets you exchange materials down with the bank'),
+            now: decided(`you can buy anything your materials are worth in total. You hand in materials and get the change back in smaller materials, keeping the most valuable ones you can: a Sphere and an Ore paying 3 leave a Plate and 2 Ore. Change that does not fit under your limit of ${INVENTORY_CAP} of a material is lost.`),
+            see: 'bank#paying',
+          },
+          {
+            title: 'Your meeple\'s building is used in your round-end turn',
+            before: 'For the rest of the round you can supply its inputs from your inventory and collect what it makes, and at the end of the round you may run it once.',
+            now: 'Loading its inputs from your inventory, running it once and collecting its output all happen in your round-end turn.',
+            see: 'round-end',
+          },
+        ],
       },
       {
-        title: 'Exact recipes',
-        printed: 'A Tesseract Factory may use a higher-value material in place of a lower one.',
-        here: 'The valid input sets are listed exactly; a Tesseract is never an input, and material that cannot complete a recipe is refused — also when it arrives by belt or from a Mine.',
-        see: 'factories',
-      },
-    ],
-  },
-  {
-    id: 'belts',
-    subject: 'Belts and Mines',
-    items: [
-      {
-        title: 'Belt holes on buildings',
-        printed: 'Buildings have 4 belt connection points.',
-        here: `Every hole on the printed building pieces takes a belt: ${beltHoles('plateFact')} on a Plate Factory or Power Plant, ${beltHoles('sphereFact')} on a Sphere Factory, ${beltHoles('tesseractFact')} on a Tesseract Factory.`,
-        see: 'belts#points',
-      },
-      { title: 'Removing belts', printed: 'Removed belts go back to the bank and must be bought again.', here: 'The same, except that a belt you laid this turn comes back to your own belts, free to lay again.', see: 'belts#buying' },
-      { title: 'Reserved points', printed: 'Belts cannot be placed next to the input or output of another player\'s claimed building.', here: 'The same, but a player who shares the building may use those points.', see: 'belts#rules' },
-      { title: 'One Mine belt per turn', printed: 'Only one belt can be connected to a Mine per turn.', here: 'Only belt ends facing a Mine\'s ore exit count.', see: 'belts#rules' },
-      {
-        title: 'Running out of pieces',
-        printed: 'If the pieces run out, the discard pile is shuffled back in; if there are still none, another Mine must be bought.',
-        here: 'When a stack runs out, the next Mine drops into play by itself and opens its stack. Pieces removed by Sink Hole never come back.',
-        see: 'mines#next',
-      },
-    ],
-  },
-  {
-    id: 'claims',
-    subject: 'Claims and upgrades',
-    items: [
-      {
-        title: 'Combining end-of-round and Mine upgrades',
-        printed: 'Your end-of-round upgrade can be combined with the upgrades from a Mine, for a bigger upgrade or a claim.',
-        here: 'Each upgrade is paid from one source, and end-of-round upgrades never pay for a claim. You can still upgrade the same building twice in a row, once from each source.',
-        see: 'claiming',
+        id: 'claiming',
+        subject: 'Claiming and Control Modules',
+        entries: [
+          {
+            title: 'End-of-round upgrades are not combined with Mine upgrades',
+            before: 'Your end-of-round upgrades can be combined with the upgrades from a Mine, for a bigger upgrade or a claim.',
+            now: 'Each upgrade is paid from one source. End-of-round upgrades only raise one Control Module already on a building, and never pay for a claim. You can still upgrade the same building twice, once from each source.',
+            see: 'claiming#upgrades',
+          },
+          {
+            title: 'Short Sale and Changing Priorities: an unclaimed building or one of yours',
+            before: 'Short Sale claims an unclaimed building with your lowest available Number Tile. Changing Priorities moves a Number Tile to a different building you have claimed.',
+            now: `Both may go to an unclaimed building or to one that is already yours (at most ${MAX_CLAIMS_PER_BUILDING} of your Control Modules on it), never to another player's: a building always has one owner. Once your meeple stands on a building this turn, Changing Priorities may not move your last Control Module off it.`,
+            see: 'cards#changingPriorities',
+          },
+          {
+            title: 'A building that loses its owner loses its material',
+            before: 'When Changing Priorities leaves a building without a Number Tile, any player may claim it on a later turn.',
+            now: 'Anyone may still claim it later, but first every material in its inputs and output goes to the bank, and the teleporters on it go back to the player who placed them. A building without an owner holds, receives and feeds nothing.',
+            see: 'cards#changingPriorities',
+          },
+        ],
       },
       {
-        title: 'Claims on other players\' buildings',
-        printed: 'Additional claims can only go on buildings you own; Changing Priorities moves a tile to another building you have claimed.',
-        here: 'The same for other players\' buildings: Short Sale and Changing Priorities never put your Control Module there. Changing Priorities may also move a module to an unclaimed building, which you then claim.',
-        see: 'cards#changingPriorities',
-      },
-    ],
-  },
-  {
-    id: 'cards',
-    subject: 'Leverage cards',
-    items: [
-      { title: 'Eminent Domain removed', printed: 'Eminent Domain (3 cards): remove any two belts from the board and take 2 belts.', here: 'The card is not in the deck.' },
-      {
-        title: 'Four new cards',
-        printed: 'Not in the printed deck.',
-        here: `${listWords((['personalJetPack', 'assetForfeiture', 'rdTaxWriteOff', 'solarFlare'] as const).map(c => `[[cards#${c}|${CARD_NAME[c]}]] (${CARD_COUNTS[c]} copies)`))}.`,
-      },
-      { title: 'Embezzlement', printed: 'A Sphere with one or two Mines, a Tesseract with three.', here: 'Always a Sphere.', see: 'cards#embezzlement' },
-    ],
-  },
-  {
-    id: 'winning',
-    subject: 'Bonuses and winning',
-    items: [
-      {
-        title: 'Bonus cards are handed out for you',
-        printed: 'When a bonus is achieved, its card is placed in front of the player.',
-        here: 'The game checks after every move and moves the card at once. A bonus counts only while you hold it.',
-        see: 'bonuses',
+        id: 'production',
+        subject: 'Production and factories',
+        entries: [
+          {
+            title: 'A Tesseract is never an input',
+            before: 'A Tesseract Factory may use a higher-value material in place of a lower one.',
+            now: `The same, except that a Tesseract is never an input: a Tesseract Factory takes ${tesseractRecipes}. A material that cannot complete a recipe is not accepted into an input, also when it arrives by belt or from a Mine.`,
+            see: 'factories',
+          },
+        ],
       },
       {
-        title: 'Winning',
-        printed: `The first player with ${TESSERACTS_TO_WIN} Tesseracts in their inventory wins.`,
-        here: `You win with ${TESSERACTS_TO_WIN} Tesseracts, bonus cards included, during your own turn.`,
-        see: 'winning',
+        id: 'moving',
+        subject: 'Moving material and belts',
+        entries: [
+          {
+            title: 'Your buildings feed only your own buildings',
+            before: 'A factory\'s output touching another building\'s input moves its material across, whoever owns the two buildings.',
+            now: 'Only between two buildings of the same player. Next to another player\'s input, your material stays in your output. A Mine\'s ore exit fills any claimed building it touches; an unclaimed building receives and feeds nothing.',
+            see: 'moving',
+          },
+          {
+            title: 'More belt holes on buildings',
+            before: 'A building piece has 4 belt connection points.',
+            now: `Every hole on a building piece takes a belt, for any player: ${beltHoles('plateFact')} on a Plate Factory or Power Plant, ${beltHoles('sphereFact')} on a Sphere Factory, ${beltHoles('tesseractFact')} on a Tesseract Factory.`,
+            see: 'belts#points',
+          },
+          {
+            title: 'A belt may be laid before it connects anything',
+            before: 'Belts must always carry materials from a Mine to an input, or from a factory\'s output to another factory\'s input.',
+            now: 'A belt that does not (yet) link a source to an input may still be laid. Material moves only along a chain of belts that does.',
+            see: 'belts#laying',
+          },
+          {
+            title: 'One Mine belt per turn counts only ore exits',
+            before: 'Only one belt can be connected to a Mine per turn.',
+            now: 'Only a belt end facing a Mine\'s ore exit counts toward the one per turn. If you remove the Mine belt you laid this turn, you may lay another.',
+            see: 'belts#rules',
+          },
+          {
+            title: 'A belt laid this turn can be taken back for free',
+            before: 'You may remove your own belts during your turn. They go back to the bank and must be bought again.',
+            now: 'The same for a belt laid on an earlier turn. A belt you laid this turn comes back to your own belts, free to lay again (Ore spent buying it is not refunded): the digital game lets you take back a move you have not finished.',
+            see: 'belts#buying',
+          },
+        ],
+      },
+      {
+        id: 'teleporters',
+        subject: 'Teleporters',
+        entries: [
+          {
+            title: 'Teleporters',
+            before: 'There are no teleporters.',
+            now: `Each player has ${TELEPORTER_COUNT}. One goes on one input or on the output of a building you own: a Sphere Factory has two inputs and a Tesseract Factory three, and each input can carry one. The price is ${teleporterPrice()}. You can never remove one by choice; your teleporters come back to you only when the building has no Control Module of yours left.`,
+            see: 'teleporters',
+          },
+          {
+            title: 'What a teleporter does',
+            before: 'Without your meeple on a building, you cannot collect what it makes or supply its inputs from your inventory.',
+            now: `On an output, what the building makes goes straight to your inventory, while you are under your limit of ${INVENTORY_CAP}. On an input, you choose, each time the building runs, a material from your inventory for that empty input, or nothing: nothing is ever taken by itself. A Power Plant with your teleporter on its empty input takes one Ore, Plate or Sphere if you supply it, and always runs.`,
+            see: 'teleporters#supply',
+          },
+          {
+            title: 'A teleporter cuts its input or output off',
+            before: 'There are no teleporters: belts, touching buildings and Mines fill every input.',
+            now: 'Nothing arrives at an input with a teleporter by belt, from a touching building or from a Mine, and nothing leaves an output with a teleporter except into your inventory. The other inputs of a Sphere or Tesseract Factory keep receiving. Belts there stay but carry nothing.',
+            see: 'teleporters',
+          },
+        ],
+      },
+      {
+        id: 'mines',
+        subject: 'Mines',
+        entries: [
+          {
+            title: 'The next Mine drops into play when a stack runs out',
+            before: 'Stacks 2 and 3 open only when their Mine is bought. If the pieces run out, the discard pile is shuffled in; if there are still none, another Mine must be bought.',
+            now: `When a stack runs out, the next Mine drops into play by itself: the next player to place a piece places the Mine instead, and its stack opens. A Mine may still be bought earlier (${minePriceWords()}). Pieces removed by Sink Hole never come back.`,
+            see: 'mines#next',
+          },
+          {
+            title: 'Where a new Mine may go',
+            before: silent('where a new Mine may go, only that a bought Mine is placed at once'),
+            now: decided('it goes wherever either of its two halves is next to the board, in any of the six directions, with both spaces free. A dropped Mine follows the same rule.'),
+            see: 'mines#placing',
+          },
+        ],
+      },
+      {
+        id: 'cards',
+        subject: 'Leverage cards',
+        entries: [
+          {
+            title: 'Eminent Domain removed',
+            before: 'Eminent Domain (3 cards): remove any two belts from the board and take 2 belts.',
+            now: 'The card is not in the deck.',
+          },
+          {
+            title: 'Four new cards',
+            before: 'Not in the printed deck.',
+            now: `${listWords(NEW_CARDS.map(c => `[[cards#${c}|${CARD_NAME[c]}]] (${CARD_COUNTS[c]} copies)`))}.`,
+            see: 'cards',
+          },
+          {
+            title: 'Embezzlement is always a Sphere',
+            before: 'A Sphere with one or two Mines in play, a Tesseract with three.',
+            now: 'Always a Sphere, however many Mines are in play.',
+            see: 'cards#embezzlement',
+          },
+          {
+            title: 'Cards played as soon as they are drawn count toward your plays',
+            before: silent(`whether a card that must be played as soon as it is drawn counts toward the ${MAX_CARDS_PLAYED_PER_TURN} cards you may play per turn`),
+            now: decided(`it does: ${onDrawNames} use up one of your ${MAX_CARDS_PLAYED_PER_TURN} plays if you have one left, and take effect anyway if you do not. Buying cards is never limited.`),
+            see: 'cards',
+          },
+          {
+            title: 'When Leverage cards may be played',
+            before: 'At any time during your turn, including before placing a board piece.',
+            now: 'In any of the four steps of your own turn, never in another player\'s turn or in a round-end turn. The upgrades of Production Increase may be spent in any step of the turn it is played in. Scouting Drone, in the place-a-piece step, only before you draw.',
+            see: 'cards',
+          },
+        ],
+      },
+      {
+        id: 'winning',
+        subject: 'Bonuses and winning',
+        entries: [
+          {
+            title: 'A bonus counts only while you hold it',
+            before: 'When a bonus is achieved, its card is placed in front of the player, and it moves at once when someone does better.',
+            now: 'The same, and a bonus counts only while its card is in front of you: you cannot claim afterwards that you had it all along.',
+            see: 'bonuses',
+          },
+          {
+            title: 'You win during your own turn',
+            before: 'The first player with 4 Tesseracts in their inventory wins.',
+            now: `You win by holding ${TESSERACTS_TO_WIN} Tesseracts, bonus cards included, during your own turn.`,
+            see: 'winning',
+          },
+          {
+            title: 'When the pieces run out',
+            before: 'The final round is completed by all players, and the most resource points in inventory wins. It does not say whether the round-end turns are played or how a tie is broken.',
+            now: decided(`every remaining player takes their turn (with nothing to draw, they start at the roll), the round-end turns are played, and then the most resource points wins. A tie goes to the most Tesseracts, then Spheres, Plates and Ore, then the player earliest in turn order. Holding ${TESSERACTS_TO_WIN} Tesseracts on your own turn still wins in those last turns.`),
+            see: 'winning#exhausted',
+          },
+        ],
       },
     ],
   },
 ];
 
-function releaseBlocks(): Block[] {
-  const out: Block[] = [
-    { k: 'p', t: `Two numbers keep track of the game. The **version of the game** (0.1.x, shown on the start menu) follows the digital game: the interface and how it shows the rules. The **rules version** (v${RULES_VERSION}) follows the rules themselves, and moves only when a rule is new, not when one is merely clarified.` },
-    { k: 'p', t: 'Each release of the game, newest first, with every rule that changed: what it used to be, and how it works now. For how this version differs from the paper game, see [[printed|Differences from the printed rulebook]].' },
-  ];
-  for (const r of RELEASES) {
-    out.push({ k: 'h', t: `Version ${r.version}`, id: `v${r.version}` });
-    out.push({ k: 'p', t: r.summary });
-    for (const c of r.rules) {
-      out.push({ k: 'change', title: c.title, before: c.before, now: c.see ? `${c.now} [[${c.see}|More…]]` : c.now });
-    }
-    if (r.interface?.length) {
-      out.push({ k: 'p', t: '**Also new in the interface:**' });
-      out.push({ k: 'list', items: r.interface });
-    }
-  }
-  return out;
+/** "Rules v0.70, compared with the printed rulebook (v0.61)". */
+export function versionHeading(log: RulesVersionLog): string {
+  const base = log.comparedWith === PRINTED_RULES_VERSION ? `the printed rulebook (v${log.comparedWith})` : `v${log.comparedWith}`;
+  return `Rules v${log.version}, compared with ${base}`;
 }
 
-function printedBlocks(): Block[] {
+function changeBlocks(): Block[] {
   const out: Block[] = [
-    { k: 'p', t: `This game plays **rules v${RULES_VERSION}**. The printed rulebook is **rules v${PRINTED_RULES_VERSION}**: its version is printed in the footer of the rulebook ("Rules v${PRINTED_RULES_VERSION}"), so you can compare it with your copy.` },
-    { k: 'p', t: 'This version follows the designer\'s current rules, which have moved on since the printed rulebook. If you know the paper game, these are the differences you will notice. Where the two disagree, the game on your screen is the one that counts.' },
+    { k: 'p', t: `This is a log of the rules by **rules version**, newest first. Each section lists every difference in how the game is played: how the rule was, and how it is now. The first section compares the rules this game plays, **rules v${RULES_VERSION}**, with the printed rulebook, **rules v${PRINTED_RULES_VERSION}**: the version is printed in the footer of the rulebook, so you can check your copy. Where the printed rulebook says nothing and the rules had to decide, the entry says so.` },
+    { k: 'p', t: 'The rules version is not the version of the digital game (0.1.x, shown under the title). That one follows the app itself and moves without the rules changing; the rules version moves only when a rule is new, not when one is merely clarified.' },
   ];
-  for (const g of PRINTED_GROUPS) {
-    out.push({ k: 'h', t: g.subject, id: g.id });
-    for (const d of g.items) {
-      out.push({
-        k: 'change', title: d.title, beforeLabel: 'Printed rulebook', nowLabel: 'This version',
-        before: d.printed, now: d.see ? `${d.here} [[${d.see}|More…]]` : d.here,
-      });
+  RULES_LOG.forEach((log, i) => {
+    const anchor = `v${log.version}`;
+    out.push({ k: 'h', t: versionHeading(log), id: anchor });
+    out.push({ k: 'p', t: log.summary });
+    const beforeLabel = log.comparedWith === PRINTED_RULES_VERSION ? `Printed v${log.comparedWith}` : `v${log.comparedWith}`;
+    const nowLabel = i === 0 ? 'Now' : `v${log.version}`;
+    for (const theme of log.themes) {
+      out.push({ k: 'h', t: theme.subject, id: `${anchor}-${theme.id}` });
+      for (const c of theme.entries) {
+        out.push({ k: 'change', title: c.title, beforeLabel, nowLabel, before: c.before, now: c.see ? `${c.now} [[${c.see}|More…]]` : c.now });
+      }
     }
-  }
+  });
   return out;
 }
 
 export const changes: Topic = {
   id: 'changes',
   title: 'What changed',
-  summary: 'Rule changes from one release to the next, newest first.',
-  blocks: releaseBlocks(),
-  see: ['printed'],
-};
-
-export const printed: Topic = {
-  id: 'printed',
-  title: 'Differences from the printed rulebook',
-  summary: `Where this version plays differently from the paper game (rules v${PRINTED_RULES_VERSION}).`,
-  blocks: printedBlocks(),
-  see: ['changes'],
+  summary: 'The rules by rules version, newest first, starting from the printed rulebook.',
+  blocks: changeBlocks(),
+  see: ['goal'],
 };

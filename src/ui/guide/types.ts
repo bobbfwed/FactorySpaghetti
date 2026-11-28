@@ -54,36 +54,33 @@ export interface Guide {
   readonly topics: readonly Topic[];
 }
 
-/** One rule change in a release, written for players. */
+/** One rule as the earlier rules version had it and as this one has it, written for players. */
 export interface RuleChange {
   readonly title: string;
+  /** The rule in the version compared with (for the oldest section: the printed rulebook). */
   readonly before: string;
+  /** The rule in this version. */
   readonly now: string;
   /** Where the guide explains the rule as it is now. */
   readonly see?: string;
 }
 
-/** One release of the game. New releases go at the top of the list. */
-export interface Release {
-  /** "0.1.2" */
-  readonly version: string;
-  readonly summary: string;
-  readonly rules: readonly RuleChange[];
-  /** Interface changes worth knowing, one line each. */
-  readonly interface?: readonly string[];
-}
-
-/** One way this version plays differently from the printed rulebook. */
-export interface PrintedDifference {
-  readonly title: string;
-  readonly printed: string;
-  readonly here: string;
-  readonly see?: string;
-}
-
-export interface PrintedGroup {
-  /** Link target inside the "printed" topic. */
+/** The changes of one rules version about one theme ("Setup", "Mines", ...). */
+export interface RuleTheme {
+  /** Part of the heading's link target: "changes#v0.70-setup". */
   readonly id: string;
   readonly subject: string;
-  readonly items: readonly PrintedDifference[];
+  readonly entries: readonly RuleChange[];
+}
+
+/** One rules version in the change log. Newer versions go at the top of the list. */
+export interface RulesVersionLog {
+  /** "0.70" */
+  readonly version: string;
+  /** The version this one is compared with: the one before it, or the printed rulebook's. */
+  readonly comparedWith: string;
+  /** One line. */
+  readonly summary: string;
+  /** In the order a player meets them. */
+  readonly themes: readonly RuleTheme[];
 }

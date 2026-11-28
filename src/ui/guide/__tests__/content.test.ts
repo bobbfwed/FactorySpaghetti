@@ -1,13 +1,13 @@
 // The guide's content holds together: every topic is in the table of contents, ids are unique,
 // every link and "see also" lands on a topic (and heading) that exists, every Leverage card has
-// an entry and no entry names a card that does not exist, and releases are listed newest first.
+// an entry and no entry names a card that does not exist. The change log has its own tests
+// (changeLog.test.ts).
 
 import { describe, it, expect } from 'vitest';
 import { CARD_COUNTS } from '../../../engine/config';
 import { BOT_TYPES } from '../../../bots/registry';
 import { GUIDE, findTopic, topicOrder } from '../content';
 import { CARD_GUIDE } from '../content/cards';
-import { PRINTED_GROUPS, RELEASES } from '../content/changes';
 import { linkTargets, plainText, splitTarget } from '../inline';
 import type { Block, Topic } from '../types';
 
@@ -107,37 +107,13 @@ describe('guide content', () => {
     expect(anchors(cards.blocks).sort()).toEqual(Object.keys(CARD_COUNTS).sort());
   });
 
-  it('lists releases newest first, with unique versions', () => {
-    const parse = (v: string): number[] => v.split('.').map(Number);
-    const cmp = (a: string, b: string): number => {
-      const x = parse(a);
-      const y = parse(b);
-      for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) - (y[i] ?? 0);
-      return 0;
-    };
-    const versions = RELEASES.map(r => r.version);
-    for (const v of versions) expect(v).toMatch(/^\d+\.\d+\.\d+$/);
-    for (let i = 1; i < versions.length; i++) expect(cmp(versions[i - 1]!, versions[i]!), `${versions[i - 1]} before ${versions[i]}`).toBeGreaterThan(0);
-  });
-
-  it('describes the newest release with its rule changes, each as before and now', () => {
-    const newest = RELEASES[0]!;
-    expect(newest.version).toBe('0.1.2');
-    // The designer's decisions (#35-#39, #42, #44-#51, #53-#58), the moves the engine now
-    // refuses (#43) and the Mine-belt fix (#52): 30 in all.
-    expect(newest.rules.length).toBe(30);
-    for (const c of newest.rules) {
-      expect(c.before.length).toBeGreaterThan(10);
-      expect(c.now.length).toBeGreaterThan(10);
+  it('has no "Differences from the printed rulebook" topic any more: What changed is the one change topic', () => {
+    expect(findTopic('printed')).toBeUndefined();
+    expect(GUIDE.sections.find(s => s.title === 'Changes')!.topics).toEqual(['changes']);
+    for (const t of GUIDE.topics) {
+      for (const s of allText(t)) expect(plainText(s), t.id).not.toContain('Differences from the printed rulebook');
+      expect(t.see ?? [], t.id).not.toContain('printed');
     }
-    expect(anchors(findTopic('changes')!.blocks)).toContain('v0.1.2');
-  });
-
-  it('groups the differences from the printed rulebook under unique headings', () => {
-    const ids = PRINTED_GROUPS.map(g => g.id);
-    expect(new Set(ids).size).toBe(ids.length);
-    for (const g of PRINTED_GROUPS) expect(g.items.length, g.subject).toBeGreaterThan(0);
-    expect(anchors(findTopic('printed')!.blocks)).toEqual(ids);
   });
 
   it('gives the nuanced topics a "How exactly does this work?" section', () => {
@@ -162,7 +138,7 @@ describe('guide content', () => {
   });
 
   it('states the second set of decisions (#44-#50) and none of the rules they replaced', () => {
-    const topics = GUIDE.topics.filter(t => t.id !== 'changes' && t.id !== 'printed');
+    const topics = GUIDE.topics.filter(t => t.id !== 'changes');
     const all = topics.flatMap(allText).map(plainText).join(' ');
     // Supplying through an input teleporter is the player's choice; the timer never supplies.
     expect(all).toContain('Provide a Sphere and a Plate');
@@ -183,22 +159,5 @@ describe('guide content', () => {
     expect(all).not.toMatch(/upgrade point[^.]*Mines \+ 1|larger half must touch/i);
     expect(all).not.toMatch(/the game ends at the end of the turn in which the last piece/i);
     expect(all).not.toMatch(/claim a building another player has claimed\. You then share/i);
-  });
-
-  it('lists 0.1.2 with the second set of decisions, and no longer the withdrawn Mine rule', () => {
-    const titles = RELEASES[0]!.rules.map(r => r.title);
-    expect(titles).not.toContain('A Mine\'s larger half must touch the board');
-    for (const t of ['You choose what goes in through an input teleporter', 'Leverage cards in every step of your turn',
-      'A Mine may touch the board with either half', 'The empty Leverage deck is refilled from the discard pile',
-      'A Mine\'s upgrade point gives the number printed on it', 'When the pieces run out, the round is finished']) {
-      expect(titles).toContain(t);
-    }
-  });
-
-  it('no longer lists printed-rulebook differences this version has given up', () => {
-    const titles = PRINTED_GROUPS.flatMap(g => g.items.map(i => i.title));
-    for (const gone of ['When cards are played', 'The Mine\'s upgrade point', 'An empty deck', 'When the pieces run out']) {
-      expect(titles).not.toContain(gone);
-    }
   });
 });
