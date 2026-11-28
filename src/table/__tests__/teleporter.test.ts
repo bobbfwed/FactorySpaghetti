@@ -10,9 +10,9 @@ import type { BoardPiece, PieceType } from '../../engine/state';
 import { parseGlb, type GlbPart } from '../glb';
 import {
   APOTHEM, BUFFER_INSET, BUFFER_MATERIAL_SCALE, PORTAL, TELEPORTER_EDGE_GAP, TELEPORTER_HALF_LENGTH, TELEPORTER_HALF_WIDTH,
-  TELEPORTER_HEIGHT, TELEPORTER_INSET, TELEPORTER_SCALE, TELEPORTER_STUB_SHIFT,
-  axialToWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout, edgeNormal, modelToWorld, piecePlacement,
-  pointWorld, positionsWithRole, teleporterPlacement, type XZ,
+  TELEPORTER_HEIGHT, TELEPORTER_SCALE, TELEPORTER_NUDGE, STUB_LINES, TILE_MODEL,
+  axialToWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout, edgeNormal, edgePoint, modelToWorld, piecePlacement,
+  pointFrame, pointWorld, positionsWithRole, teleporterPlacement, worldToModel, type XZ,
 } from '../layout';
 
 const MODELS_DIR = join(__dirname, '..', '..', '..', 'public', 'models');
@@ -139,6 +139,77 @@ function halfSize(name: string): { x: number; z: number } {
   return { x: (b.max[0]! - b.min[0]!) / 2, z: (b.max[2]! - b.min[2]!) / 2 };
 }
 
+/**
+ * The centre line of a printed stub (the black bar from connection point `pos` towards the module
+ * square), measured from the tile model's inlay-black top faces, in model space (rotation 0): the
+ * bar is rasterised at 0.05 mm, and the middle of its cross-section is fitted along its length,
+ * leaving out the arrow barbs and where it meets another bar (cross-sections wider than the bar).
+ */
+const stubCache = new Map<string, { at: XZ; dir: XZ; inward: XZ; mid: XZ }>();
+function measuredStub(type: PieceType, pos: number): { at: XZ; dir: XZ; inward: XZ; mid: XZ } {
+  const key = `${type}:${pos}`;
+  const hit = stubCache.get(key);
+  if (hit) return hit;
+  const p = load(TILE_MODEL[type as Exclude<PieceType, 'mine'>]).find(x => x.material === 'inlay-black')!;
+  const RES = 0.05, O = 36, N = Math.round((2 * O) / RES);
+  const grid = new Uint8Array(N * N);
+  const P = p.positions, I = p.indices!;
+  for (let t = 0; t < I.length; t += 3) {
+    const v = [0, 1, 2].map(k => [P[I[t + k]! * 3]!, P[I[t + k]! * 3 + 1]!, P[I[t + k]! * 3 + 2]!] as const);
+    const [a, b, c] = v as unknown as [readonly number[], readonly number[], readonly number[]];
+    const ux = b[0]! - a[0]!, uy = b[1]! - a[1]!, uz = b[2]! - a[2]!, wx = c[0]! - a[0]!, wy = c[1]! - a[1]!, wz = c[2]! - a[2]!;
+    const nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+    if (Math.abs(ny) / (Math.hypot(nx, ny, nz) || 1) < 0.9) continue; // top faces only
+    const x0 = Math.min(a[0]!, b[0]!, c[0]!), x1 = Math.max(a[0]!, b[0]!, c[0]!), z0 = Math.min(a[2]!, b[2]!, c[2]!), z1 = Math.max(a[2]!, b[2]!, c[2]!);
+    for (let gx = Math.max(0, Math.floor((x0 + O) / RES)); gx <= Math.min(N - 1, Math.ceil((x1 + O) / RES)); gx++) {
+      for (let gz = Math.max(0, Math.floor((z0 + O) / RES)); gz <= Math.min(N - 1, Math.ceil((z1 + O) / RES)); gz++) {
+        const x = gx * RES - O, z = gz * RES - O;
+        const side = (p1: readonly number[], p2: readonly number[]): number => (x - p2[0]!) * (p1[2]! - p2[2]!) - (p1[0]! - p2[0]!) * (z - p2[2]!);
+        const d1 = side(a, b), d2 = side(b, c), d3 = side(c, a);
+        if (!((d1 < 0 || d2 < 0 || d3 < 0) && (d1 > 0 || d2 > 0 || d3 > 0))) grid[gz * N + gx] = 1;
+      }
+    }
+  }
+  const black = (x: number, z: number): boolean => {
+    const gx = Math.round((x + O) / RES), gz = Math.round((z + O) / RES);
+    return gx >= 0 && gz >= 0 && gx < N && gz < N && grid[gz * N + gx] === 1;
+  };
+  const piece = { id: 'm', type, coord: { q: 0, r: 0 }, rotation: 0 };
+  const hole = pointWorld(piece, pos, 0);
+  const f = pointFrame(type, 0, pos);
+  const n = edgeNormal(f.ve);
+  const inward = { x: -n.x, z: -n.z };
+  const middle = edgePoint({ x: 0, z: 0 }, f.ve, 0.5, 0);
+  const ml = Math.hypot(middle.x - hole.x, middle.z - hole.z);
+  const mid = { x: (middle.x - hole.x) / ml, z: (middle.z - hole.z) / ml };
+  const lat = { x: -inward.z, z: inward.x };
+  let th = 0, c0 = 0;
+  for (let it = 0; it < 6; it++) {
+    const u = { x: Math.cos(th) * inward.x + Math.sin(th) * lat.x, z: Math.cos(th) * inward.z + Math.sin(th) * lat.z };
+    const w = { x: -u.z, z: u.x };
+    const cs: Array<[number, number]> = [];
+    for (let d = 3.5; d <= 18; d += 0.25) {
+      const base = { x: hole.x + u.x * d + w.x * c0, z: hole.z + u.z * d + w.z * c0 };
+      const at = (l: number): boolean => black(base.x + w.x * l, base.z + w.z * l);
+      if (!at(0)) continue;
+      let lo = 0, hi = 0;
+      while (at(lo - 0.05) && lo > -12) lo -= 0.05;
+      while (at(hi + 0.05) && hi < 12) hi += 0.05;
+      if (hi - lo > (it < 2 ? 8.2 : 6.9) || hi - lo < 6.2) continue;
+      cs.push([d, c0 + (lo + hi) / 2]);
+    }
+    const k = cs.length;
+    const mx = cs.reduce((s, q) => s + q[0], 0) / k, my = cs.reduce((s, q) => s + q[1], 0) / k;
+    const slope = cs.reduce((s, q) => s + (q[0] - mx) * (q[1] - my), 0) / cs.reduce((s, q) => s + (q[0] - mx) ** 2, 0);
+    th += Math.atan(slope);
+    c0 = my - slope * mx;
+  }
+  const dir = { x: Math.cos(th) * inward.x + Math.sin(th) * lat.x, z: Math.cos(th) * inward.z + Math.sin(th) * lat.z };
+  const out = { at: { x: hole.x - dir.z * c0, z: hole.z + dir.x * c0 }, dir, inward, mid };
+  stubCache.set(key, out);
+  return out;
+}
+
 const BUILDINGS: ReadonlyArray<{ type: PieceType; inputs: number }> = [
   { type: 'plateFact', inputs: 1 }, { type: 'sphereFact', inputs: 2 }, { type: 'tesseractFact', inputs: 3 }, { type: 'powerPlant', inputs: 1 },
 ];
@@ -209,32 +280,53 @@ describe('where a teleporter stands on a building', () => {
     expect(cases.length).toBe((2 + 3 + 4 + 1) * 6);
   });
 
-  it('stands on its own stub near the tile edge, about where the stand-in ring was, its portal facing in along the stub', () => {
+  it('lies along its stub\'s printed black line (measured from the tile model), centred on it near the tile edge, its portal towards the building', () => {
     for (const c of cases) {
       const piece = building(c.type, c.inputs, c.rotation);
+      const pl = piecePlacement(piece);
       const t = teleporterPlacement(piece, c.buffer, c.slot);
       const own = positionsWithRole(piece, c.buffer === 'input' ? 'input_buffer' : 'output_buffer')[c.slot]!;
-      // On the stub: the line from the stub's hole straight in from the edge.
-      const hole = pointWorld(piece, own, 0), deep = pointWorld(piece, own, 20);
-      const len = Math.hypot(deep.x - hole.x, deep.z - hole.z);
-      const inward = { x: (deep.x - hole.x) / len, z: (deep.z - hole.z) / len };
-      const d = { x: t.x - hole.x, z: t.z - hole.z };
-      // On the centre line, except where TELEPORTER_STUB_SHIFT moves it (at most 2 mm, still on the printed stub).
-      const shift = c.buffer === 'input' ? TELEPORTER_STUB_SHIFT[c.type]?.[c.slot] ?? 0 : 0;
-      expect(Math.abs(shift)).toBeLessThanOrEqual(2);
-      expect(Math.abs(Math.abs(d.x * inward.z - d.z * inward.x) - Math.abs(shift)), `${label(c)}: off the stub`).toBeLessThan(1e-6);
-      const inset = d.x * inward.x + d.z * inward.z;
-      expect(inset, label(c)).toBeCloseTo(TELEPORTER_INSET, 6);
-      // About where the stand-in ring was drawn (round the material, BUFFER_INSET in).
-      expect(Math.abs(inset - BUFFER_INSET), label(c)).toBeLessThan(1);
-      // Near the edge, not against it: its back end TELEPORTER_EDGE_GAP in from the edge.
-      expect(inset - tele.hu, label(c)).toBeCloseTo(TELEPORTER_EDGE_GAP, 6);
+      // The printed line, measured from the black inlay of the tile model (model space, rotation 0).
+      const line = measuredStub(c.type, own);
+      // The teleporter in model space: its axis and centre.
+      const m = worldToModel(pl, t.x, t.z);
+      const yaw = t.yaw - pl.yaw;
+      const axis = { x: Math.cos(yaw), z: -Math.sin(yaw) };
+      const angle = (Math.acos(Math.min(1, axis.x * line.dir.x + axis.z * line.dir.z)) * 180) / Math.PI;
+      expect(angle, `${label(c)}: axis vs printed line`).toBeLessThan(1);
+      // Centred on the line, except where TELEPORTER_NUDGE moves it across (at most 0.5 mm, well inside the 6.6 mm bar).
+      const nudge = (c.buffer === 'input' ? TELEPORTER_NUDGE[c.type]?.[c.slot] : undefined) ?? { along: 0, side: 0 };
+      expect(Math.abs(nudge.side)).toBeLessThanOrEqual(0.5);
+      const off = (m.x - line.at.x) * -line.dir.z + (m.z - line.at.z) * line.dir.x;
+      expect(Math.abs(Math.abs(off) - nudge.side), `${label(c)}: off the line by ${off.toFixed(2)} mm`).toBeLessThan(0.25);
+      // Near the tile edge, not against it: about 6-8 mm in (the stand-in ring was 6.5 mm in).
+      const hole = pointWorld({ ...piece, coord: { q: 0, r: 0 }, rotation: 0 }, own, 0);
+      const inward = line.inward;
+      const inset = (m.x - hole.x) * inward.x + (m.z - hole.z) * inward.z;
+      const slide = nudge.along;
+      expect(inset, label(c)).toBeGreaterThan(5.5);
+      expect(inset, label(c)).toBeLessThan(8.5 + slide);
+      // Its nearest back corner TELEPORTER_EDGE_GAP in from the edge (further where it slides in).
+      const corner = Math.min(...corners(rect(m, yaw, tele.hu, tele.hv)).map(q => (q.x - hole.x) * inward.x + (q.z - hole.z) * inward.z));
+      if (slide === 0) expect(corner, label(c)).toBeCloseTo(TELEPORTER_EDGE_GAP, 3);
+      else expect(corner, label(c)).toBeGreaterThan(TELEPORTER_EDGE_GAP);
       expect(TELEPORTER_EDGE_GAP).toBeGreaterThanOrEqual(1);
-      // The portal (model +X) points in along the stub, towards the building.
-      const portal = { x: Math.cos(t.yaw), z: -Math.sin(t.yaw) };
-      expect(portal.x * inward.x + portal.z * inward.z, label(c)).toBeGreaterThan(0.9999);
-      const centre = piecePlacement(piece);
-      expect(Math.hypot(t.x + portal.x - centre.x, t.z + portal.z - centre.z), `${label(c)}: portal faces the building`).toBeLessThan(Math.hypot(t.x - centre.x, t.z - centre.z));
+      // The portal (model +X) points in along the line, towards the building.
+      expect(axis.x * inward.x + axis.z * inward.z, label(c)).toBeGreaterThan(0.9);
+      expect(Math.hypot(t.x + Math.cos(t.yaw) - pl.x, t.z - Math.sin(t.yaw) - pl.z), `${label(c)}: portal faces the building`).toBeLessThan(Math.hypot(t.x - pl.x, t.z - pl.z));
+    }
+  });
+
+  it('STUB_LINES (the slanted stubs) matches the lines measured from the tile models within a degree, and every other stub is square to its edge', () => {
+    for (const b of BUILDINGS) {
+      const piece = building(b.type, b.inputs, 0);
+      for (const s of spots(b.type, b.inputs)) {
+        const own = positionsWithRole(piece, s.buffer === 'input' ? 'input_buffer' : 'output_buffer')[s.slot]!;
+        const line = measuredStub(b.type, own);
+        const listed = (s.buffer === 'input' ? STUB_LINES[b.type]?.[s.slot] : undefined)?.angle ?? 0;
+        const slant = (Math.atan2(line.dir.x * line.mid.x + line.dir.z * line.mid.z, line.dir.x * line.inward.x + line.dir.z * line.inward.z) * 180) / Math.PI;
+        expect(Math.abs(slant - listed), `${b.type} ${s.buffer} ${s.slot}: measured ${slant.toFixed(2)} deg`).toBeLessThan(1);
+      }
     }
   });
 
