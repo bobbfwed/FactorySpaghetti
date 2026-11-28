@@ -18,7 +18,6 @@ import type { FigureBlock, PlayExample } from '../figures/types';
 import type { Block } from '../types';
 import { textOf, walk, type VNode } from '../vdom';
 
-const EXAMPLES: readonly PlayExample[] = [FIRST_CLAIMS_PLAY, PLACE_PLAY, ROLL_PLAY, CLAIM_PLAY];
 const COLOR_WORD = { blue: 'Blue', red: 'Red', orange: 'Orange', green: 'Green' } as const;
 
 function figuresIn(blocks: readonly Block[]): FigureBlock[] {
