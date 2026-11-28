@@ -72,7 +72,7 @@ export const POWER_PLANTS_PLAY: PlayExample = {
       ],
     },
     turn: { seat: 0, phase: 'roll' },
-    players: [{ power: 2 }, { power: 2 }, { power: 2 }, { power: 2 }],
+    players: [{ power: 0 }, { power: 0 }, { power: 0 }, { power: 0 }],
   },
   frame: { pieces: ['bl', 'p0', 'p1', 'p2', 'p3'], pad: 4 },
   aspect: 16 / 10,

@@ -211,7 +211,8 @@ class DomStage implements PlayStage {
     }
     // The side panel shows the state before the move until it has played, then after.
     const shown = t >= seg.at + seg.lead + seg.anim ? move.after : move.before;
-    const roll = this.rollShown(step, s, t, seg.at + seg.lead, cur.k);
+    // The last roll may have come in an earlier step (a factory run after it).
+    const roll = [...this.tl.steps.slice(0, i).flatMap(x => x.events), ...(this.rollShown(step, s, t, seg.at + seg.lead, cur.k) ?? [])];
     this.side?.show(shown, i - 1, roll);
     v.draw(t, this.ctx);
     this.updateFlights(t);
