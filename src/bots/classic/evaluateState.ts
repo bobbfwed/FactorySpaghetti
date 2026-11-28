@@ -11,11 +11,11 @@
 // Features are added one milestone at a time. B2 ships just `winProgress` and
 // `inventoryValue`; their weights live in `config.BOT_WEIGHTS`.
 
-import type { GameState, PlayerId, PieceType } from '../engine/state';
-import { BOT_WEIGHTS, MATERIAL_VALUES, MINE_COUNT, POWER_PLANT_BASE_YIELD } from '../engine/config';
-import { tesseractCount, resourcePoints } from '../engine/rules/scoring';
-import { factoryExpectedProduct, findInputCompletion } from '../engine/rules/production';
-import type { Material } from '../engine/config';
+import type { GameState, PlayerId, PieceType } from '../../engine/state';
+import { BOT_WEIGHTS, MATERIAL_VALUES, MINE_COUNT, POWER_PLANT_BASE_YIELD } from '../../engine/config';
+import { tesseractCount, resourcePoints } from '../../engine/rules/scoring';
+import { factoryExpectedProduct, findInputCompletion } from '../../engine/rules/production';
+import type { Material } from '../../engine/config';
 
 // The 4-Tesseract victory target (see scoring.checkTesseractVictory).
 const WIN_TARGET = 4;

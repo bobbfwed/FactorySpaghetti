@@ -28,6 +28,11 @@ export interface GameSpec {
   readonly playerCount: PlayerCount;
   /** Entrant id for each player id (seat). */
   readonly seats: readonly string[];
+  /**
+   * Stand-in test: from action `atAction` on, seat `seat` is played by entrant `bot` instead of
+   * its listed entrant (a bot taking over a half-built position, as when a player drops out).
+   */
+  readonly takeover?: { readonly atAction: number; readonly seat: number; readonly bot: string };
 }
 
 export type Ending = 'tesseracts' | 'boardExhausted' | 'actionLimit' | 'error';
@@ -66,6 +71,14 @@ export interface GameRecord {
   readonly cardsBought: readonly number[];
   /** Claims (Short Sale / Changing Priorities) onto a building another player had claimed, per seat. */
   readonly coClaims: readonly number[];
+  /** The stand-in takeover of the game's spec, if any. */
+  readonly takeover?: GameSpec['takeover'];
+  /** Moves each seat's bot chose (the runner's dice rolls are not counted). */
+  readonly moves?: readonly number[];
+  /** Own turns each seat began (round-end turns not counted). */
+  readonly turns?: readonly number[];
+  /** Milliseconds per decision, per seat (only when timing is asked for). */
+  readonly timing?: ReadonlyArray<readonly number[]>;
   /** What went wrong, with the action number, when ending = 'error'. */
   readonly error?: string;
   /** Wall-clock milliseconds (speed only; not part of the result). */
@@ -157,7 +170,9 @@ function mover(state: GameState): PlayerId | undefined {
   return pend ? pend.ownerId : state.turnOrder[state.activePlayerIndex];
 }
 
-export function playGame(spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, maxActions = 12_000, clock?: () => number): GameRecord {
+export function playGame(
+  spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, maxActions = 12_000, clock?: () => number, timing = false,
+): GameRecord {
   const t0 = clock?.();
   let state = createGame(spec.seed, spec.playerCount);
   const turnPosition = spec.seats.map((_, seat) => state.turnOrder.indexOf(seat as PlayerId));
@@ -169,6 +184,11 @@ export function playGame(spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, m
     if (!fn) throw new Error(`unknown bot "${id}"`);
     return fn;
   });
+  const takeoverFn = spec.takeover ? entrants.get(spec.takeover.bot) : undefined;
+  if (spec.takeover && !takeoverFn) throw new Error(`unknown bot "${spec.takeover.bot}"`);
+  const moves = spec.seats.map(() => 0);
+  const turns = spec.seats.map(() => 0);
+  const times: number[][] | null = timing && clock ? spec.seats.map(() => []) : null;
 
   const bonusFirst: Record<BonusKind, { round: number; seat: number } | null> = { investor: null, beltWeaver: null, factoryEmpire: null };
   const bonusMoves: Record<BonusKind, number> = { investor: 0, beltWeaver: 0, factoryEmpire: 0 };
@@ -185,9 +205,14 @@ export function playGame(spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, m
       const [d, next] = roll(dice, state.mineCount);
       dice = next;
       action = { type: 'ROLL_DICE', rolls: d };
+      turns[who]!++; // one roll per own turn
     } else {
+      if (takeoverFn && spec.takeover && actions >= spec.takeover.atAction) bots[spec.takeover.seat] = takeoverFn;
       try {
+        const m0 = times && clock ? clock() : 0;
         action = bots[who]!(state, who);
+        if (times && clock) times[who]!.push(clock() - m0);
+        moves[who]!++;
       } catch (e) {
         error = `bot ${spec.seats[who]} (seat ${who}) threw at action ${actions}: ${(e as Error).message}`;
         break;
@@ -245,6 +270,10 @@ export function playGame(spec: GameSpec, entrants: ReadonlyMap<string, BotFn>, m
     mines,
     cardsBought: state.players.map(p => p.stats.cardsPurchased),
     coClaims,
+    ...(spec.takeover ? { takeover: spec.takeover } : {}),
+    moves,
+    turns,
+    ...(times ? { timing: times.map(t => t.map(x => Math.round(x * 1000) / 1000)) } : {}),
     ...(error ? { error } : {}),
     ...(t0 !== undefined && clock ? { ms: clock() - t0 } : {}),
   };

@@ -9,7 +9,7 @@
 import type { BoardPiece, GameState, Material, PlayerId } from '../../engine/state';
 import type { BeltPlacement } from '../../engine/routing';
 import { pieceTemplate } from '../../engine/config';
-import { adjAt, getRole, beltEndpointBlocked } from '../../engine/rules/flow';
+import { adjAt, getRole, beltEndpointBlocked, inputIndexAt, teleporterCutsOff } from '../../engine/rules/flow';
 import { PRODUCT, feedAt, owns } from './analysis';
 
 export interface PlannedRoute {
@@ -53,11 +53,17 @@ function seam(c: Ctx, piece: BoardPiece, pos: number): { piece: BoardPiece; pos:
 }
 
 /** What material a seam point supplies to `me`, if it is a source (a Mine ore exit or my building's output). */
+// An output with a teleporter carries nothing onto a belt: only the teleporter drains it (#53).
 function sourceMaterial(c: Ctx, n: { piece: BoardPiece; pos: number }): Material | null {
   const role = getRole(n.piece, n.pos);
   if (role === 'ore_output') return 'ore';
-  if (role === 'output_buffer' && owns(n.piece, c.me)) return PRODUCT[n.piece.type] ?? null;
+  if (role === 'output_buffer' && owns(n.piece, c.me) && !teleporterCutsOff(n.piece, 'output')) return PRODUCT[n.piece.type] ?? null;
   return null;
+}
+
+/** An input that carries a teleporter takes nothing from a belt (#53, per input since #55). */
+function teleportedInput(piece: BoardPiece, pos: number): boolean {
+  return teleporterCutsOff(piece, 'input', inputIndexAt(piece, pos));
 }
 
 interface Node { pieceId: string; pos: number; cost: number }
@@ -71,6 +77,7 @@ export function routeToInput(
   materials: readonly Material[], maxBelts: number,
 ): PlannedRoute | null {
   if (maxBelts < 1) return null;
+  if (teleportedInput(dest, destPos)) return null; // a belt there would carry nothing
   const c = ctxOf(state, me);
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null; material: Material; source: string }>();
   const queue: Node[] = [];
@@ -205,7 +212,9 @@ export function longRoute(
   const destKeys = new Set<string>();
   for (const p of state.board) {
     if (p.type === 'mine' || p.type === 'blank' || !owns(p, me) || !p.input) continue;
-    for (const pt of pieceTemplate(p).points) if (pt.enabled && pt.role === 'input_buffer') destKeys.add(`${p.id}:${pt.position}`);
+    for (const pt of pieceTemplate(p).points) {
+      if (pt.enabled && pt.role === 'input_buffer' && !teleportedInput(p, pt.position)) destKeys.add(`${p.id}:${pt.position}`);
+    }
   }
   if (destKeys.size === 0) return null;
 

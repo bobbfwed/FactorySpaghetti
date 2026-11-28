@@ -3,6 +3,7 @@
 
 import type { BotFn } from './botInterface';
 import { chooseAction as greedyBot } from './greedyBot';
+import { chooseAction as greedyClassic } from './classic/greedyClassic';
 import { chooseAction as randomBot } from './randomBot';
 import { STYLE_BOTS } from './styles/profiles';
 
@@ -13,12 +14,20 @@ export interface BotType {
 }
 
 export const BOT_TYPES: readonly BotType[] = [
-  // Evaluation-driven bot (claim economy, credit-banking, power management, round-end
-  // produce/convert) — the strong opponent. id kept as 'greedy' for lobby-default stability.
+  // The strong default opponent and the stand-in for an away player. id kept as 'greedy' (saved
+  // games store it).
   { id: 'greedy', label: 'Smart Bot', fn: greedyBot },
   // Play-style bots (styles/): one shared plan-following procedure, each with its own priorities.
   ...STYLE_BOTS.map(({ style, fn }) => ({ id: style.id, label: style.label, fn })),
   { id: 'random', label: 'Random Bot', fn: randomBot },
+];
+
+/**
+ * Bots the simulator knows but the lobby does not offer: the Smart Bot as it was before
+ * 2026-11-27 ('greedy-classic'), kept so every new version can be measured against it.
+ */
+export const SIM_ONLY_BOTS: readonly BotType[] = [
+  { id: 'greedy-classic', label: 'Smart Bot (classic)', fn: greedyClassic },
 ];
 
 export function botById(id: string): BotType {

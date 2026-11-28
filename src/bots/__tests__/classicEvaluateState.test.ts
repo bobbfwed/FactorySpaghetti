@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../../engine/rules/setup';
 import { MATERIAL_VALUES } from '../../engine/config';
-import { evaluateState, winProgress, inventoryValue, expectedProduction, bufferedOutput, meepleHarvest, claimReserve, powerBalance } from '../evaluateState';
+import { evaluateState, winProgress, inventoryValue, expectedProduction, bufferedOutput, meepleHarvest, claimReserve, powerBalance } from '../classic/evaluateState';
 import type { GameState, PlayerId, Material, PieceType, BoardPiece, Buffer } from '../../engine/state';
 
 // B2: the scorer is tested in isolation — nothing chooses moves yet. We start from a
