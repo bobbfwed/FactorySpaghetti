@@ -1,0 +1,2 @@
+# npm run sim -- --mode mirror --bots greedy --seeds 400 --start 1210000 --jobs 8 --out <scratch>/R6-mirror-smart-more.json
+Sat Nov 28 04:14:13 PST 2026
