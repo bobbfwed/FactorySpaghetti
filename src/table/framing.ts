@@ -7,7 +7,27 @@
 // beside the board are laid out around an area that only grows, in coarse steps, so that a placed
 // piece normally moves neither the piles nor the camera.
 
+import type { GameState } from '../engine/state';
 import { ACROSS_FLATS, TILE_TOP, containsBounds, unionBounds, type Bounds } from './layout';
+
+/** What the table remembers of the game it showed last, to tell the same game going on from another. */
+export interface ShownGame { readonly seed: number; readonly playerCount: number; readonly pieces: number }
+export const shownGame = (g: GameState): ShownGame => ({ seed: g.seed, playerCount: g.playerCount, pieces: g.board.length });
+
+/** The most pieces one move takes off the board (Sink Hole takes one). */
+const MOST_REMOVED_BY_A_MOVE = 1;
+
+/**
+ * Whether showing `next` starts the view afresh (the camera re-frames, the piles are laid out
+ * again): the first game shown, another game (another seed or number of players), or a jump back
+ * in the same game (a save loaded, a replay going back several moves: more pieces gone than one
+ * move can take). Within one game a board one piece smaller is a Sink Hole: the view stays.
+ */
+export function freshView(before: ShownGame | null, next: GameState): boolean {
+  if (!before) return true;
+  if (next.seed !== before.seed || next.playerCount !== before.playerCount) return true;
+  return next.board.length < before.pieces - MOST_REMOVED_BY_A_MOVE;
+}
 
 /** Room the pile area keeps around the board: one tile, so one more tile on any edge fits. */
 export const ANCHOR_PAD = ACROSS_FLATS;

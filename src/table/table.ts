@@ -15,7 +15,7 @@ import { Overlay } from './overlay';
 import { PreviewLayer } from './preview';
 import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from './layout';
-import { frameAll, frameArea, keepInView as keepAreaInView, turnPivot, turnRefitArea, type FramingTable } from './framing';
+import { frameAll, frameArea, freshView, keepInView as keepAreaInView, shownGame, turnPivot, turnRefitArea, type FramingTable, type ShownGame } from './framing';
 import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, TELEPORTER_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
 import { PORTAL_STILL_TIME } from './portal';
@@ -91,7 +91,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let targetKeys = new Set<string>();
   let ghost: Ghost | null = null;
   let framedOnce = false;
-  let lastBoardSize = 0;
+  /** The game shown last (framing.ts freshView). */
+  let lastShown: ShownGame | null = null;
   /** The table area the camera was last framed to (framing.ts). */
   let framedArea: Bounds | null = null;
   /** The player has dragged, pinched, scrolled, turned or tilted the view. */
@@ -407,12 +408,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     refreshTargets();
     overlay.setGhost(ghost, game);
     fitShadow();
-    const size = next?.board.length ?? 0;
-    // Frame the table the first time a game appears, and again for a board with fewer pieces
-    // (another game, or a replay going back); otherwise the camera moves only when asked
+    // Frame the table the first time a game appears, and again for another game or a jump back
+    // (framing.ts freshView; not for a Sink Hole); otherwise the camera moves only when asked
     // (recenter, keepInView).
-    if (next && (!framedOnce || (size < lastBoardSize))) { recenter(framedOnce); framedOnce = true; }
-    lastBoardSize = size;
+    if (next && (!framedOnce || freshView(lastShown, next))) { recenter(framedOnce); framedOnce = true; }
+    if (next) lastShown = shownGame(next);
     invalidate();
   }
 
