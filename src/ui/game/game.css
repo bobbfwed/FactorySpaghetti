@@ -130,6 +130,10 @@ html.tg-active #app { min-height: 0; height: 100%; }
 .tg-menu .switch-item .knob::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--text-2); transition: left 0.15s; }
 .tg-menu .switch-item.on .knob { background: var(--gold); }
 .tg-menu .switch-item.on .knob::after { left: 19px; background: var(--ink); }
+/* A switch with a short note under its label ("Uses more battery"). */
+.tg-menu .switch-item.noted { padding-top: 6px; padding-bottom: 6px; }
+.tg-menu .switch-item.noted .lb2 { display: flex; flex-direction: column; gap: 1px; min-width: 0; line-height: 1.25; }
+.tg-menu .switch-item.noted small { font-size: 12.5px; font-weight: 500; color: var(--text-2); }
 
 /* ---- opponents: plates ---- */
 .tg-seats { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 12px; width: calc(100% - 360px); max-width: 1240px; justify-content: center; }

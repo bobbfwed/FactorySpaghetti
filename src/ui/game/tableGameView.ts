@@ -37,6 +37,7 @@ import { planTransition } from '../../table/transition';
 import { tableSeat } from '../../table/seat';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
+import { movingPortals, onPortalMotionChange } from '../portalPref';
 import { FxLayer } from './fx';
 import { Sound } from './sound';
 import { Stage, type Shown, type StageHost } from './stage';
@@ -1020,6 +1021,9 @@ export function tableGameView(ctrl: AppController): View {
       const home = (shownRoom ?? room)?.game;
       if (home) applyHomeView(home, ctrl.mySeat);
       colorsKey = ''; targetsKey = ''; ghostKey = ''; insetsKey = '';
+      // The player's "Moving Teleporter portals" setting, now and whenever it is flipped.
+      t.setPortalMotion(movingPortals());
+      offs.push(onPortalMotionChange(() => t.setPortalMotion(movingPortals())));
       offs.push(t.onPick((hit) => onPick(hit)));
       offs.push(ctrl.onPreview((seat, pv) => {
         if (pv) otherPreviews.set(seat, { p: pv, seq: ctrl.room?.seq ?? -1 });

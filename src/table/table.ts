@@ -2,7 +2,8 @@
 // Renders on demand: a frame is drawn only when something changed, while an animation runs, or
 // while the user drags / zooms. The one exception is the Teleporters' glowing portals (portal.ts):
 // while at least one is on the board and the page is visible, they are redrawn a few times a second
-// (PORTAL_FPS), without redrawing the shadow map; never with prefers-reduced-motion.
+// (PORTAL_FPS), without redrawing the shadow map; never when the player turned "Moving Teleporter
+// portals" off (setPortalMotion) or, by default, with prefers-reduced-motion.
 
 import * as THREE from 'three';
 import type { GameState } from '../engine/state';
@@ -134,11 +135,14 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
 
   // ── The portals' swirl: a slow redraw while a Teleporter is on the board ──
   const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  /** The player's "Moving Teleporter portals" setting (setPortalMotion); null: follow the device (still with reduced motion). */
+  let portalMotion: boolean | null = null;
+  const portalsSwirl = (): boolean => portalMotion ?? !reducedMotion?.matches;
   let portalTimer: number | undefined;
   /** When the last frame was drawn (performance.now() ms). */
   let lastFrameAt = 0;
   const portalsMove = (): boolean =>
-    table.portalCount > 0 && document.visibilityState === 'visible' && !reducedMotion?.matches && !disposed && !contextLost;
+    table.portalCount > 0 && document.visibilityState === 'visible' && portalsSwirl() && !disposed && !contextLost;
   /**
    * Ask for the next portal frame 1/PORTAL_FPS s after the last frame, if the portals are to move
    * at all (the frame itself then waits for the screen's next refresh, about half a refresh on average).
@@ -183,8 +187,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       lastAz = rig.azimuth;
       pilesDirty = false;
     }
-    // A still swirl for players who prefer less motion; otherwise it turns with the clock.
-    table.setPortalTime(reducedMotion?.matches ? PORTAL_STILL_TIME : (now / 1000) % 3600);
+    // A still swirl when portals are not to move (the setting, or reduced motion); otherwise it turns with the clock.
+    table.setPortalTime(portalsSwirl() ? (now / 1000) % 3600 : PORTAL_STILL_TIME);
     renderer.shadowMap.needsUpdate = shadowDirty;
     shadowDirty = false;
     const t0 = performance.now();
@@ -562,6 +566,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       invalidate();
     },
     stats() { return stats; },
+    setPortalMotion(on) {
+      portalMotion = on;
+      if (!portalsSwirl()) stopPortals();
+      invalidate();
+    },
     renderNow() {
       if (contextLost) return;
       frameRequested = false;

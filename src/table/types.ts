@@ -101,6 +101,12 @@ export interface Table {
   setViewport(insets: ViewInsets, opts?: { minTilePx?: number }): void;
   /** Called after every drawn frame (camera moves, zoom, re-render), e.g. to move HTML anchored to pieces. */
   onFrame(fn: () => void): () => void;
+  /**
+   * Whether the Teleporters' portals swirl (the player's "Moving Teleporter portals" setting):
+   * false shows a still swirl and draws no idle frames for them; null follows the device (still
+   * with reduced motion). Takes effect at once.
+   */
+  setPortalMotion(on: boolean | null): void;
   // ── Additions (development aids) ──
   /** Draw a small marker on every connection point, coloured by engine role. */
   setDebugPoints(on: boolean): void;
