@@ -4,7 +4,7 @@ Started 2026-11-27 on branch `wp/bots`. The Smart Bot is the bot with id `greedy
 
 ## Where I am / what is next
 
-2026-11-28 01:30. Kept so far: attempt 1 (plan-following procedure) and attempt 3e (Bonus Hunter weights); the bot now wins 82% / 51% / 32% of its 2 / 3 / 4-player gauntlet games (fair share 50 / 33 / 25). Running: batch 3 (end-game power value, bonus denial, placement denial, closer, stronger bonus weights) and batch 4 (Investor lock, thrift, end-game points) on top of it, seeds 401000–401119. Next: a speed candidate (Belt Weaver search budget 1500 instead of 6000: the worst decisions are failed Belt Weaver searches), then a weight sweep, then the final tables on fresh seeds from 900000. Scratch files (candidate definitions `cand/*.ts`, run outputs) are in the session scratchpad `bots/` folder; `run.sh NAME CANDFILE SEEDS START BOTS` runs one paired batch.
+2026-11-28 02:15. Kept: attempt 1 (plan-following procedure), 3e (Bonus Hunter weights), 4d (closer), 5a (stronger bonus weights), 5e (Belt Weaver search budget, speed), 6d (teleporter appetite 0.2). The bot scores about 1.75 x share in the gauntlet. Running: sweep batch 7 (power value, look-ahead dice, meeple upgrade bias, bonus and Belt Weaver weights; on 5a/5e, seeds 403000) and batch 8 (card appetite 0.1 and 0, teleporter appetite 0.05; on 6d, seeds 404000). Next: keep the best, one more round on top if something qualified, then the final tables (`final.sh` in the scratchpad: fresh seeds from 900000), a quiet timing run, the BOT_FINDINGS section, and the full checks. Scratch files (candidate definitions `cand/*.ts`, run outputs) are in the session scratchpad `bots/` folder; `run.sh NAME CANDFILE SEEDS START BOTS` runs one paired batch.
 
 ## How every attempt is measured
 
