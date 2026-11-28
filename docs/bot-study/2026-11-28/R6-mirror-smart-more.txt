@@ -1,2 +1,43 @@
 # npm run sim -- --mode mirror --bots greedy --seeds 400 --start 1210000 --jobs 8 --out <scratch>/R6-mirror-smart-more.json
 Sat Nov 28 04:14:13 PST 2026
+
+> factory-spaghetti@0.1.5 sim
+> vite-node src/sim/cli.ts -- --mode mirror --bots greedy --seeds 400 --start 1210000 --jobs 8 --out C:/Users/BNIMO~1.BNI/AppData/Local/Temp/claude/bce9939815b905b6/***/scratchpad/runs/R6-mirror-smart-more.json
+
+(8 processes, 102 s wall clock)
+
+2 players (even share 50.0%)
+bot        games   wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Smart Bot    800  400.0     50.0%  46.5%–53.5%     1.00    21.9     399        1    45.7  1.68   16.9   1.33  50.0%  32.9%  50.0%    0.0   0.21   0.00      0      0              44.0% / 56.0%
+
+3 players (even share 33.3%)
+bot        games   wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error  win rate by turn position
+Smart Bot   1200  400.0     33.3%  30.7%–36.1%     1.00    21.1     395        5    47.8  1.67   16.2   0.97  33.3%  30.4%  33.3%    0.0   0.13   0.00      0      0      29.5% / 43.8% / 26.8%
+
+4 players (even share 25.0%)
+bot        games   wins  win rate       95% CI  x share  rounds  won 4T  won pts  points  tess  1st T  bonus    Inv   Belt    Emp  cards  mines  co-cl  limit  error      win rate by turn position
+Smart Bot   1600  400.0     25.0%  22.9%–27.2%     1.00    20.1     332       68    49.9  1.77   14.6   0.73  25.0%  23.0%  25.0%    0.0   0.13   0.00      0      0  26.8% / 30.0% / 22.0% / 21.3%
+
+Win rate by turn position (all bots; 1st = starting player)
+  2 players, 400 games: 1st 44.0% (39.2%–48.9%), 2nd 56.0% (51.1%–60.8%)
+  3 players, 400 games: 1st 29.5% (25.2%–34.1%), 2nd 43.8% (39.0%–48.6%), 3rd 26.8% (22.6%–31.3%)
+  4 players, 400 games: 1st 26.8% (22.6%–31.3%), 2nd 30.0% (25.7%–34.7%), 3rd 22.0% (18.2%–26.3%), 4th 21.3% (17.5%–25.5%)
+
+Bonus Tesseracts
+players          bonus  held at end  first taken (round)  kept by first holder  changes of hands  holder won
+2             investor       100.0%                  5.1                 39.0%              2.13       70.8%
+2           beltWeaver        65.8%                 10.3                 88.6%              0.08       73.8%
+2        factoryEmpire       100.0%                 10.1                 29.0%              1.13       79.0%
+3             investor       100.0%                  5.7                 26.8%              1.67       62.5%
+3           beltWeaver        91.3%                  7.9                 66.6%              0.35       68.8%
+3        factoryEmpire       100.0%                  9.7                 10.0%              1.91       59.8%
+4             investor       100.0%                  5.9                  2.3%              2.96       47.5%
+4           beltWeaver        92.0%                  6.7                 56.8%              0.43       56.3%
+4        factoryEmpire       100.0%                  9.8                  6.8%              2.14       42.3%
+
+Decision time (ms) and decisions per own turn
+  2p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.3 decisions per turn
+  3p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.5 decisions per turn
+  4p greedy: 0 decisions, median NaN, 95th NaN, worst NaN; 8.7 decisions per turn
+
+1200 games; 0.65 s per game on average (one process).
