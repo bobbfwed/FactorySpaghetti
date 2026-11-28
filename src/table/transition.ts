@@ -247,7 +247,7 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   for (const s of [...filled]) {
     if (s.buffer !== 'input') continue;
     // From another building's output that emptied: the material clearly moved from there — but
-    // only out of a building whose output may pass into this one (an unclaimed building or one of
+    // only out of a building whose output may pass into this one (one of
     // the same player's: the engine's rule, directFlowAllowed; RULES_CHANGES.md #51).
     const destPiece = next.board.find(p => p.id === s.pieceId);
     const src = emptied.find(x => {

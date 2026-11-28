@@ -55,8 +55,8 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   });
   const startOf = (i: number): XZ => sourceWorld(game, sources[i]!)!;
 
-  // A building's output passes into this input only from an unclaimed building or one of the
-  // same player's (the engine's rule, directFlowAllowed; RULES_CHANGES.md #51). A Mine's ore is
+  // A building's output passes into this input only from a building of the same player's (the
+  // engine's rule, directFlowAllowed; RULES_CHANGES.md #51; an unclaimed building feeds nothing, #58). A Mine's ore is
   // anyone's, so it is never held back here.
   // A teleporter cuts its buffer off: nothing leaves a teleported output by itself, and a
   // teleported input takes nothing by itself (teleporterCutsOff, per input; #53, #55).

@@ -37,7 +37,8 @@ const beltA: Belt = { id: 'bA', ownerId: 0, pieceId: 'A', fromPoint: 0, toPoint:
 const beltC: Belt = { id: 'bC', ownerId: 0, pieceId: 'C', fromPoint: 0, toPoint: 7 };
 const P0: Claims = [{ ownerId: 0, controlModule: 4 }];
 const P1: Claims = [{ ownerId: 1, controlModule: 4 }];
-const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
+// Player 0 with two Control Modules on the building (one owner per building, RULES_CHANGES.md #57).
+const P0x2: Claims = [{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 5 }];
 
 const fromMine = [{ pieceId: 'mine-1', kind: 'mine' as const, slot: 0 }];
 const fromF = [{ pieceId: 'F', kind: 'output' as const, slot: 0 }];
@@ -52,26 +53,26 @@ const reached = (t: ReturnType<typeof traceFlow>[]): boolean => t.some(x => x !=
 describe('flow display: a belt end facing a building it may not serve is a dead end (#38)', () => {
   it('feeding: ore is drawn into a building only when the belt owner may serve it', () => {
     expect(reached(traces([MINE, A, F(P0)], [beltA], 'F', fromMine))).toBe(true);
-    expect(reached(traces([MINE, A, F(BOTH)], [beltA], 'F', fromMine))).toBe(true);
+    expect(reached(traces([MINE, A, F(P0x2)], [beltA], 'F', fromMine))).toBe(true);
     expect(reached(traces([MINE, A, F([])], [beltA], 'F', fromMine))).toBe(true);
     expect(reached(traces([MINE, A, F(P1)], [beltA], 'F', fromMine))).toBe(false);
   });
 
   it('drawing: nothing is drawn leaving a building claimed only by another player through the chain', () => {
     expect(reached(traces([F(P1, 'plate'), C, G(P0)], [beltC], 'G', fromF))).toBe(false);
-    expect(reached(traces([F(BOTH, 'plate'), C, G(P0)], [beltC], 'G', fromF))).toBe(true);
-    expect(reached(traces([F([], 'plate'), C, G(P0)], [beltC], 'G', fromF))).toBe(true);
+    expect(reached(traces([F(P0x2, 'plate'), C, G(P0)], [beltC], 'G', fromF))).toBe(true);
+    expect(reached(traces([F([], 'plate'), C, G(P0)], [beltC], 'G', fromF))).toBe(false); // an unclaimed building feeds nothing (#58)
   });
 
   it('agrees with the engine: the display traces a way exactly when the engine moves the material', () => {
     const g = createGame(1, 2);
     const engineMoves = (board: BoardPiece[], belts: Belt[], to: string): boolean =>
       resolveDirectAdjacency({ ...g, board, belts } as GameState).board.find(p => p.id === to)!.input!.slots.some(x => x !== null);
-    for (const claims of [P0, P1, BOTH]) {
+    for (const claims of [P0, P1, P0x2]) {
       const board = [MINE, A, F(claims)];
       expect(reached(traces(board, [beltA], 'F', fromMine))).toBe(engineMoves(board, [beltA], 'F'));
     }
-    for (const claims of [P1, BOTH, []]) {
+    for (const claims of [P1, P0x2, []]) {
       const board = [F(claims, 'plate'), C, G(P0)];
       expect(reached(traces(board, [beltC], 'G', fromF))).toBe(engineMoves(board, [beltC], 'G'));
     }
@@ -86,9 +87,9 @@ describe('flow display: a belt end facing a building it may not serve is a dead 
       resolveDirectAdjacency({ ...g, board, belts: [] } as GameState).board.find(p => p.id === 'H')!.input!.slots.some(x => x !== null);
     expect(reached(traces([F(P1, 'plate'), H(H0)], [], 'H', fromF))).toBe(false);
     expect(reached(traces([F(P0, 'plate'), H(H0)], [], 'H', fromF))).toBe(true);
-    expect(reached(traces([F(BOTH, 'plate'), H(H0)], [], 'H', fromF))).toBe(true);
-    expect(reached(traces([F([], 'plate'), H(H0)], [], 'H', fromF))).toBe(true);
-    for (const claims of [P0, P1, BOTH, []]) {
+    expect(reached(traces([F(P0x2, 'plate'), H(H0)], [], 'H', fromF))).toBe(true);
+    expect(reached(traces([F([], 'plate'), H(H0)], [], 'H', fromF))).toBe(false); // an unclaimed building feeds nothing (#58)
+    for (const claims of [P0, P1, P0x2, []]) {
       const board = [F(claims, 'plate'), H(H0)];
       expect(reached(traces(board, [], 'H', fromF)), JSON.stringify(claims)).toBe(engineMoves(board));
     }
