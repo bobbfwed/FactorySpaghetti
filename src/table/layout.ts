@@ -25,6 +25,7 @@ import { PIECE_TEMPLATES, STACK_COMPOSITION, STARTING_PIECES_PER_PLAYER, pieceTe
 export type PieceRef = PieceType | { readonly type: PieceType; readonly id: string };
 const templateOf = (p: PieceRef): PieceTemplate => (typeof p === 'string' ? PIECE_TEMPLATES[p] : pieceTemplate(p));
 import { mineSecondaryCoord } from '../engine/rules/pieces';
+import { teleporterOn } from '../engine/rules/teleporters';
 
 export interface XZ { readonly x: number; readonly z: number }
 
@@ -263,12 +264,20 @@ export function positionsWithRole(piece: PieceRef, role: PointRole): number[] {
 }
 
 /**
+ * A piece as the buffer helpers need it: where it is, and (when known) its buffers, because the
+ * material of a stub that carries a teleporter moves aside for it (teleportedMaterialWorld).
+ */
+export type BufferPiece = Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation'> & Partial<Pick<BoardPiece, 'input' | 'output'>>;
+
+/**
  * Where material in buffer slot `slot` sits. Input slot i belongs to the i-th input position
  * (engine order); the output slot sits on the output stub. Extra slots beyond the stubs line up
  * further in along the last stub. Mines (output buffer only, no stub) use the rayed hex's disc.
+ * When the stub carries a teleporter, the teleporter stands where the material would be and the
+ * material lies beside it (TELEPORTED_MATERIAL_SPOTS).
  */
 export function bufferSlotWorld(
-  piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation'>,
+  piece: BufferPiece,
   buffer: 'input' | 'output',
   slot: number,
 ): XZ {
@@ -280,12 +289,15 @@ export function bufferSlotWorld(
   if (positions.length === 0) return axialToWorld(piece.coord);
   const i = Math.min(slot, positions.length - 1);
   const extra = slot - i;
+  if (extra === 0 && teleporterOn(buffer === 'input' ? piece.input : piece.output, i) !== null) {
+    return teleportedMaterialWorld(piece, buffer, i);
+  }
   return pointWorld(piece, positions[i]!, BUFFER_INSET + extra * 13);
 }
 
 /** Anchor of a whole buffer (for popovers and picking): centre of its slots. */
 export function bufferAnchorWorld(
-  piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation' | 'input' | 'output'>,
+  piece: BufferPiece,
   buffer: 'input' | 'output',
 ): XZ {
   const buf = buffer === 'input' ? piece.input : piece.output;
@@ -301,58 +313,100 @@ export function bufferAnchorWorld(
 /**
  * Teleporter model (public/models/teleporter.glb, from the designer's Teleporter.3mf): a little
  * arched block 15 mm long (model X) x 10.4 mm wide x 11.9 mm tall, with the round portal on its +X
- * end. It is drawn at this scale so it fits beside a buffer's material clear of the Control
- * Modules and the meeple (about 11.3 x 7.8 x 8.9 mm on the table).
+ * end. On the table it stands on its own stub near the tile edge, its portal facing in along the
+ * stub towards the building (the owner's decision of 2026-11-27), drawn at this scale: about
+ * 9.8 x 6.8 x 7.7 mm. At three quarters of the print, as before, the teleporters on the Tesseract
+ * Factory's first and third inputs (whose stubs converge) would touch.
  */
-export const TELEPORTER_SCALE = 0.75;
+export const TELEPORTER_SCALE = 0.65;
 /** Measured from teleporter.glb (unscaled): half its length (model X), half its width (Z), height. */
 export const TELEPORTER_HALF_LENGTH = 7.5;
 export const TELEPORTER_HALF_WIDTH = 5.2;
 export const TELEPORTER_HEIGHT = 11.88;
-/** A teleporter beside a one-stub buffer: this far to the side of the slot, and this far further in. */
-export const TELEPORTER_SIDE = 10.2;
-export const TELEPORTER_ALONG = 7;
+/** Gap between the tile edge and the teleporter's back end: near the edge, not against it. */
+export const TELEPORTER_EDGE_GAP = 1.2;
+/**
+ * How far in from the tile edge a teleporter's centre stands on its stub: about where the stand-in
+ * ring used to be drawn (round the buffer's material, BUFFER_INSET = 6.5 mm in).
+ */
+export const TELEPORTER_INSET = TELEPORTER_EDGE_GAP + TELEPORTER_HALF_LENGTH * TELEPORTER_SCALE;
+
+/**
+ * The portal on the teleporter's +X end, measured from teleporter.glb (model units, before
+ * TELEPORTER_SCALE; checked by teleporter.test.ts): the round recess in the end face x = 7.5 is
+ * centred 5.084 mm up, on the model's centre line (z = 0), with radius 4.384 mm; its swirl relief
+ * rises from the floor at x = 4.0 to x = 6.5. The end face's outward normal is +X.
+ */
+export const PORTAL = { faceX: TELEPORTER_HALF_LENGTH, centreY: 5.084, radius: 4.384, reliefTopX: 6.5 } as const;
 
 const unit = (x: number, z: number): XZ => { const l = Math.hypot(x, z) || 1; return { x: x / l, z: z / l }; };
 
 /**
- * Where a teleporter stands beside its stub: `side` +1 = away from the middle of the stub's edge
- * (towards the nearer corner, where no printed icon is), -1 = towards the middle of the edge;
- * `out` mm along the edge from the stub's material, `in` mm further in from the edge.
+ * Where the material of a stub that carries a teleporter lies (the teleporter takes the
+ * material's place on the stub): `in` mm in from the tile edge, `mid` mm along the edge towards
+ * its middle (negative: towards its corner). The stub between the tile edge and the module square
+ * is about 19 mm long, too short for a teleporter and a Plate one behind the other once a Control
+ * Module turns to face the viewer, so the material lies beside the teleporter instead.
  */
-interface TeleporterSpot { readonly side: 1 | -1; readonly out: number; readonly in: number }
-const BESIDE_STUB: TeleporterSpot = { side: 1, out: TELEPORTER_SIDE, in: TELEPORTER_ALONG };
+interface MaterialSpot { readonly in: number; readonly mid: number }
+const BESIDE_TELEPORTER: MaterialSpot = { in: BUFFER_INSET, mid: 9.6 };
 /**
- * Spots that differ from BESIDE_STUB (RULES_CHANGES.md #55: a teleporter sits on one input, so
- * each input of a Sphere or Tesseract Factory has its own spot, beside that input's stub). The
- * three stubs of the left side leave room beside each only towards the middle of its edge, and
- * on the Tesseract Factory the third input's spot is where the meeple stood, so its meeple stands
- * at the top right instead (BUILDING_MEEPLE_MODEL) and its output's teleporter a little further
- * along. Chosen so that a teleporter on every input and one on the output clear each other, the
- * material, the Control Modules and the meeple at every rotation and camera angle
- * (teleporter.test.ts).
+ * Spots that differ from BESIDE_TELEPORTER: the slanted stubs (input 2 of the Sphere Factory,
+ * inputs 2 and 3 of the Tesseract Factory) leave room a little further in, and on the Tesseract
+ * Factory the output's material goes the other way, clear of the meeple at the top right
+ * (TESSERACT_MEEPLE_MODEL). Chosen so that, with a teleporter on any inputs and the output, the
+ * material clears every teleporter, the other material, the Control Modules and the meeple at
+ * every rotation and camera angle (teleporter.test.ts).
  */
-const TELEPORTER_SPOTS: Partial<Record<PieceType, { readonly input?: readonly TeleporterSpot[]; readonly output?: TeleporterSpot }>> = {
-  sphereFact: { input: [{ side: -1, out: 13, in: 2 }, { side: -1, out: 15, in: 3 }] },
-  tesseractFact: {
-    input: [{ side: -1, out: 13, in: 2 }, { side: -1, out: 15, in: 3 }, { side: -1, out: 15, in: 2 }],
-    output: { side: 1, out: 11, in: 10 },
-  },
+const TELEPORTED_MATERIAL_SPOTS: Partial<Record<PieceType, { readonly input?: ReadonlyArray<MaterialSpot | undefined>; readonly output?: MaterialSpot }>> = {
+  sphereFact: { input: [undefined, { in: 9, mid: 12.5 }] },
+  tesseractFact: { input: [undefined, { in: 9, mid: 12.5 }, { in: 9, mid: 14.5 }], output: { in: 14, mid: -9.6 } },
+};
+
+/** The stub frame of connection point `pos`: its hole on the edge, the inward unit vector, and the unit vector along the edge towards its middle. */
+function stubFrame(piece: Pick<BoardPiece, 'type' | 'coord' | 'rotation'>, pos: number): { hole: XZ; inward: XZ; mid: XZ } {
+  const f = pointFrame(piece.type, piece.rotation ?? 0, pos);
+  const hole = pointWorld(piece, pos, 0);
+  const middle = edgePoint(hexCentreOf(piece, f.hex), f.ve, 0.5, 0);
+  const n = edgeNormal(f.ve);
+  return { hole, inward: { x: -n.x, z: -n.z }, mid: unit(middle.x - hole.x, middle.z - hole.z) };
+}
+
+/** Where the material of input `slot` (or of the output) lies when a teleporter stands on its stub. */
+export function teleportedMaterialWorld(piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation'>, buffer: 'input' | 'output', slot = 0): XZ {
+  const positions = positionsWithRole(piece, buffer === 'input' ? 'input_buffer' : 'output_buffer');
+  const i = Math.max(0, Math.min(slot, positions.length - 1));
+  const spots = TELEPORTED_MATERIAL_SPOTS[piece.type];
+  const spot = (buffer === 'input' ? spots?.input?.[i] : spots?.output) ?? BESIDE_TELEPORTER;
+  const s = stubFrame(piece, positions[i]!);
+  return {
+    x: s.hole.x + s.inward.x * spot.in + s.mid.x * spot.mid,
+    z: s.hole.z + s.inward.z * spot.in + s.mid.z * spot.mid,
+  };
+}
+
+/**
+ * Inputs whose teleporter stands a little to the side of its stub's centre line (mm along the
+ * edge, towards its middle): on the Tesseract Factory, the stubs of inputs 1 and 3 converge, and
+ * on the centre line the teleporter of input 3 would touch the material of input 1 (when input 1
+ * has no teleporter). 2 mm keeps it on the printed stub. Every other teleporter stands on the line.
+ */
+export const TELEPORTER_STUB_SHIFT: Partial<Record<PieceType, readonly number[]>> = {
+  tesseractFact: [0, 0, 2],
 };
 
 /**
- * Where a teleporter stands, lying parallel to its stub with its portal facing out towards the
- * tile edge (the Control Modules turn to face the viewer, so the module square is crowded at some
- * angles and there is no room on the stub itself between material and modules): beside the
- * material of its stub, a little further in. For an output that is the output's stub; for an input
- * it is the stub of input `slot` (the engine's slot order, as bufferSlotWorld), at the spot given
- * by TELEPORTER_SPOTS. It clears the material in the buffers, the Control Modules (one to three),
- * the meeple and the other teleporters on the building (checked by teleporter.test.ts).
- * Mines have no stubs and are never claimed, so they never carry a teleporter; the buffer's anchor
- * is used. Yaw is in Three.js's convention.
+ * Where a teleporter stands: on its own stub (for an output, the output's stub; for an input, the
+ * stub of input `slot`, the engine's slot order as bufferSlotWorld), TELEPORTER_INSET mm in from
+ * the tile edge, lying along the stub with its portal facing in along it, towards the building:
+ * material seems to come out of the portal into an input, or to go from an output into it. The
+ * stub's material lies beside it (teleportedMaterialWorld). It clears the material in the
+ * buffers, the Control Modules (one to three), the meeple and the other teleporters on the
+ * building (checked by teleporter.test.ts). Mines have no stubs and are never claimed, so they
+ * never carry a teleporter; the buffer's anchor is used. Yaw is in Three.js's convention.
  */
 export function teleporterPlacement(
-  piece: Pick<BoardPiece, 'type' | 'id' | 'coord' | 'rotation' | 'input' | 'output'>,
+  piece: BufferPiece,
   buffer: 'input' | 'output',
   slot = 0,
 ): Placement {
@@ -362,24 +416,14 @@ export function teleporterPlacement(
     return { x: a.x, z: a.z, yaw: piecePlacement(piece).yaw };
   }
   const i = Math.max(0, Math.min(slot, positions.length - 1));
-  const pos = positions[i]!;
-  const spots = TELEPORTER_SPOTS[piece.type];
-  const spot = (buffer === 'input' ? spots?.input?.[i] : spots?.output) ?? BESIDE_STUB;
-  // Beside the stub: along the edge, from the middle of the edge outwards (+1) or inwards (-1).
-  const f = pointFrame(piece.type, piece.rotation ?? 0, pos);
-  const c = hexCentreOf(piece, f.hex);
-  const hole = pointWorld(piece, pos, 0);
-  const mid = edgePoint(c, f.ve, 0.5, 0);
-  const n = unit(hole.x - mid.x, hole.z - mid.z);
-  const stub = pointWorld(piece, pos, BUFFER_INSET);
-  const t = unit(stub.x - hole.x, stub.z - hole.z);
+  const s = stubFrame(piece, positions[i]!);
+  const side = buffer === 'input' ? TELEPORTER_STUB_SHIFT[piece.type]?.[i] ?? 0 : 0;
   const at = {
-    x: stub.x + n.x * spot.out * spot.side + t.x * spot.in,
-    z: stub.z + n.z * spot.out * spot.side + t.z * spot.in,
+    x: s.hole.x + s.inward.x * TELEPORTER_INSET + s.mid.x * side,
+    z: s.hole.z + s.inward.z * TELEPORTER_INSET + s.mid.z * side,
   };
-  const edge = { x: at.x - t.x, z: at.z - t.z };
-  // Model +X (the portal) maps to (cos yaw, -sin yaw): point it from the teleporter to the edge.
-  return { x: at.x, z: at.z, yaw: Math.atan2(at.z - edge.z, edge.x - at.x) };
+  // Model +X (the portal) maps to (cos yaw, -sin yaw): point it along the stub, inwards.
+  return { x: at.x, z: at.z, yaw: Math.atan2(-s.inward.z, s.inward.x) };
 }
 
 /**
@@ -408,9 +452,10 @@ export const MODULE_SQUARE = { halfX: 15, halfZ: 13 } as const;
 /** Where a building's meeple stands, model space: below the module square, clear of the stubs. */
 export const BUILDING_MEEPLE_MODEL: XZ = { x: 0, z: 21 };
 /**
- * The Tesseract Factory's meeple stands at the top right instead: below the module square is the
- * spot of the teleporter on its third input (RULES_CHANGES.md #55, TELEPORTER_SPOTS), and the top
- * right is the one place on that tile clear of its three inputs, its output and their teleporters.
+ * The Tesseract Factory's meeple stands at the top right instead: below the module square is
+ * where the material of its third input lies when a teleporter stands on that input's stub
+ * (RULES_CHANGES.md #55, TELEPORTED_MATERIAL_SPOTS), and the top right is the one place on that
+ * tile clear of its three inputs, its output, their teleporters and their material.
  */
 export const TESSERACT_MEEPLE_MODEL: XZ = { x: 17, z: -13 };
 
