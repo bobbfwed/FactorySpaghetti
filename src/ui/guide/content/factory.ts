@@ -13,8 +13,9 @@ import {
 } from './facts';
 import {
   BANK_FIGURE, BELT_CHAIN_FIGURE, BELT_RULE_FIGURE, CLAIMED_FIGURE, POWER_PLANT_FIGURE, PRODUCTION_FIGURE, TELEPORTER_FIGURE,
-  TRAY_FIGURE, UPGRADE_FIGURE, exchangeFigure, recipeFigure,
+  UPGRADE_FIGURE, exchangeFigure, recipeFigure,
 } from './figures';
+import { CLAIM_PLAY_FIGURE } from './plays';
 
 const claimCost = (module: number, mines: number): number => module - mines + 1;
 
@@ -49,8 +50,8 @@ export const claiming: Topic = {
     { k: 'p', t: 'Put a Control Module from your tray on a building nobody else has claimed. The lowest module you may place equals the number of Mines (the **claim floor**), and it costs 1 upgrade; each step higher costs 1 more:' },
     { k: 'note', t: '**Cost of placing module M = M − number of Mines + 1**' },
     { k: 'p', t: 'Tap the building and choose **Claim with your free claim** (paid with Mine credits, in your round-end turn) or, with Production Increase, **Claim with a Control Module**; then tap a glowing Control Module in your tray.' },
-    TRAY_FIGURE,
     { k: 'table', head: ['Module', ...MINE_NUMBERS.map(m => (m === 1 ? '1 Mine' : `${m} Mines`))], rows: claimCostRows(), caption: 'What a claim costs' },
+    CLAIM_PLAY_FIGURE,
     { k: 'note', tone: 'example', t: 'With 2 Mines and 4 upgrades you can claim a building with module 5 (5 − 2 + 1 = 4) — the 1 is skipped because it is below the floor.' },
     { k: 'p', t: `You can put up to **${MAX_CLAIMS_PER_BUILDING}** of your Control Modules on the same building, so it activates on more totals. Each extra claim costs the same as a new claim.` },
     {

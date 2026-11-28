@@ -81,7 +81,7 @@ const BELT_ON_TILE: SceneSpec = { pieces: [{ id: 't', type: 'blank', q: 0, r: 0 
 
 export const PLAYER_PIECES_FIGURE: FigureBlock = {
   k: 'figure',
-  alt: 'Each player\'s pieces: a meeple in each of the four colours, a Control Module, the Control Module tray, a belt, a teleporter, a Power Token, and the starting player marker.',
+  alt: 'Each player\'s pieces: a meeple in each of the four colours, a Control Module, a belt, a teleporter, a Power Token, and the starting player marker.',
   caption: 'Each player\'s pieces, in their colour, and the starting player marker.',
   show: {
     kind: 'lineup', items: [
@@ -90,7 +90,6 @@ export const PLAYER_PIECES_FIGURE: FigureBlock = {
       { pic: { model: 'meeple', color: 'orange' }, label: 'Meeple', value: 'Orange' },
       { pic: { model: 'meeple', color: 'green' }, label: 'Meeple', value: 'Green' },
       { pic: { model: 'control-module', color: 'blue', numeral: 7 }, label: 'Control Module', value: 'Numbered 1 to 18' },
-      { pic: { model: 'control-module-tray' }, label: 'Control Module tray' },
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: 'On a blank tile' },
       { pic: { model: 'teleporter', color: 'blue', yaw: TELEPORTER_YAW }, label: 'Teleporter', big: true },
       { pic: { model: 'power-token' }, label: 'Power Token' },

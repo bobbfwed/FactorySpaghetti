@@ -11,8 +11,9 @@ import {
 } from './facts';
 import {
   BOARD_PIECES_FIGURE, CARD_AND_DICE_FIGURE, FACTORY_TILE_FIGURE, MATERIALS_FIGURE, MINES_FIGURE, PLAYER_AREA_FIGURE,
-  PLAYER_PIECES_FIGURE, SETUP_FIGURE,
+  PLAYER_PIECES_FIGURE,
 } from './figures';
+import { FIRST_CLAIMS_FIGURE } from './plays';
 
 const makes = (type: 'plateFact' | 'sphereFact' | 'tesseractFact'): string => {
   const r = FACTORY_RECIPES[type]!;
@@ -193,7 +194,7 @@ export const starting: Topic = {
       ],
     },
     { k: 'p', t: 'When it is your pick, the buildings you can claim glow: tap one and confirm.' },
-    SETUP_FIGURE,
+    FIRST_CLAIMS_FIGURE,
     {
       k: 'details', blocks: [
         { k: 'p', t: 'With one Mine, one die is rolled, so only 1 to 6 can come up. Your Plate Factory runs on a 3 and your Power Plant on a 2.' },

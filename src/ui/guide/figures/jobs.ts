@@ -2,6 +2,10 @@
 // Pure (no DOM, no Three.js): the renderer is injected, so the tests use a fake one.
 
 import type { CalloutAt, FigColor, FigIcon, FigModel, SceneSpec } from './types';
+import type { GameState } from '../../../engine/state';
+import type { AnimStep } from '../../../table/transition';
+import type { Ghost, Target } from '../../../table/types';
+import type { PlayLayout } from './play';
 
 /** A 3D picture to draw: one model, or a staged scene. Sizes are CSS pixels. */
 export type FigureJob =
@@ -14,9 +18,49 @@ export interface Rendered {
   readonly marks: readonly { readonly x: number; readonly y: number }[];
 }
 
+/** How an animated example looks for its whole length: colours, camera frame, what stands beside the board. */
+export interface PlayLook {
+  /** CSS colour per player number. */
+  readonly colors: readonly string[];
+  readonly layout: PlayLayout;
+  /** Size of the picture in CSS pixels (drawn at up to twice that in device pixels). */
+  readonly w: number;
+  readonly h: number;
+}
+
+/** What glows and what is previewed at a still moment. */
+export interface PlayOverlay {
+  readonly glow?: readonly Target[];
+  readonly glowColor?: string;
+  readonly ghost?: Ghost | null;
+}
+
+/**
+ * A live view for the animated examples, drawn by the same renderer (one WebGL context for the
+ * whole guide) with the game's own TableScene and Animator. One example uses it at a time.
+ */
+export interface PlayView {
+  /** False once the renderer has been given back (the guide closed or sat idle): ask again. */
+  readonly alive: boolean;
+  /** Switch to an example's look (colours, frame); the next show starts it afresh. */
+  use(look: PlayLook): void;
+  /** Show `game` at once. `settle`: pieces may still settle (a piece turning face up on its pile). */
+  show(game: GameState, overlay: PlayOverlay, now: number, settle?: boolean): void;
+  /** Play the game's animation of one move from the state shown to `next` (steps from planTransition). */
+  animate(next: GameState, steps: readonly AnimStep[], scale: number, now: number): void;
+  /** Draw the moment `now` into `out` (sized to the picture). True while something still moves. */
+  draw(now: number, out: CanvasRenderingContext2D): boolean;
+  /** Where a marker or a table target is on the picture, as fractions of its width and height. */
+  where(at: CalloutAt | Target, game: GameState): { x: number; y: number } | null;
+  /** Device pixels per CSS pixel the view draws at. */
+  readonly ratio: number;
+}
+
 /** Draws pictures. Returns null when it cannot (no WebGL, a model missing or failing to load). */
 export interface FigureRenderer {
   render(job: FigureJob): Promise<Rendered | null>;
+  /** The live view for animated examples (null when the table's models cannot be drawn). */
+  stage?(): Promise<PlayView | null>;
   dispose(): void;
 }
 
@@ -74,6 +118,7 @@ export class FigureCache {
   private renderer: Promise<FigureRenderer | null> | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   private pending = 0;
+  private holds = 0;
   private timer: unknown = null;
   private readonly idleMs: number;
   private readonly setTimer: (fn: () => void, ms: number) => unknown;
@@ -108,6 +153,34 @@ export class FigureCache {
     return this.done.get(jobKey(job));
   }
 
+  /**
+   * The live view for animated examples, from the same renderer (made on demand). Null when 3D
+   * cannot be drawn. Never throws. Starts the quiet-spell countdown unless something holds it.
+   */
+  async view(): Promise<PlayView | null> {
+    this.stopIdle();
+    try {
+      this.renderer ??= this.make().catch(() => null);
+      const r = await this.renderer;
+      return r?.stage ? await r.stage() : null;
+    } catch {
+      return null;
+    } finally {
+      if (this.pending === 0) this.startIdle();
+    }
+  }
+
+  /** An example is playing: keep the renderer until unhold(). */
+  hold(): void {
+    this.holds++;
+    this.stopIdle();
+  }
+
+  unhold(): void {
+    this.holds = Math.max(0, this.holds - 1);
+    if (this.holds === 0 && this.pending === 0) this.startIdle();
+  }
+
   private async draw(job: FigureJob): Promise<Rendered | null> {
     this.renderer ??= this.make().catch(() => null);
     const r = await this.renderer;
@@ -123,12 +196,14 @@ export class FigureCache {
 
   private startIdle(): void {
     this.stopIdle();
+    if (this.holds > 0) return;
     this.timer = this.setTimer(() => { this.timer = null; this.release(); }, this.idleMs);
   }
 
   /** Give the WebGL context back now (the guide closed or nothing was drawn for a while). Pictures stay cached. */
   release(): void {
     this.stopIdle();
+    this.holds = 0;
     const r = this.renderer;
     this.renderer = null;
     if (!r) return;

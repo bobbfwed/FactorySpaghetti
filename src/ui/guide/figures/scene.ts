@@ -63,7 +63,7 @@ export function sceneBelts(spec: SceneSpec): Belt[] {
 }
 
 /** The real starting board for a seed, optionally after every player's first two claims. */
-function setupState(seed: number, players: 2 | 3 | 4, claims: boolean): GameState {
+export function setupState(seed: number, players: 2 | 3 | 4, claims: boolean): GameState {
   let s = createGame(seed, players);
   for (let guard = 0; claims && (s.phase === 'setupClaimPF' || s.phase === 'setupClaimPP') && guard < 16; guard++) {
     const active = s.turnOrder[s.activePlayerIndex]!;

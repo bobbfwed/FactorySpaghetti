@@ -13,14 +13,12 @@ import { CameraRig } from '../../../table/camera';
 import { numeralAtlas, numeralCell, woodTexture, NUMERAL_COLS, NUMERAL_ROWS } from '../../../table/textures';
 import { NUMERAL_LIVE } from '../../../table/moduleLook';
 import { PORTAL_STILL_TIME, portalGeometry, portalMaterial } from '../../../table/portal';
-import {
-  TILE_TOP, axialToWorld, boardBounds, bufferAnchorWorld, mineSlotWorld, piecePlacement, pointWorld,
-  beltCurve, sampleCurve, curveFrameAt, teleporterPlacement, TELEPORTER_HEIGHT, TELEPORTER_SCALE, type Bounds,
-} from '../../../table/layout';
+import { boardBounds, type Bounds } from '../../../table/layout';
 import type { Target } from '../../../table/types';
 import { PLAYER_COLOR_HEX } from '../../../table/types';
 import type { GameState } from '../../../engine/state';
-import type { FigureJob, FigureRenderer, Rendered } from './jobs';
+import type { FigureJob, FigureRenderer, PlayView, Rendered } from './jobs';
+import { createPlayView, markAt } from './playView';
 import { modelPlan } from './jobs';
 import { DEFAULT_COLORS, sceneState } from './scene';
 import type { CalloutAt, GlowAt, SceneSpec } from './types';
@@ -232,34 +230,6 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     return { kind: 'mineSlot', pieceId: g.piece, slot: g.slot };
   }
 
-  function markAt(game: GameState, at: CalloutAt): { x: number; y: number; z: number } {
-    if ('q' in at) { const c = axialToWorld(at); return { x: c.x, y: 1, z: c.z }; }
-    const piece = game.board.find(p => p.id === at.piece);
-    if (!piece) return { x: 0, y: 0, z: 0 };
-    const y = TILE_TOP + 1;
-    // Moved in towards the middle of the piece, so the marker sits beside the material in the buffer, not over it.
-    if ('buffer' in at) {
-      const c = bufferAnchorWorld(piece, at.buffer), m = piecePlacement(piece);
-      const d = Math.hypot(c.x - m.x, c.z - m.z) || 1, k = Math.min(13, d * 0.5) / d;
-      return { x: c.x + (m.x - c.x) * k, y, z: c.z + (m.z - c.z) * k };
-    }
-    if ('teleporter' in at) {
-      const t = teleporterPlacement(piece, at.teleporter, at.slot ?? 0);
-      return { x: t.x, y: TILE_TOP + TELEPORTER_HEIGHT * TELEPORTER_SCALE + 9, z: t.z };
-    }
-    if ('point' in at) { const c = pointWorld(piece, at.point); return { x: c.x, y, z: c.z }; }
-    // Above the spot, clear of a meeple standing on it.
-    if ('slot' in at) { const c = mineSlotWorld(piece, at.slot); return { x: c.x, y: y + 24, z: c.z }; }
-    if ('belt' in at) {
-      const belt = game.belts.filter(b => b.pieceId === piece.id)[at.belt];
-      if (!belt) return { x: 0, y: 0, z: 0 };
-      const f = curveFrameAt(sampleCurve(beltCurve(piece, belt.fromPoint, belt.toPoint), 32), 0.5);
-      return { x: f.p.x, y: y + 1.5, z: f.p.z };
-    }
-    const c = piecePlacement(piece);
-    return { x: c.x + (at.dx ?? 0), y: y + 2, z: c.z + (at.dz ?? 0) };
-  }
-
   async function drawScene(spec: SceneSpec, marks: readonly CalloutAt[], w: number, h: number): Promise<Rendered | null> {
     const lib = await sceneLib();
     if (!lib) return null;
@@ -301,7 +271,20 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     return snap(rig, w, h, points);
   }
 
+  // The live view of the animated examples: its own scene, this renderer (one WebGL context).
+  let play: (PlayView & { dispose(): void }) | null = null;
+  let playMade: Promise<PlayView | null> | null = null;
+
   return {
+    stage(): Promise<PlayView | null> {
+      if (lost) return Promise.resolve(null);
+      playMade ??= sceneLib().then(lib => {
+        if (!lib || lost) return null;
+        play = createPlayView({ renderer, canvas, ratio, lost: () => lost }, lib);
+        return play;
+      }).catch(() => null);
+      return playMade;
+    },
     async render(job): Promise<Rendered | null> {
       if (lost) return null;
       try {
@@ -312,6 +295,7 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     },
     dispose(): void {
       try {
+        play?.dispose();
         table?.dispose();
         overlay?.dispose();
         atlas?.dispose();
