@@ -1,6 +1,8 @@
 // The 3D table: draws any engine GameState as the physical game, read-only for now.
 // Renders on demand: a frame is drawn only when something changed, while an animation runs, or
-// while the user drags / zooms.
+// while the user drags / zooms. The one exception is the Teleporters' glowing portals (portal.ts):
+// while at least one is on the board and the page is visible, they are redrawn a few times a second
+// (PORTAL_FPS), without redrawing the shadow map; never with prefers-reduced-motion.
 
 import * as THREE from 'three';
 import type { GameState } from '../engine/state';
@@ -15,6 +17,7 @@ import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from '.
 import { frameAll, frameArea, keepInView as keepAreaInView, turnPivot, turnRefitArea, type FramingTable } from './framing';
 import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, TELEPORTER_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
+import { PORTAL_STILL_TIME } from './portal';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
 const DEFAULT_COLORS: readonly PlayerColor[] = ['blue', 'red', 'orange', 'green'];
@@ -23,6 +26,8 @@ const TAP_SLOP_PX = 7;
 const FAR_KEEP: Readonly<Record<string, number>> = { 'body': 0.3, 'mine-1/body': 0.35, 'belt/player': 0.35 };
 /** Zoomed out past this many millimetres per CSS pixel (a tile under ~115 px wide), use far detail. */
 const FAR_SCALE = 0.6;
+/** How often the portals' swirl is redrawn while nothing else moves (frames a second). */
+export const PORTAL_FPS = 15;
 
 export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions): Promise<Table> {
   const lib = await loadModels(opts?.modelsBase ?? './models');
@@ -37,7 +42,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   renderer.toneMappingExposure = 1.05;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.shadowMap.autoUpdate = true;
+  // The shadow map is redrawn with every frame except the portal-only ones (see draw).
+  renderer.shadowMap.autoUpdate = false;
 
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x1d130c);
@@ -112,11 +118,41 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   /** The WebGL context is gone (Android may take it when the app goes to the background). */
   let contextLost = false;
 
+  /** Something besides the portals changed since the last frame: redraw the shadow map too. */
+  let shadowDirty = true;
+
   function invalidate(): void {
+    shadowDirty = true;
+    requestFrame();
+  }
+
+  function requestFrame(): void {
     if (frameRequested || disposed || contextLost) return;
     frameRequested = true;
     requestAnimationFrame(frame);
   }
+
+  // ── The portals' swirl: a slow redraw while a Teleporter is on the board ──
+  const reducedMotion = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  let portalTimer: number | undefined;
+  const portalsMove = (): boolean =>
+    table.portalCount > 0 && document.visibilityState === 'visible' && !reducedMotion?.matches && !disposed && !contextLost;
+  /** Ask for the next portal frame in 1/PORTAL_FPS s, if the portals are to move at all. */
+  function schedulePortals(): void {
+    if (portalTimer !== undefined || !portalsMove()) return;
+    portalTimer = window.setTimeout(() => {
+      portalTimer = undefined;
+      if (portalsMove()) requestFrame();
+    }, 1000 / PORTAL_FPS);
+  }
+  function stopPortals(): void {
+    if (portalTimer !== undefined) window.clearTimeout(portalTimer);
+    portalTimer = undefined;
+  }
+  const onVisibility = (): void => { if (document.visibilityState === 'visible') invalidate(); else stopPortals(); };
+  const onMotionPref = (): void => { invalidate(); };
+  document.addEventListener('visibilitychange', onVisibility);
+  reducedMotion?.addEventListener?.('change', onMotionPref);
 
   function draw(now: number): boolean {
     let camMoving = rig.update(now);
@@ -141,6 +177,10 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       lastAz = rig.azimuth;
       pilesDirty = false;
     }
+    // A still swirl for players who prefer less motion; otherwise it turns with the clock.
+    table.setPortalTime(reducedMotion?.matches ? PORTAL_STILL_TIME : (now / 1000) % 3600);
+    renderer.shadowMap.needsUpdate = shadowDirty;
+    shadowDirty = false;
     const t0 = performance.now();
     renderer.render(scene, rig.camera);
     stats = {
@@ -158,6 +198,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     frameRequested = false;
     if (disposed || contextLost) return;
     if (draw(now)) invalidate();
+    else schedulePortals();
   }
 
   /** The board and everything beside it (piles laid out round the scene's growing pile area). */
@@ -483,6 +524,9 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     },
     dispose() {
       disposed = true;
+      stopPortals();
+      document.removeEventListener('visibilitychange', onVisibility);
+      reducedMotion?.removeEventListener?.('change', onMotionPref);
       frameListeners.clear();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
@@ -514,11 +558,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     renderNow() {
       if (contextLost) return;
       frameRequested = false;
+      shadowDirty = true;
       draw(performance.now());
       // Same frame again without redrawing the shadow map: the visible pass on its own.
-      renderer.shadowMap.autoUpdate = false;
+      renderer.shadowMap.needsUpdate = false;
       renderer.render(scene, rig.camera);
-      renderer.shadowMap.autoUpdate = true;
       stats = { ...stats, mainCalls: renderer.info.render.calls, mainTriangles: renderer.info.render.triangles };
     },
   };
