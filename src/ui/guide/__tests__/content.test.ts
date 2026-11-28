@@ -103,6 +103,14 @@ describe('guide content', () => {
     expect(bad).toEqual([]);
   });
 
+  it('never numbers the connection points ("#3", "hole #1"): they are described in words', () => {
+    const bad: string[] = [];
+    for (const t of GUIDE.topics) {
+      for (const s of allText(t)) if (/#\d/.test(plainText(s))) bad.push(`${t.id}: "${plainText(s)}"`);
+    }
+    expect(bad).toEqual([]);
+  });
+
   it('has an entry for every Leverage card in the engine, and none for a card that does not exist', () => {
     expect(Object.keys(CARD_GUIDE).sort()).toEqual(Object.keys(CARD_COUNTS).sort());
     const cards = findTopic('cards')!;

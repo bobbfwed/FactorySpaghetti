@@ -149,19 +149,6 @@ export const startingPiecesPerPlayer = (): number =>
 
 // ── Connection points ───────────────────────────────────────────────────────
 
-/** "#3–#6, #9–#12" from 0-based positions. */
-export function pointRanges(positions: readonly number[]): string {
-  const nums = [...positions].map(p => p + 1).sort((a, b) => a - b);
-  const parts: string[] = [];
-  for (let i = 0; i < nums.length; i++) {
-    let j = i;
-    while (j + 1 < nums.length && nums[j + 1] === nums[j]! + 1) j++;
-    parts.push(j > i + 1 ? `#${nums[i]}–#${nums[j]}` : j === i + 1 ? `#${nums[i]}, #${nums[j]}` : `#${nums[i]}`);
-    i = j;
-  }
-  return parts.length ? parts.join(', ') : 'none';
-}
-
 export interface PiecePoints { type: PieceType; belt: number[]; input: number[]; output: number[] }
 
 /** Belt holes, inputs and output of each single-hex piece, from the piece templates. */

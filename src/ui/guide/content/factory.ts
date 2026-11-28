@@ -10,7 +10,7 @@ import type { Topic } from '../types';
 import { recipesInOrder } from '../../../play/recipes';
 import {
   BUILDING_NAME, FACTORY_TYPES, MATERIALS, MATERIAL_NAME, MINE_NUMBERS, amount, cardPriceWords, count, exchangeDown,
-  exchangeWords, listWords, mineExits, minePriceWords, piecePoints, pointRanges, recipeWords, upgradePointWords,
+  exchangeWords, listWords, mineExits, minePriceWords, recipeWords, upgradePointWords,
 } from './facts';
 import {
   BANK_FIGURE, BELT_CHAIN_FIGURE, BELT_RULE_FIGURE, CLAIMED_FIGURE, POWER_PLANT_FIGURE, PRODUCTION_FIGURE, TELEPORTER_FIGURE,
@@ -197,19 +197,6 @@ export const moving: Topic = {
   see: ['belts', 'teleporters', 'factories'],
 };
 
-function pointsTable(): Topic['blocks'][number] {
-  return {
-    k: 'table', head: ['Piece', 'Belt holes', 'Input', 'Output'],
-    rows: piecePoints().map(p => [
-      p.type === 'blank' ? 'Blank tile' : BUILDING_NAME[p.type],
-      `${pointRanges(p.belt)} (${p.belt.length})`,
-      pointRanges(p.input) === 'none' ? '—' : pointRanges(p.input),
-      pointRanges(p.output) === 'none' ? '—' : pointRanges(p.output),
-    ]),
-    caption: 'Points are numbered #1 to #12, from the lower point of the input side, clockwise',
-  };
-}
-
 function mineExitWords(): string {
   const { rich, lean } = mineExits();
   const withLean = lean.map((n, i) => ({ n, mine: i + 1 })).filter(x => x.n > 0);
@@ -254,12 +241,11 @@ export const belts: Topic = {
     { k: 'h', t: 'Buying and removing', id: 'buying' },
     { k: 'p', t: `You start with ${count(BELT_COUNT, 'belt')}. Buy more from the bank for ${BELT_COST} each. In your actions step you can remove any of your belts (**Remove**, tap one of your glowing belts, then confirm). A belt you laid this turn comes back to your own belts (**Take back this belt**), ready to be laid again for free. A belt laid on an earlier turn goes back to the bank (**Return this belt to the bank**): placing a belt there again means buying one. **Take back this turn\'s belts** removes all the belts you laid this turn, and lets you lay a belt at a Mine again. Removing just the belt you laid at a Mine this turn does the same; removing one laid on an earlier turn does not give you an extra one.` },
     { k: 'h', t: 'Which holes take a belt', id: 'points' },
-    { k: 'p', t: 'A building\'s input and output points have no hole; every other hole on a building piece takes a belt, for any player.' },
-    pointsTable(),
+    { k: 'p', t: 'A blank tile has a hole at every one of its 12 points. On a building piece the points at its input and output have no hole, and a few points beside them have none either; every other hole takes a belt, for any player.' },
     { k: 'p', t: mineExitWords() },
     {
       k: 'details', blocks: [
-        { k: 'p', t: 'Counting points the short way round: #1 to #2 is 1 apart (the same edge), #1 to #3 is 2 apart (across one corner), #1 to #4 is 3 apart — allowed. On a blank tile, a belt from #1 can go to any of #4 to #10.' },
+        { k: 'p', t: 'Counting points the short way round: the two points of one edge are 1 apart, and a point and the nearest point across a corner are 2 apart — both too close. Three or more apart is allowed, so on a blank tile a belt from one point can go to any of the 7 points facing away from it.' },
         { k: 'p', t: 'Material does not move along a new belt until material next moves — for belts you lay, when you press **Done with actions**. Until then you can change your mind.' },
         { k: 'p', t: 'The Mine limit counts only belt ends facing an ore exit. A belt end facing a part of a Mine with no exit does not count, and carries nothing.' },
         { k: 'p', t: 'Reserved points: only a building\'s owner may lay belts to its input and output. Anyone may lay belts to an unclaimed building, but an unclaimed building neither receives nor feeds anything.' },
@@ -286,7 +272,7 @@ export const teleporters: Topic = {
     },
     TELEPORTER_FIGURE,
     { k: 'h', t: 'Placing a teleporter' },
-    { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap an input or the output of one of your buildings, and confirm. On a Sphere or Tesseract Factory each input glows on its own, and the confirmation names it ("input 2"): inputs are counted in the order of the holes, #1, #3 and #12. A building\'s menu also offers **Teleporter on the input** (on a Sphere or Tesseract Factory, **Teleporter on input 1**, **input 2** …, with what each holds) and **Teleporter on the output**.' },
+    { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap an input or the output of one of your buildings, and confirm. On a Sphere or Tesseract Factory each input glows on its own, and the confirmation names it ("input 2"): input 1 is the one on the side opposite the output, and each input lights on its own, so you see which one you tap. A building\'s menu also offers **Teleporter on the input** (on a Sphere or Tesseract Factory, **Teleporter on input 1**, **input 2** …, with what each holds) and **Teleporter on the output**.' },
     { k: 'p', t: `**Price: the number of teleporters on the board (all players) + 1.** The first costs ${teleporterCost(0)}, the next ${teleporterCost(1)}, and so on. It is paid with change like any purchase: a lone Sphere can pay for a teleporter costing ${teleporterCost(2)}. See [[bank#paying|Paying with change]].` },
     { k: 'p', t: 'You can never remove a teleporter yourself. It comes back only if you lose your last claim on its building (for example through Changing Priorities): it then returns to your supply and the price drops by one for everyone. The building\'s material goes to the bank.' },
     { k: 'h', t: 'Supplying through a teleporter', id: 'supply' },

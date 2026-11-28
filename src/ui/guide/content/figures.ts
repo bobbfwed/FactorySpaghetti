@@ -379,7 +379,7 @@ export const BELT_CHAIN_FIGURE: FigureBlock = {
 
 export const BELT_RULE_FIGURE: FigureBlock = {
   k: 'figure',
-  alt: 'Two blank tiles. On the left, a belt from point 3 to point 9, allowed. On the right, a belt from point 5 to point 7, across one corner, not allowed.',
+  alt: 'Two blank tiles. On the left, a belt straight across the tile, allowed. On the right, a belt whose ends are only two points apart, across one corner, not allowed.',
   caption: 'A belt\'s two ends must be more than two points apart.',
   show: {
     kind: 'scene',
@@ -389,8 +389,8 @@ export const BELT_RULE_FIGURE: FigureBlock = {
       aspect: 2,
     },
     callouts: [
-      { mark: '✓', at: { piece: 'l', belt: 0 }, text: 'From #3 to #9: far enough apart.' },
-      { mark: '✗', at: { piece: 'r', belt: 0 }, text: 'From #5 to #7: only two points apart, across one corner. The game does not allow it.' },
+      { mark: '✓', at: { piece: 'l', belt: 0 }, text: 'Its two ends are straight across the tile from each other: far enough apart.' },
+      { mark: '✗', at: { piece: 'r', belt: 0 }, text: 'Its two ends are only two points apart, across one corner. The game does not allow it.' },
     ],
   },
 };
