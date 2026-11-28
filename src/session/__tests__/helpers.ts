@@ -3,7 +3,7 @@
 
 import type { GameState, PlayerId } from '../../engine/state';
 import { applyAction, createGame } from '../../engine';
-import { chooseAction as greedy } from '../../bots/greedyBot';
+import { chooseAction as greedy } from '../../bots/classic/greedyClassic'; // fixtures were found with the classic Smart Bot
 import type { Scheduler } from '../scheduler';
 import type { Room, RoomSettings, Seat } from '../room';
 import { SEAT_COLORS, activeSeat, defaultSettings, isHumanControlled, newLobbyRoom, openSeat } from '../room';

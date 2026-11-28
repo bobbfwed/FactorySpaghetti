@@ -16,7 +16,7 @@ import { AppController } from '../controller';
 import type { Action } from '../../engine/actions';
 import type { PlayerId } from '../../engine/state';
 import { applyAction, createGame } from '../../engine';
-import { chooseAction as greedy } from '../../bots/greedyBot';
+import { chooseAction as greedy } from '../../bots/classic/greedyClassic'; // fixtures were found with the classic Smart Bot
 import { SEAT_COLORS, activeSeat } from '../../session/room';
 import { diceRngFromSeed, rollDice } from '../../session/dice';
 
