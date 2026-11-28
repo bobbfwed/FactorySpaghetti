@@ -217,3 +217,92 @@ Games per cell: 24 / 36 / 48 for the challengers, 72 / 216 / 432 for the Planner
 | Board exhaustion | Ended the game mid-round; up to 116 lost turns in 76 games | Fixed (#44): the round is finished |
 | Smart Bot | Weak | Weaker |
 | Upgrade-point variant | Could not be tested | Now testable; at 1 / 2 / 3 it is the change that most reduces the bonus lines |
+
+## 2026-11-28: the Smart Bot rebuilt
+
+The Smart Bot (lobby label "Smart Bot", id `greedy`, also the stand-in for a player who drops out) was rebuilt overnight. The full record of every attempt, with its command, numbers and decision, is in [`SMART_BOT_LOG.md`](SMART_BOT_LOG.md). The bot as it was is kept in the simulator only, as `greedy-classic`.
+
+**How it was measured.** The bot under test sits alone at tables of the six play styles (one table per seed, cycled through every combination, every seat), and a candidate and the current bot play exactly the same games, so their difference is measured game by game. A change was kept only if the 95% interval of that paired difference lay wholly above zero over 1,080 game pairs. Four disjoint blocks of 100 seeds showed how noisy a single run is: the unchanged bot's 3-player win rate moved between 28.7% and 36.0% on seeds alone.
+
+**What changed, in the order the changes were kept** (each measured on top of the ones before; "x share" counts a win as 2 / 3 / 4 at 2 / 3 / 4 players, so an even share is 1.0):
+
+| Step | Change | Gain (x share, 95% interval) |
+|---|---|---|
+| 1 | Plan like a player instead of scoring every move one step ahead: the play styles' procedure, which values production from the dice odds, what actually reaches each input, and power | +0.90 (+0.76 to +1.05) |
+| 2 | Go for the Bonus Tesseracts the way the Bonus Hunter does | +0.46 (+0.34 to +0.58) |
+| 3 | One Tesseract from the win, the power and inputs for the last run are worth much more | +0.06 (+0.01 to +0.11) |
+| 4 | Weigh The Investor (2.0) and Factory Empire above a real Tesseract, a building more | +0.11 (+0.03 to +0.20) |
+| 5 | Weight sweep: teleporters bought more reluctantly | +0.15 (+0.08 to +0.21) |
+| 6 | Weight sweep: Leverage cards bought only when clearly worth it | +0.13 (+0.04 to +0.22) |
+| 7 | Weight sweep: less bias for the Mine upgrade point | +0.25 (+0.16 to +0.35) |
+| 8 | Weight sweep: a Power Token worth 1.6, not 1.2 | +0.16 (+0.06 to +0.25) |
+| 9–10 | Weight sweep: belt routes of at most 4 belts; Factory Empire back to 1.4 | +0.04 and +0.03 |
+
+Tried and dropped (no gain, or worse): end-game thrift, valuing Power Tokens or materials at points only near the end, hurrying the end when ahead, planning the Mine credits as one combination (clearly worse), taking bonuses away from the leader, keeping drawn buildings away from opponents, an extra reward for locking The Investor at 18, more or fewer Mines, and several other weight steps.
+
+**Results on fresh seeds** (seeds from 900000, which no attempt used):
+
+### Against the play styles (gauntlet)
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| Smart Bot (new) | 88.7% (85–92), 300 | 75.1% (71–79), 450 | 52.5% (49–56), 600 |
+| Smart Bot (classic) | 6.0% (4–9), 300 | 4.9% (3–7), 450 | 5.7% (4–8), 600 |
+
+### By opponent style (games in which that style sat at the table)
+
+| Style | new 2p | classic 2p | new 3p | classic 3p | new 4p | classic 4p |
+|---|---|---|---|---|---|---|
+| planner | 98.0% (90–100), 50 | 8.0% (3–19), 50 | 74.7% (67–81), 150 | 6.0% (3–11), 150 | 55.9% (50–61), 320 | 5.3% (3–8), 320 |
+| mineRusher | 98.0% (90–100), 50 | 2.0% (0–10), 50 | 82.0% (75–87), 150 | 2.7% (1–7), 150 | 53.4% (48–59), 296 | 5.1% (3–8), 296 |
+| cardShark | 90.0% (79–96), 50 | 0.0% (0–7), 50 | 76.0% (69–82), 150 | 6.0% (3–11), 150 | 53.7% (48–59), 296 | 5.7% (4–9), 296 |
+| bonusHunter | 46.0% (33–60), 50 | 0.0% (0–7), 50 | 58.0% (50–66), 150 | 4.7% (2–9), 150 | 37.5% (32–43), 296 | 6.4% (4–10), 296 |
+| hoarder | 100.0% (93–100), 50 | 22.0% (13–35), 50 | 80.0% (73–86), 150 | 4.0% (2–8), 150 | 55.4% (50–61), 296 | 6.4% (4–10), 296 |
+| teleporter | 100.0% (93–100), 50 | 4.0% (1–13), 50 | 80.0% (73–86), 150 | 6.0% (3–11), 150 | 58.8% (53–64), 296 | 5.1% (3–8), 296 |
+
+### Head-to-head, new against classic (share of games won by the new bot's seats; each fills half the seats)
+
+| Players | Games | New wins | 95% CI | 2p seat order / 3–4p tables |
+|---|---|---|---|---|
+| 2 | 120 | 120.0 (100.0%) | 96.9–100.0% | new starting: 100.0% of 60; new second: 100.0% of 60 |
+| 3 | 360 | 353.0 (98.1%) | 96.0–99.1% | new alone vs classics: 99.4% of 180; classic alone vs news: 3.3% of 180 |
+| 4 | 480 | 439.0 (91.5%) | 88.6–93.6% | new alone vs classics: 91.7% of 240; classic alone vs news: 8.8% of 240 |
+
+### Mixed field (new): every table of distinct bots among the six styles and the Smart Bot (new), every seat
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| greedy | 86.1% (71–94), 36 | 83.0% (76–88), 135 | 49.6% (43–56), 240 |
+| bonusHunter | 80.6% (65–90), 36 | 52.6% (44–61), 135 | 31.3% (26–37), 240 |
+| planner | 41.7% (27–58), 36 | 24.4% (18–32), 135 | 22.5% (18–28), 240 |
+| mineRusher | 36.1% (22–52), 36 | 24.4% (18–32), 135 | 21.3% (17–27), 240 |
+| cardShark | 44.4% (30–60), 36 | 18.5% (13–26), 135 | 17.5% (13–23), 240 |
+| hoarder | 27.8% (16–44), 36 | 18.5% (13–26), 135 | 20.8% (16–26), 240 |
+| teleporter | 33.3% (20–50), 36 | 11.9% (7–18), 135 | 12.1% (9–17), 240 |
+
+### Mixed field (classic): every table of distinct bots among the six styles and the Smart Bot (classic), every seat
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| bonusHunter | 86.1% (71–94), 36 | 68.1% (60–75), 135 | 39.6% (34–46), 240 |
+| planner | 55.6% (40–70), 36 | 37.8% (30–46), 135 | 30.4% (25–37), 240 |
+| cardShark | 61.1% (45–75), 36 | 34.8% (27–43), 135 | 26.7% (21–33), 240 |
+| mineRusher | 52.8% (37–68), 36 | 39.3% (31–48), 135 | 27.1% (22–33), 240 |
+| hoarder | 44.4% (30–60), 36 | 23.0% (17–31), 135 | 27.5% (22–33), 240 |
+| teleporter | 50.0% (34–66), 36 | 23.0% (17–31), 135 | 18.8% (14–24), 240 |
+| greedy-classic | 0.0% (0–10), 36 | 7.4% (4–13), 135 | 5.0% (3–9), 240 |
+
+### Stand-in: taking over a seat of a play-style table at a seeded move 150–450
+
+| Bot | 2 players | 3 players | 4 players | unfinished | refused moves |
+|---|---|---|---|---|---|
+| greedy | 58.8% (48–69), 80 | 53.3% (44–62), 120 | 34.4% (27–42), 160 | 0 | 0 |
+| greedy-classic | 33.8% (24–45), 80 | 17.5% (12–25), 120 | 13.1% (9–19), 160 | 0 | 0 |
+
+**Against the target.** Against the play styles the new Smart Bot wins 88.7% / 75.1% / 52.5% of its 2 / 3 / 4-player games, about 1.8 / 2.3 / 2.1 times its fair share (50 / 33 / 25%), and in the mixed field it is first at every player count. It beats the classic bot in 100% / 98% / 92% of head-to-head games. The Bonus Hunter remains its hardest opponent (46% at 2 players, 58% at 3, 38% at 4 when the Bonus Hunter is at the table). As a stand-in taking over another bot's half-built position it wins 59% / 53% / 34% of those games, against 34% / 18% / 13% for the classic bot.
+
+**What this says about the game.** The strongest bot found is a bonus chaser: it holds The Investor at the end of 67–88% of its games and Factory Empire in 58–86%, and wins almost every game by four Tesseracts, two of them usually bonuses. Buying Leverage cards and teleporters freely made it weaker. This agrees with the earlier study (the bonuses decide most games; buying every card is not an exploit), which the designer confirmed is intended.
+
+**Speed.** On this machine, one process: median decision 0.1–0.2 ms, 95th percentile 1.3–3.1 ms, worst 29 ms (the classic bot: worst 134 ms).
+
+**Engine problems found:** none. Over all runs of the night no game hit the move limit and no bot sent a move the engine refused.
