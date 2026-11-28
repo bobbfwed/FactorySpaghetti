@@ -118,11 +118,11 @@ The printed game is the visual reference. The designer's files are outside the r
 - Interface text uses the rulebook's words (Control Module, Power Token, Leverage card), never internal names such as `placePiece`.
 - Design for a phone first: every touch target at least 44 px, no hover-only information.
 - **Always commit after each round of code changes.** When a piece of work is finished and its checks pass, commit it before starting the next; do not leave finished work uncommitted in the working tree.
-- **Version number:** see the section "Version number" below, and "Release tags" after it. The owner pushes by hand, so before saying whether something has been pushed, run `git fetch origin` and compare `main` with `origin/main` instead of assuming.
+- **Version number:** see the section "Version number" below, and "Release tags" after it. The owner usually pushes by hand, so before saying whether something has been pushed, run `git fetch origin` and compare `main` with `origin/main` instead of assuming.
 - **Rules version:** the rules version is `RULES_VERSION` in `src/engine/config.ts` (today 0.70; the printed rulebook is 0.61). It is shown on the start menu and in the guide. Treat a rule the owner describes as a clarification of the current rules version unless the owner says it is a new rule, and raise `RULES_VERSION` only then (updating `RULES.md` line 1, the "Rule versions" section of `RULES_CHANGES.md` and `README.md` in the same commit). The app version in `package.json` tracks the digital game and follows its own bullet.
 - **Guide change log:** the guide's "What changed" topic is a change log of the rules by rules version (newest first; the oldest section compares with the printed rulebook). It lists only differences in how the game is played; changes of the digital version and corrections that make the digital game follow the rules do not go there. When a rule changes, update the section of the current rules version in the same commit, or add a new section when the owner raises the rules version.
 - **Old saves:** `SAVES_BROKEN_THROUGH` in `src/session/save.ts` is the newest app version whose saves no longer load (today 0.1.0); the start menu states it. Raise it in the same commit as any change that makes older saves unusable; refused saves are not listed, and no other explanation is shown.
-- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site. Commit locally after each round of changes; the owner pushes, with a plain push, when a round is finished and checked.
+- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site. Commit locally after each round of changes; the owner pushes, with a plain push, when a round is finished and checked, or asks Claude to push (see "Pushing" below).
 - Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.
 
 ## Version number
@@ -158,7 +158,7 @@ Rules that follow from this:
   example `(0.1.04)`. This includes commits that change no product code and commits made before the
   one that bumps the number.
 - If a push carries no product code, the number does not go up, and later commits keep the same number.
-- Never run `git push` or `git pull` yourself. The owner pushes, with a plain push.
+- Never run `git pull` yourself, and never push on your own initiative: see "Pushing" below.
 - When work is handed to helper agents or done on other branches or worktrees, the helpers do not
   touch the version. The session that commits or merges onto `main` applies the steps above there.
 - One exception, already applied: the pushes of 24 and 27 November 2026 went out without a bump and
@@ -172,4 +172,21 @@ Each pushed release gets a git tag so any earlier version can be found later.
   `git tag -l v<version as the start menu shows it>` (for example `v0.1.04`) prints nothing, tag the
   pushed commit: `git tag -a v0.1.04 origin/main -m "Release 0.1.04"`.
 - Never move or delete a tag. A push with no product code keeps the existing tag where it is.
-- Tags reach the remote only when the owner pushes them (`git push --follow-tags`).
+- Tags reach the remote only when they are pushed (`git push --follow-tags`), by the owner or by
+  Claude when the owner asked for a push.
+
+## Pushing
+
+The owner decides when the game goes live (decided 2026-11-27; it is a preference, not a security
+rule).
+- Push only when the owner asks for it in the conversation, for example "push when this round is
+  done". The request covers the push it names, not later ones. Without a request, commit locally and
+  say that nothing was pushed.
+- Before pushing: every change is committed; `npm run typecheck`, `npm run lint`, `npm test` and
+  `npm run build` pass on `main`; the version follows the section "Version number"; `git fetch origin`
+  shows `origin/main` is an ancestor of `main` (if it is not, stop and tell the owner; never pull,
+  merge or rebase to make a push fit).
+- Push with `git push --follow-tags origin main`. Never force-push and never push any other branch.
+- Afterwards, tag the pushed commit as described under "Release tags" if its tag is missing, say
+  which commit and version went out, and remember that every push redeploys the live site.
+- If a check fails or anything looks risky, do not push; report it and leave the push to the owner.
