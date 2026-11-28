@@ -45,6 +45,9 @@ export const SMART_STYLE: SmartConfig = {
   meepleUpgrade: 3,
   // Attempt 6d (kept, weight sweep): buy teleporters more reluctantly (appetite 0.5 -> 0.2).
   teleporterAppetite: 0.2,
+  // Attempt 7b (kept, weight sweep): buy a Leverage card only when the cards left are worth well
+  // over the price on average (appetite 0.35 -> 0).
+  cardAppetite: 0,
   maxRouteBelts: 6,
   endgameThrift: false,
   denyWeight: 0,
