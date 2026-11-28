@@ -73,7 +73,7 @@ export function routeDests(state: GameState, me: PlayerId): RoutePoint[] {
 
 // Every belt connection point `me` could currently place a belt on (the route picker
 // highlights all of these): an enabled belt point that isn't already used by a belt and
-// isn't blocked (joining an opponent's belt / a point reserved for a building's owners). The player picks any
+// isn't blocked (joining an opponent's belt / a point reserved for a building's owner). The player picks any
 // two of these and findBeltPath fills in the belts between them.
 export function usableBeltPoints(state: GameState, me: PlayerId): RoutePoint[] {
   const out: RoutePoint[] = [];
@@ -121,7 +121,7 @@ function pointOccupied(state: GameState, pieceId: string, pos: number): boolean 
 // A belt point we may attach a belt to right now. Uses the same placement-legality
 // predicate as the engine (beltEndpointBlocked) so every route the router returns can
 // actually be placed: enabled belt point, not already used, and not joining an opponent's
-// belt or using a point reserved for the owners of the building it faces.
+// belt or using a point reserved for the owner of the building it faces.
 function usableBeltPoint(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): boolean {
   const def = pieceTemplate(piece).points.find(p => p.position === pos);
   if (!def || def.role !== 'belt' || !def.enabled) return false;
