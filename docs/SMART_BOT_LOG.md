@@ -135,3 +135,89 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 11f | Check: closer (4d) switched off again, after all the weight changes | batch 12 | 2.159 → 2.156; −0.004 (95% −0.042 to +0.035) | closer stays: switching it off is not better (its effect is now too small to see) |
 
 **Stopping.** The last two rounds gained +0.043 and +0.032 x share, against +0.13 to +0.25 for the sweep steps before them, and most candidates in them were dropped; the sweep has reached a plateau around these weights. The final tables below are played on fresh seeds (from 900000) that no attempt used.
+
+## Final tables (fresh seeds, the bot as committed in 4407bf5)
+
+Commands (all with `--jobs 8`):
+- Gauntlet: `npm run sim -- --mode gauntlet --bots greedy,greedy-classic --players 2,3,4 --seeds 150 --start 900000` (2,700 games)
+- Head-to-head: `npm run sim -- --mode h2h --bots greedy,greedy-classic --players 2,3,4 --seeds 60 --start 910000` (960 games)
+- Mixed field: `npm run sim -- --mode all --bots planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter,greedy --players 2,3,4 --seeds 3 --start 920000` and the same with `greedy-classic` (861 games each, the same seeds and tables)
+- Stand-in: `npm run sim -- --mode takeover --bots greedy,greedy-classic --players 2,3,4 --seeds 40 --start 930000` (720 games)
+
+Cells: win rate (95% Wilson interval), games. Every one of the 6,102 games finished (2,206 + 880 + 678 + 632 + 549 by four Tesseracts, the rest by the board running out); none hit the move limit and no bot sent a move the engine refused.
+
+Paired, in the gauntlet: new minus classic +82.7 points at 2 players (95% +78.4 to +87.0), +70.2 at 3 (+65.9 to +74.6), +46.8 at 4 (+42.4 to +51.3); pooled 2.079 against 0.176 x share, +1.902 (95% +1.809 to +1.995), 1,350 pairs.
+
+### Against the play styles (gauntlet)
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| Smart Bot (new) | 88.7% (85–92), 300 | 75.1% (71–79), 450 | 52.5% (49–56), 600 |
+| Smart Bot (classic) | 6.0% (4–9), 300 | 4.9% (3–7), 450 | 5.7% (4–8), 600 |
+
+### By opponent style (games in which that style sat at the table)
+
+| Style | new 2p | classic 2p | new 3p | classic 3p | new 4p | classic 4p |
+|---|---|---|---|---|---|---|
+| planner | 98.0% (90–100), 50 | 8.0% (3–19), 50 | 74.7% (67–81), 150 | 6.0% (3–11), 150 | 55.9% (50–61), 320 | 5.3% (3–8), 320 |
+| mineRusher | 98.0% (90–100), 50 | 2.0% (0–10), 50 | 82.0% (75–87), 150 | 2.7% (1–7), 150 | 53.4% (48–59), 296 | 5.1% (3–8), 296 |
+| cardShark | 90.0% (79–96), 50 | 0.0% (0–7), 50 | 76.0% (69–82), 150 | 6.0% (3–11), 150 | 53.7% (48–59), 296 | 5.7% (4–9), 296 |
+| bonusHunter | 46.0% (33–60), 50 | 0.0% (0–7), 50 | 58.0% (50–66), 150 | 4.7% (2–9), 150 | 37.5% (32–43), 296 | 6.4% (4–10), 296 |
+| hoarder | 100.0% (93–100), 50 | 22.0% (13–35), 50 | 80.0% (73–86), 150 | 4.0% (2–8), 150 | 55.4% (50–61), 296 | 6.4% (4–10), 296 |
+| teleporter | 100.0% (93–100), 50 | 4.0% (1–13), 50 | 80.0% (73–86), 150 | 6.0% (3–11), 150 | 58.8% (53–64), 296 | 5.1% (3–8), 296 |
+
+### Head-to-head, new against classic (share of games won by the new bot's seats; each fills half the seats)
+
+| Players | Games | New wins | 95% CI | 2p seat order / 3–4p tables |
+|---|---|---|---|---|
+| 2 | 120 | 120.0 (100.0%) | 96.9–100.0% | new starting: 100.0% of 60; new second: 100.0% of 60 |
+| 3 | 360 | 353.0 (98.1%) | 96.0–99.1% | new alone vs classics: 99.4% of 180; classic alone vs news: 3.3% of 180 |
+| 4 | 480 | 439.0 (91.5%) | 88.6–93.6% | new alone vs classics: 91.7% of 240; classic alone vs news: 8.8% of 240 |
+
+### Mixed field (new): every table of distinct bots among the six styles and the Smart Bot (new), every seat
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| greedy | 86.1% (71–94), 36 | 83.0% (76–88), 135 | 49.6% (43–56), 240 |
+| bonusHunter | 80.6% (65–90), 36 | 52.6% (44–61), 135 | 31.3% (26–37), 240 |
+| planner | 41.7% (27–58), 36 | 24.4% (18–32), 135 | 22.5% (18–28), 240 |
+| mineRusher | 36.1% (22–52), 36 | 24.4% (18–32), 135 | 21.3% (17–27), 240 |
+| cardShark | 44.4% (30–60), 36 | 18.5% (13–26), 135 | 17.5% (13–23), 240 |
+| hoarder | 27.8% (16–44), 36 | 18.5% (13–26), 135 | 20.8% (16–26), 240 |
+| teleporter | 33.3% (20–50), 36 | 11.9% (7–18), 135 | 12.1% (9–17), 240 |
+
+### Mixed field (classic): every table of distinct bots among the six styles and the Smart Bot (classic), every seat
+
+| Bot | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| bonusHunter | 86.1% (71–94), 36 | 68.1% (60–75), 135 | 39.6% (34–46), 240 |
+| planner | 55.6% (40–70), 36 | 37.8% (30–46), 135 | 30.4% (25–37), 240 |
+| cardShark | 61.1% (45–75), 36 | 34.8% (27–43), 135 | 26.7% (21–33), 240 |
+| mineRusher | 52.8% (37–68), 36 | 39.3% (31–48), 135 | 27.1% (22–33), 240 |
+| hoarder | 44.4% (30–60), 36 | 23.0% (17–31), 135 | 27.5% (22–33), 240 |
+| teleporter | 50.0% (34–66), 36 | 23.0% (17–31), 135 | 18.8% (14–24), 240 |
+| greedy-classic | 0.0% (0–10), 36 | 7.4% (4–13), 135 | 5.0% (3–9), 240 |
+
+### Stand-in: taking over a seat of a play-style table at a seeded move 150–450
+
+| Bot | 2 players | 3 players | 4 players | unfinished | refused moves |
+|---|---|---|---|---|---|
+| greedy | 58.8% (48–69), 80 | 53.3% (44–62), 120 | 34.4% (27–42), 160 | 0 | 0 |
+| greedy-classic | 33.8% (24–45), 80 | 17.5% (12–25), 120 | 13.1% (9–19), 160 | 0 | 0 |
+
+Stand-in, paired (the same game, the same seat, the same move to take over): new minus classic +25.0 points at 2 players (95% +15.5 to +34.5), +35.8 at 3 (+26.3 to +45.3), +21.3 at 4 (+12.8 to +29.7); 360 pairs. No stand-in game was left unfinished or had a refused move.
+
+### Speed
+
+One process on an otherwise idle machine, the gauntlet on seeds 940000–940005 with `--timing` (milliseconds per decision; decisions per own turn include the round-end turns' decisions):
+
+| Bot | Players | Decisions | Median | 95th percentile | Worst | Decisions per turn |
+|---|---|---|---|---|---|---|
+| new | 2 | 1,929 | 0.13 | 1.30 | 11.3 | 8.3 |
+| classic | 2 | 1,735 | 0.10 | 10.16 | 83.6 | 6.4 |
+| new | 3 | 2,657 | 0.11 | 1.64 | 16.5 | 8.5 |
+| classic | 3 | 2,342 | 0.08 | 12.34 | 116.2 | 6.6 |
+| new | 4 | 3,751 | 0.18 | 3.14 | 29.4 | 8.9 |
+| classic | 4 | 2,818 | 0.09 | 16.95 | 133.7 | 6.7 |
+
+Twenty more 4-player games (the new bot against three styles) gave a median of 0.20 ms, a 95th percentile of 3.1 ms and a worst decision of 22.6 ms. On a machine running 12 simulator processes at once the worst decisions were several times slower (the worst seen was about 175 ms before attempt 5e and the memoised long-route search). The bot makes about 2 more decisions per turn than the classic bot: it takes more of the round-end steps (claims, Mine-credit upgrades, free upgrades, collect, run) one by one; it never repeats a move pair (no game stalled).
