@@ -11,6 +11,7 @@
 import type { CardType, Material } from '../engine/config';
 import type { GameState } from '../engine/state';
 import { directFlowAllowed, teleporterCutsOff } from '../engine/rules/flow';
+import { teleporterOn, teleportersOf } from '../engine/rules/teleporters';
 import type { TableEvent } from '../session/room';
 import { traceFlow, pathLength, sourceWorld, type FlowSource } from './flowPath';
 import { bufferSlotWorld, type XZ } from './layout';
@@ -31,8 +32,8 @@ export type StepBody =
   | { kind: 'belt'; beltId: string }
   /** A Control Module drops onto a building: claim (new) or upgrade (number changed). */
   | { kind: 'module'; pieceId: string; index: number; owner: number; upgrade: boolean }
-  /** A teleporter ring appears on a buffer. */
-  | { kind: 'teleporter'; pieceId: string; buffer: Buf; owner: number }
+  /** A teleporter appears on one input (`slot`, #55) or on the output (slot 0) of a building. */
+  | { kind: 'teleporter'; pieceId: string; buffer: Buf; slot: number; owner: number }
   /** A meeple walks (or drops) onto its piece. */
   | { kind: 'meeple'; player: number; fromPieceId: string | null; fromSlot: number | null }
   /** A material travels along `path` (world mm) into input `slot` of `toPieceId`. */
@@ -136,9 +137,9 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
       phases[P_BUILD]!.push({ kind: 'module', pieceId: p.id, index: i, owner: c.ownerId, upgrade: !!o && o.ownerId === c.ownerId });
     });
     for (const b of ['input', 'output'] as const) {
-      const now = p[b]?.teleporterOwner ?? null;
-      const was = old?.[b]?.teleporterOwner ?? null;
-      if (now !== null && now !== was) phases[P_BUILD]!.push({ kind: 'teleporter', pieceId: p.id, buffer: b, owner: now });
+      for (const { slot, owner } of teleportersOf(p[b])) {
+        if (owner !== teleporterOn(old?.[b], slot)) phases[P_BUILD]!.push({ kind: 'teleporter', pieceId: p.id, buffer: b, slot, owner });
+      }
     }
   }
   for (const pl of next.players) {
@@ -211,7 +212,7 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
     }
     if (e.product) {
       if (e.teleported) {
-        const owner = next.board.find(p => p.id === e.pieceId)?.output?.teleporterOwner ?? e.seat;
+        const owner = teleporterOn(next.board.find(p => p.id === e.pieceId)?.output) ?? e.seat;
         if (take(owner, e.product, 1)) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: owner, item: e.product, count: 1, from: piece });
       } else {
         const s = takeSlot(filled, x => x.pieceId === e.pieceId && x.buffer === 'output');
@@ -254,7 +255,7 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
       const from = next.board.find(p => p.id === x.pieceId);
       // A teleporter cuts its buffer off (#53): a teleported output empties only to its owner.
       return !!from && !!destPiece && directFlowAllowed(from, destPiece) &&
-        !teleporterCutsOff(from, 'output') && !teleporterCutsOff(destPiece, 'input');
+        !teleporterCutsOff(from, 'output') && !teleporterCutsOff(destPiece, 'input', s.slot);
     });
     if (src && flowFrom(s, [{ pieceId: src.pieceId, kind: 'output', slot: src.slot }], true)) {
       takeSlot(emptied, x => x === src);

@@ -49,7 +49,7 @@ function addBoardPiece(state: GameState, piece: BoardPiece): GameState {
 }
 
 function makeBuffer(slots: (Material | null)[]): Buffer {
-  return { slots, teleporterOwner: null };
+  return { slots, teleporters: [] };
 }
 
 function plateFact(id: string, coord: { q: number; r: number }, overrides: Partial<BoardPiece> = {}): BoardPiece {
@@ -305,7 +305,7 @@ describe('shortSale', () => {
 // ── sinkHole ──────────────────────────────────────────────────────────────────
 
 describe('sinkHole', () => {
-  it('removes an unclaimed board piece and returns its belts', () => {
+  it('removes an unclaimed board piece; its belts go to the bank (#56)', () => {
     let s = actionsState();
     const pid = s.turnOrder[s.activePlayerIndex]!;
     s = giveCard(s, 'sinkHole');
@@ -331,8 +331,8 @@ describe('sinkHole', () => {
     const ns = (r as { ok: true; state: GameState }).state;
     expect(ns.board.find(p => p.id === 'blank-1')).toBeUndefined();
     expect(ns.belts.find(b => b.id === 'belt-1')).toBeUndefined();
-    // Belt returned to player
-    expect(ns.players[pid]!.beltsRemaining).toBe(prevBeltsRemaining + 1);
+    // The belt went to the bank: its owner does not get it back (RULES_CHANGES.md #56).
+    expect(ns.players[pid]!.beltsRemaining).toBe(prevBeltsRemaining);
   });
 
   it('rejects sinking a claimed piece', () => {
@@ -522,7 +522,7 @@ describe('rdTaxWriteOff', () => {
     expect(r.ok).toBe(true);
     const ns = (r as { ok: true; state: GameState }).state;
     const piece = ns.board.find(p => p.id === 'pf-rd')!;
-    expect(piece.output!.teleporterOwner).toBe(pid);
+    expect(piece.output!.teleporters).toEqual([pid]);
     expect(ns.players[pid]!.teleportersRemaining).toBe(prevTeleporters - 1);
     expect(ns.globalTeleporterCount).toBe(s.globalTeleporterCount + 1);
   });

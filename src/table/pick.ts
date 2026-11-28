@@ -8,6 +8,7 @@ import {
   bufferAnchorWorld, bufferSlotWorld, distanceToCurve, mineSlotWorld, pieceCells, piecePlacement, pointCount, pointRole,
   pointWorld, teleporterPlacement, worldToAxial, axialToWorld, type SideLayout,
 } from './layout';
+import { teleporterOn } from '../engine/rules/teleporters';
 
 export interface V3 { readonly x: number; readonly y: number; readonly z: number }
 
@@ -27,7 +28,7 @@ export function targetKey(t: Target): string {
     case 'cell': return `cell:${t.q},${t.r}`;
     case 'piece': return `piece:${t.pieceId}`;
     case 'point': return `point:${t.pieceId}:${t.point}`;
-    case 'buffer': return `buffer:${t.pieceId}:${t.buffer}`;
+    case 'buffer': return `buffer:${t.pieceId}:${t.buffer}${t.slot === undefined ? '' : `:${t.slot}`}`;
     case 'mineSlot': return `mineSlot:${t.pieceId}:${t.slot}`;
     case 'belt': return `belt:${t.beltId}`;
     case 'stack': return `stack:${t.index}`;
@@ -84,13 +85,17 @@ export function boardCandidates(
     let best = Math.hypot(anchor.x - x, anchor.z - z);
     for (let i = 0; i < buf.slots.length; i++) {
       const s = bufferSlotWorld(piece, which, i);
-      best = Math.min(best, Math.hypot(s.x - x, s.z - z));
-    }
-    // A teleporter on the buffer stands beside its material; a tap on it means the buffer. It is
-    // hit-tested where the tap ray crosses its mid-height.
-    if (buf.teleporterOwner !== null) {
-      const t = teleporterPlacement(piece, which);
-      best = Math.min(best, Math.hypot(t.x - teleporterAt.x, t.z - teleporterAt.z));
+      // A teleporter stands beside the material of its own input (or of the output); a tap on it
+      // means that input. It is hit-tested where the tap ray crosses its mid-height.
+      const t = teleporterOn(buf, i) !== null ? teleporterPlacement(piece, which, i) : null;
+      const d = Math.min(Math.hypot(s.x - x, s.z - z), t ? Math.hypot(t.x - teleporterAt.x, t.z - teleporterAt.z) : Infinity);
+      best = Math.min(best, d);
+      // Each input is also a target of its own (where a teleporter goes, #55). It ranks just after
+      // the whole buffer, so it is picked where it is lit (a current target wins) and the buffer
+      // otherwise, as before.
+      if (which === 'input' && d < R_BUFFER) {
+        out.push({ target: { kind: 'buffer', pieceId: piece.id, buffer: which, slot: i }, score: d / R_BUFFER + 0.11 });
+      }
     }
     if (best < R_BUFFER) out.push({ target: { kind: 'buffer', pieceId: piece.id, buffer: which }, score: best / R_BUFFER + 0.1 });
   }
@@ -179,7 +184,8 @@ export function targetAnchor(game: GameState | null, side: SideLayout, h: SideHe
     case 'buffer': {
       const buf = t.buffer === 'input' ? piece.input : piece.output;
       if (!buf) return null;
-      const p = bufferAnchorWorld(piece, t.buffer);
+      if (t.slot !== undefined && (t.slot < 0 || t.slot >= buf.slots.length)) return null;
+      const p = t.slot === undefined ? bufferAnchorWorld(piece, t.buffer) : bufferSlotWorld(piece, t.buffer, t.slot);
       return { x: p.x, y: TILE_TOP + 3, z: p.z };
     }
     case 'mineSlot': {

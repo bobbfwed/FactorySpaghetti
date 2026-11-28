@@ -5,6 +5,7 @@ import { createGame } from '../../../engine/rules/setup';
 import { legalActions } from '../../../engine/rules/legalActions';
 import { applyAction } from '../../../engine/reducer';
 import { makeBuffers } from '../../../engine/rules/pieces';
+import { teleporterCount, withTeleporter } from '../../../engine/rules/teleporters';
 import type { Belt, BoardPiece, Buffer, GameState, Material, PlayerId } from '../../../engine/state';
 import type { FigColor, SceneSpec } from './types';
 
@@ -16,7 +17,7 @@ export function scenePlayers(spec: SceneSpec): 2 | 3 | 4 {
   let top = 1;
   for (const p of spec.pieces ?? []) {
     for (const [pl] of p.claims ?? []) top = Math.max(top, pl);
-    if (p.tpIn !== undefined) top = Math.max(top, p.tpIn);
+    for (const o of tpList(p.tpIn)) if (o !== null) top = Math.max(top, o);
     if (p.tpOut !== undefined) top = Math.max(top, p.tpOut);
   }
   for (const b of spec.belts ?? []) top = Math.max(top, b.owner ?? 0);
@@ -24,10 +25,17 @@ export function scenePlayers(spec: SceneSpec): 2 | 3 | 4 {
   return Math.min(4, top + 1) as 2 | 3 | 4;
 }
 
-function buffer(base: Buffer | null, slots: readonly (Material | null)[] | undefined, tp: number | undefined): Buffer | null {
+/** A scene's teleporter owners per slot: a number is the first slot (input 1, or the output). */
+function tpList(tp: number | readonly (number | null)[] | undefined): readonly (number | null)[] {
+  return tp === undefined ? [] : typeof tp === 'number' ? [tp] : tp;
+}
+
+function buffer(base: Buffer | null, slots: readonly (Material | null)[] | undefined, tp: number | readonly (number | null)[] | undefined): Buffer | null {
   if (!base) return null;
   const filled = base.slots.map((s, i) => slots?.[i] ?? s);
-  return { slots: filled, teleporterOwner: tp === undefined ? null : (tp as PlayerId) };
+  let out: Buffer = { slots: filled, teleporters: [] };
+  tpList(tp).forEach((o, i) => { if (o !== null) out = withTeleporter(out, i, o as PlayerId); });
+  return out;
 }
 
 /** The pieces of a scene as engine board pieces. */
@@ -78,7 +86,7 @@ export function sceneState(spec: SceneSpec): GameState {
   const board = spec.setup ? base.board : scenePieces(spec);
   const belts = spec.setup ? [] : sceneBelts(spec);
   const meeples = spec.meeples ?? [];
-  const teleporters = board.reduce((n, p) => n + (p.input?.teleporterOwner != null ? 1 : 0) + (p.output?.teleporterOwner != null ? 1 : 0), 0);
+  const teleporters = board.reduce((n, p) => n + teleporterCount(p), 0);
   return {
     ...base,
     board,

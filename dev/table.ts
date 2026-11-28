@@ -4,14 +4,15 @@
 // URL parameters (for repeatable screenshots): players=2|3|4, seed=N, bot=greedy|random,
 // round=N (play until that round), end=1 (play to the end), debug=1, targets=1, ghost=1,
 // topdown=1, rotate=N (60-degree steps), hud=0 (hide the controls), zoom=F (zoom in by F),
-// focus=pieceId (centre on a piece), teleporters=1 (draw a teleporter on every buffer of every
+// focus=pieceId (centre on a piece), teleporters=1 (draw a teleporter on every input and output of every
 // claimed building). Sets window.__ready when the requested view is drawn.
 
 import { createTable, planTransition, revealedStack, type Target, type Ghost, type PlayerColor, type Preview, type RouteSegment, type RouteTier } from '../src/table';
 import { createBotGame, playUntil, type BotGame, type BotKind } from '../src/table/botGame';
 import { pointCount, pointWorld } from '../src/table/layout';
 import { legalActions } from '../src/engine/reducer';
-import type { BoardPiece, GameState, PlayerId } from '../src/engine/state';
+import type { BoardPiece, Buffer, GameState, PlayerId } from '../src/engine/state';
+import { teleporterOn, withTeleporter } from '../src/engine/rules/teleporters';
 import type { Action } from '../src/engine/actions';
 
 declare global {
@@ -122,9 +123,15 @@ function currentGhost(s: GameState): Ghost | null {
 }
 
 /**
- * teleporters=1: show a teleporter on every buffer of every claimed building, in the colour of its
+ * teleporters=1: show a teleporter on every input (each input of a Sphere or Tesseract Factory has
+ * its own, RULES_CHANGES.md #55) and the output of every claimed building, in the colour of its
  * first claim (rendering only; the game is not changed). Bots rarely place them.
  */
+function everySlot(buf: Buffer, owner: PlayerId): Buffer {
+  let out = buf;
+  for (let i = 0; i < buf.slots.length; i++) if (teleporterOn(out, i) === null) out = withTeleporter(out, i, owner);
+  return out;
+}
 let demoTeleporters = params.get('teleporters') === '1';
 function withTeleporters(s: GameState): GameState {
   if (!demoTeleporters) return s;
@@ -133,8 +140,8 @@ function withTeleporters(s: GameState): GameState {
     if (owner === undefined || p.type === 'mine') return p;
     return {
       ...p,
-      input: p.input ? { ...p.input, teleporterOwner: p.input.teleporterOwner ?? owner } : null,
-      output: p.output ? { ...p.output, teleporterOwner: p.output.teleporterOwner ?? owner } : null,
+      input: p.input ? everySlot(p.input, owner) : null,
+      output: p.output ? everySlot(p.output, owner) : null,
     };
   });
   return { ...s, board };

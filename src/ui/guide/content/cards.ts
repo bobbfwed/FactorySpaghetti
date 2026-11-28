@@ -57,7 +57,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
   sinkHole: {
     short: 'Remove a piece nobody has claimed.',
     blocks: [
-      p('Remove a board piece that nobody has claimed: a blank tile or an unclaimed building, never a Mine. Belts lying on it go back to their owners\' supplies.'),
+      p('Remove a board piece that nobody has claimed: a blank tile or an unclaimed building, never a Mine. Belts lying on it go back to the bank: their owners do not get them back and must buy belts again — even a belt laid this turn.'),
       p('Play it from your hand, tap the piece and confirm.'),
     ],
     details: [
@@ -126,7 +126,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
   rdTaxWriteOff: {
     short: 'Place a teleporter for free.',
     blocks: [
-      p('Place a teleporter on the input or output of one of your buildings, for free.'),
+      p('Place a teleporter on one input or the output of one of your buildings, for free. On a Sphere or Tesseract Factory you choose which input.'),
       p('Play it from your hand, tap the buffer and confirm.'),
     ],
     details: [p(`It uses one of your ${TELEPORTER_COUNT} teleporters and raises the teleporter price for everyone, like a bought one.`)],

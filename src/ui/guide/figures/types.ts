@@ -38,8 +38,12 @@ export interface ScenePiece {
   /** What lies in the input slots / the output (null = empty). Missing: empty. */
   readonly input?: readonly (Material | null)[];
   readonly output?: readonly (Material | null)[];
-  /** A teleporter of this player on the input / the output. */
-  readonly tpIn?: number;
+  /**
+   * A teleporter of this player on the input / the output. On a building with several inputs a
+   * teleporter sits on one input (RULES_CHANGES.md #55): a number means input 1; a list gives the
+   * owner per input (null = none).
+   */
+  readonly tpIn?: number | readonly (number | null)[];
   readonly tpOut?: number;
 }
 
@@ -96,8 +100,8 @@ export type CalloutAt =
   | { readonly piece: string; readonly point: number }
   | { readonly piece: string; readonly slot: 0 | 1 }
   | { readonly piece: string; readonly belt: number }
-  /** Just above the teleporter on a buffer (where the table draws it). */
-  | { readonly piece: string; readonly teleporter: 'input' | 'output' }
+  /** Just above the teleporter on an input (`slot`, default the first) or the output (where the table draws it). */
+  | { readonly piece: string; readonly teleporter: 'input' | 'output'; readonly slot?: number }
   /** The middle of a piece, moved dx / dz millimetres on the table (-dz is up the picture). */
   | { readonly piece: string; readonly centre: true; readonly dx?: number; readonly dz?: number }
   | { readonly q: number; readonly r: number };

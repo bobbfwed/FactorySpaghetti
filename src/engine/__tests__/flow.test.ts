@@ -23,8 +23,8 @@ function makePiece(overrides: Partial<BoardPiece> & Pick<BoardPiece, 'type' | 'i
     type,
     coord: overrides.coord ?? { q: 1, r: 0 },
     claims: overrides.claims ?? [],
-    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporterOwner: null } : null),
-    output: overrides.output ?? (hasOutput ? { slots: [null], teleporterOwner: null } : null),
+    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporters: [] } : null),
+    output: overrides.output ?? (hasOutput ? { slots: [null], teleporters: [] } : null),
   };
 }
 
@@ -47,8 +47,8 @@ describe('input teleporter', () => {
       type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
       // Input buffer is empty; teleporter allows inventory to fill it.
-      input: { slots: [null], teleporterOwner: 0 },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [0] },
+      output: { slots: [null], teleporters: [] },
       coord: { q: 50, r: 0 }, // away from the mine: ore must come from the teleporter, not mine auto-feed
     });
 
@@ -96,8 +96,8 @@ describe('input teleporter', () => {
       id: 'pf-tele-noinv',
       type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null], teleporterOwner: 0 },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [0] },
+      output: { slots: [null], teleporters: [] },
       coord: { q: 50, r: 0 }, // away from the mine: with no inventory and no mine feed, nothing produces
     });
 
@@ -135,14 +135,14 @@ describe('uncollected output reaches a connected building before production', ()
     const plateFact: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 0, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: ['plate'], teleporterOwner: null }, // produced last round, uncollected
+      input: { slots: [null], teleporters: [] },
+      output: { slots: ['plate'], teleporters: [] }, // produced last round, uncollected
     };
     const sphereFact: BoardPiece = {
       id: 'sf', type: 'sphereFact', coord: { q: 1, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null, 'plate'], teleporterOwner: null }, // one plate already present
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null, 'plate'], teleporters: [] }, // one plate already present
+      output: { slots: [null], teleporters: [] },
     };
     return { ...base, board: [plateFact, sphereFact], turnOrder: [0, 1], activePlayerIndex, phase: 'roll' };
   }
@@ -208,8 +208,8 @@ describe('belt-mediated delivery into a claimed factory', () => {
     const pf: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     };
     const state: GameState = {
       ...base,
@@ -229,8 +229,8 @@ describe('belt-mediated delivery into a claimed factory', () => {
     const pf: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 4, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     };
     const state: GameState = {
       ...base,
@@ -255,8 +255,8 @@ describe('belt-mediated delivery into a claimed factory', () => {
     const pf: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0,
       claims: [], // unclaimed
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     };
     const state: GameState = {
       ...base,
@@ -293,7 +293,7 @@ describe('belt placement cross-player rules', () => {
     const opp: BoardPiece = {
       id: 'opp', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0,
       claims: [{ ownerId: 1, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null }, output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] }, output: { slots: [null], teleporters: [] },
     };
     const state = actionsState([mine, A, opp]); // A's point 7 faces the opponent factory's input
     const res = applyAction(state, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 });
@@ -306,7 +306,7 @@ describe('belt placement cross-player rules', () => {
     const mineYours: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null }, output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] }, output: { slots: [null], teleporters: [] },
     };
     const state = actionsState([mine, A, mineYours]);
     const res = applyAction(state, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 });
@@ -329,13 +329,13 @@ describe('mine direct-adjacency ore supply', () => {
     const onOutput = makePiece({
       id: 'pf-on-output', type: 'plateFact', coord: { q: 2, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
     });
     // (1,1) rot 1: input faces a lean-hex edge with no output (pos 21).
     const onBlank = makePiece({
       id: 'pf-on-blank', type: 'plateFact', coord: { q: 1, r: 1 }, rotation: 1,
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
     });
 
     const state: GameState = { ...base, board: [mine, onOutput, onBlank] };
@@ -355,7 +355,7 @@ describe('mine direct-adjacency ore supply', () => {
     const blocked = makePiece({
       id: 'sf-blocked', type: 'sphereFact', coord: { q: 2, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null, 'ore'], teleporterOwner: null },
+      input: { slots: [null, 'ore'], teleporters: [] },
     });
     const afterBlocked = fillInputsFromAdjacentMines({ ...base, board: [mine, blocked] });
     expect(afterBlocked.board.find(p => p.id === 'sf-blocked')!.input?.slots[0]).toBeNull(); // refused
@@ -364,7 +364,7 @@ describe('mine direct-adjacency ore supply', () => {
     const allowed = makePiece({
       id: 'sf-allowed', type: 'sphereFact', coord: { q: 2, r: 0 }, rotation: 0,
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null, 'plate'], teleporterOwner: null },
+      input: { slots: [null, 'plate'], teleporters: [] },
     });
     const afterAllowed = fillInputsFromAdjacentMines({ ...base, board: [mine, allowed] });
     expect(afterAllowed.board.find(p => p.id === 'sf-allowed')!.input?.slots[0]).toBe('ore'); // delivered
@@ -382,8 +382,8 @@ describe('output teleporter', () => {
       type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 5 }],
       // Input has ore ready; output teleporter owned by Player 0
-      input: { slots: ['ore'], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: 0 },
+      input: { slots: ['ore'], teleporters: [] },
+      output: { slots: [null], teleporters: [0] },
     });
 
     const state: GameState = {
@@ -421,8 +421,8 @@ describe('output teleporter', () => {
       id: 'pf-tele-cap',
       type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 5 }],
-      input: { slots: ['ore'], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: 0 },
+      input: { slots: ['ore'], teleporters: [] },
+      output: { slots: [null], teleporters: [0] },
     });
 
     // Player 0's plate inventory is at the cap
@@ -488,7 +488,7 @@ describe('PLACE_TELEPORTER action', () => {
     if (!res.ok) return;
 
     const outPiece = res.state.board.find(p => p.id === 'pf-claim')!;
-    expect(outPiece.input?.teleporterOwner).toBe(0);
+    expect(outPiece.input?.teleporters).toEqual([0]);
     expect(res.state.globalTeleporterCount).toBe(1);
     expect(res.state.players[0]?.teleportersRemaining).toBe(3); // 4 - 1
     expect(res.state.players[0]?.inventory.ore).toBe(0); // 1 ore paid
@@ -531,7 +531,7 @@ describe('PLACE_TELEPORTER action', () => {
       id: 'pf-dup',
       type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null], teleporterOwner: 0 }, // already teleported
+      input: { slots: [null], teleporters: [0] }, // already teleported
     });
 
     const state: GameState = {

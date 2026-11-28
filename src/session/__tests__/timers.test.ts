@@ -111,11 +111,11 @@ describe('off-turn operate-or-skip timer', () => {
     const owner = (1 - active) as 0 | 1;
     const tpf: BoardPiece = {
       id: 'tpf', type: 'plateFact', coord: { q: 60, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
-      input: { slots: [null], teleporterOwner: owner }, output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [owner] }, output: { slots: [null], teleporters: [] },
     };
     const tpp: BoardPiece = {
       id: 'tpp', type: 'powerPlant', coord: { q: 62, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
-      input: { slots: [null], teleporterOwner: owner }, output: null,
+      input: { slots: [null], teleporters: [owner] }, output: null,
     };
     const inventory = { ore: 3, plate: 1, sphere: 1, tesseract: 0 };
     const game: GameState = {

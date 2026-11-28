@@ -16,7 +16,9 @@ export type Target =
   | { kind: 'cell'; q: number; r: number }                          // an empty board space
   | { kind: 'piece'; pieceId: string }                               // a placed tile or mine
   | { kind: 'point'; pieceId: string; point: number }                // a connection point
-  | { kind: 'buffer'; pieceId: string; buffer: 'input' | 'output' }
+  // A building's input or output buffer; with `slot`, one input of it (its stub, its material and
+  // the teleporter on it: each input of a Sphere or Tesseract Factory is its own target, #55).
+  | { kind: 'buffer'; pieceId: string; buffer: 'input' | 'output'; slot?: number }
   | { kind: 'mineSlot'; pieceId: string; slot: number }
   | { kind: 'belt'; beltId: string }
   | { kind: 'stack'; index: number }

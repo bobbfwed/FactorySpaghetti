@@ -36,7 +36,7 @@ describe('greedyBot (B3 one-ply lookahead vs randomBot)', () => {
 // Stage 3: the round-end conversion policy drives load → operate → collect, which the
 // one-ply lookahead can't sequence on its own.
 describe('greedyBot round-end conversion policy', () => {
-  const buf = (slots: Array<Material | null>): Buffer => ({ slots, teleporterOwner: null });
+  const buf = (slots: Array<Material | null>): Buffer => ({ slots, teleporters: [] });
   const factory = (id: string, type: PieceType, input: Buffer | null, output: Buffer | null): BoardPiece =>
     ({ id, type, coord: { q: 0, r: 0 }, rotation: 0, claims: [{ ownerId: 0, controlModule: 7 }], input, output });
   function roundEnd(board: BoardPiece[], inv: Partial<Record<Material, number>>, meepleId: string, power = 5): GameState {

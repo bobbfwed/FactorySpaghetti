@@ -28,8 +28,8 @@ function piece(id: string, type: BoardPiece['type'], q: number, r: number, rotat
   const hasOutput = type === 'plateFact' || type === 'sphereFact' || type === 'tesseractFact';
   return {
     id, type, coord: { q, r }, rotation, claims,
-    input: inputs ? { slots: new Array(inputs).fill(null), teleporterOwner: null } : null,
-    output: hasOutput || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: inputs ? { slots: new Array(inputs).fill(null), teleporters: [] } : null,
+    output: hasOutput || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
 
@@ -170,8 +170,8 @@ describe('teleporters return when their placer loses the claim (#37)', () => {
   const withTeleporters = (claims: Claims): GameState => {
     const x: BoardPiece = {
       ...piece('X', 'plateFact', 3, 0, 0, claims),
-      input: { slots: ['ore'], teleporterOwner: 0 },
-      output: { slots: ['plate'], teleporterOwner: 0 },
+      input: { slots: ['ore'], teleporters: [0] },
+      output: { slots: ['plate'], teleporters: [0] },
     };
     const s = actionsState([piece('mine-1', 'mine', 0, 0), x, piece('Y', 'plateFact', 5, 0)]);
     return patchPlayer({ ...s, globalTeleporterCount: 2, cardsPlayedThisTurn: 0 }, 0, {
@@ -186,8 +186,8 @@ describe('teleporters return when their placer loses the claim (#37)', () => {
     const after = expectOk(applyAction(s, move));
     const x = after.board.find(p => p.id === 'X')!;
     expect(x.claims).toEqual([]);
-    expect(x.input).toEqual({ slots: ['ore'], teleporterOwner: null });   // material stays
-    expect(x.output).toEqual({ slots: ['plate'], teleporterOwner: null });
+    expect(x.input).toEqual({ slots: ['ore'], teleporters: [] });   // material stays
+    expect(x.output).toEqual({ slots: ['plate'], teleporters: [] });
     expect(after.players[0]!.teleportersRemaining).toBe(4);
     expect(after.globalTeleporterCount).toBe(0);
     expect(teleporterCost(after.globalTeleporterCount)).toBe(1);
@@ -195,7 +195,7 @@ describe('teleporters return when their placer loses the claim (#37)', () => {
 
   it('they stay while the placer keeps another claim there, even if another player also claims it', () => {
     const after = expectOk(applyAction(withTeleporters([{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 6 }]), move));
-    expect(after.board.find(p => p.id === 'X')!.output!.teleporterOwner).toBe(0);
+    expect(after.board.find(p => p.id === 'X')!.output!.teleporters).toEqual([0]);
     expect(after.globalTeleporterCount).toBe(2);
   });
 
@@ -203,7 +203,7 @@ describe('teleporters return when their placer loses the claim (#37)', () => {
     const after = expectOk(applyAction(withTeleporters([{ ownerId: 1, controlModule: 5 }, { ownerId: 0, controlModule: 4 }]), move));
     const x = after.board.find(p => p.id === 'X')!;
     expect(x.claims).toEqual([{ ownerId: 1, controlModule: 5 }]);
-    expect(x.output!.teleporterOwner).toBeNull();
+    expect(x.output!.teleporters).toEqual([]);
     expect(after.players[0]!.teleportersRemaining).toBe(4);
   });
 });
@@ -218,7 +218,7 @@ describe("a belt end facing a building it may not serve is a dead end (#38)", ()
   const A = piece('A', 'blank', 2, 0);
   const C = piece('C', 'blank', 4, 0);
   const F = (claims: Claims, out: Material | null = null): BoardPiece =>
-    ({ ...piece('F', 'plateFact', 3, 0, 0, claims), output: { slots: [out], teleporterOwner: null } });
+    ({ ...piece('F', 'plateFact', 3, 0, 0, claims), output: { slots: [out], teleporters: [] } });
   const G = (claims: Claims): BoardPiece => piece('G', 'sphereFact', 5, 0, 0, claims);
   const beltA: Belt = { id: 'bA', ownerId: 0, pieceId: 'A', fromPoint: 0, toPoint: 7 };
   const beltC: Belt = { id: 'bC', ownerId: 0, pieceId: 'C', fromPoint: 0, toPoint: 7 };
@@ -280,9 +280,9 @@ describe("an output touching an input moves material only between one player's b
   const G1: Claims = [{ ownerId: 1, controlModule: 5 }];
   const BOTH: Claims = [{ ownerId: 1, controlModule: 4 }, { ownerId: 0, controlModule: 6 }];
   const F = (claims: Claims, out: Material | null = 'plate', input: Material | null = null): BoardPiece =>
-    ({ ...piece('F', 'plateFact', 3, 0, 0, claims), input: { slots: [input], teleporterOwner: null }, output: { slots: [out], teleporterOwner: null } });
+    ({ ...piece('F', 'plateFact', 3, 0, 0, claims), input: { slots: [input], teleporters: [] }, output: { slots: [out], teleporters: [] } });
   const G = (claims: Claims, slots: Array<Material | null> = [null, null]): BoardPiece =>
-    ({ ...piece('G', 'sphereFact', 4, 0, 0, claims), input: { slots, teleporterOwner: null } });
+    ({ ...piece('G', 'sphereFact', 4, 0, 0, claims), input: { slots, teleporters: [] } });
   const run = (board: BoardPiece[]): { f: unknown; g: unknown[] } => {
     const after = resolveDirectAdjacency(actionsState(board));
     return { f: after.board.find(p => p.id === 'F')!.output!.slots[0], g: [...after.board.find(p => p.id === 'G')!.input!.slots] };
@@ -501,7 +501,7 @@ describe('a belt picked up goes to the bank unless it was laid this turn (#54, p
 describe('while the active player has a factory decision pending, only operate/skip is accepted (#40)', () => {
   const shared: BoardPiece = {
     ...piece('pf', 'plateFact', 50, 0, 0, [{ ownerId: 0, controlModule: 3 }, { ownerId: 1, controlModule: 3 }]),
-    input: { slots: ['ore'], teleporterOwner: null },
+    input: { slots: ['ore'], teleporters: [] },
   };
   const base = createGame(1, 2);
   const roll: GameState = {
@@ -617,7 +617,7 @@ describe('moves the list never offered are refused by the engine too (#43)', () 
 
   it('a meeple recorded on a building with a Mine point (an older save) does not run the building', () => {
     const base = createGame(1, 2);
-    const pf: BoardPiece = { ...piece('pf', 'plateFact', 50, 0, 0, [{ ownerId: 0, controlModule: 3 }]), output: { slots: ['plate'], teleporterOwner: null } };
+    const pf: BoardPiece = { ...piece('pf', 'plateFact', 50, 0, 0, [{ ownerId: 0, controlModule: 3 }]), output: { slots: ['plate'], teleporters: [] } };
     const s = patchPlayer({ ...base, board: [...base.board, pf], phase: 'roundEnd', turnOrder: [0, 1], activePlayerIndex: 0 }, 0, {
       meepleOnPieceId: 'pf', meepleSlotIndex: 0, inventory: inv(2, 0, 0, 0), powerTokens: 5,
     });

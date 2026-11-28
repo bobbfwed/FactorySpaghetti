@@ -2,19 +2,20 @@
 // Output teleporter: material in that output never leaves by a belt or a touching input, also
 // when its owner's inventory is full and it waits in the buffer. Input teleporter on a building
 // with one input (Plate Factory, Power Plant): nothing arrives there from a Mine, a belt or a
-// touching output, in every pass and at every place flow runs. Sphere and Tesseract Factories
-// keep today's behaviour until the designer decides how a teleporter covers one of several inputs.
+// touching output, in every pass and at every place flow runs. A teleporter sits on one input
+// (RULES_CHANGES.md #55): on a Sphere or Tesseract Factory it cuts off, and supplies, only that input.
 
 import { describe, expect, it } from 'vitest';
 import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
-import { fillInputsFromAdjacentMines, resolveDirectAdjacency, teleporterCutsOff } from '../rules/flow';
+import { fillInputsFromAdjacentMines, resolveDirectAdjacency, returnOrphanedTeleporters, teleporterCutsOff } from '../rules/flow';
 import { INVENTORY_CAP } from '../config';
 import type { Material } from '../config';
 import type { Action } from '../actions';
 import { sameMove } from '../actions';
 import type { Belt, BoardPiece, GameState, PlayerId } from '../state';
 import { expectOk } from './helpers';
+import { withTeleporter } from '../rules/teleporters';
 
 type Claims = BoardPiece['claims'];
 
@@ -26,12 +27,13 @@ function piece(id: string, type: BoardPiece['type'], q: number, r: number, claim
   const hasOutput = type === 'plateFact' || type === 'sphereFact' || type === 'tesseractFact';
   return {
     id, type, coord: { q, r }, rotation: 0, claims,
-    input: inputs ? { slots: new Array(inputs).fill(null), teleporterOwner: null } : null,
-    output: hasOutput || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: inputs ? { slots: new Array(inputs).fill(null), teleporters: [] } : null,
+    output: hasOutput || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
-const teleIn = (p: BoardPiece, owner: PlayerId | null = 0): BoardPiece => ({ ...p, input: { ...p.input!, teleporterOwner: owner } });
-const teleOut = (p: BoardPiece, owner: PlayerId | null = 0): BoardPiece => ({ ...p, output: { ...p.output!, teleporterOwner: owner } });
+const teleIn = (p: BoardPiece, owner: PlayerId = 0, slot = 0): BoardPiece => ({ ...p, input: withTeleporter(p.input!, slot, owner) });
+const teleOut = (p: BoardPiece, owner: PlayerId = 0): BoardPiece => ({ ...p, output: withTeleporter(p.output!, 0, owner) });
+const rot = (p: BoardPiece, rotation: number): BoardPiece => ({ ...p, rotation });
 const withOut = (p: BoardPiece, m: Material | null): BoardPiece => ({ ...p, output: { ...p.output!, slots: [m] } });
 const withIn = (p: BoardPiece, slots: Array<Material | null>): BoardPiece => ({ ...p, input: { ...p.input!, slots } });
 
@@ -160,23 +162,209 @@ describe('an input teleporter on a building with one input: nothing arrives ther
   });
 });
 
-describe('Sphere and Tesseract Factories: the teleporter covers the whole input (open decision)', () => {
-  // The state holds one teleporter per input buffer, not per input point, so "it blocks only the
-  // input it is placed on" cannot be expressed yet. Until the designer decides, a teleporter on
-  // a building with several inputs cuts off nothing: every input still receives as before.
-  it('a Sphere Factory with an input teleporter still receives on its inputs', () => {
-    const G = teleIn(piece('G', 'sphereFact', 4, 0, P0b));
-    expect(teleporterCutsOff(G, 'input')).toBe(false);
-    expect(find(resolveDirectAdjacency(actionsState([F(), G])), 'G').input!.slots).toContain('plate');
+describe('Sphere and Tesseract Factories: a teleporter sits on one input (#55)', () => {
+  // A Sphere Factory's input 1 is engine point 0 and its input 2 is point 2. At rotation 0 input 1
+  // faces west (the source in each case below); turned to rotation 5, input 2 faces west instead.
+  const G = (q: number, rotation: number, claims: Claims = P0b): BoardPiece => rot(piece('G', 'sphereFact', q, 0, claims), rotation);
+
+  it('the shared predicate: only the teleported input is cut off', () => {
+    const g = teleIn(G(4, 0), 0, 0);
+    expect(teleporterCutsOff(g, 'input', 0)).toBe(true);
+    expect(teleporterCutsOff(g, 'input', 1)).toBe(false);
+    expect(teleporterCutsOff(teleIn(G(4, 0), 0, 1), 'input', 1)).toBe(true);
+    expect(teleporterCutsOff(teleIn(G(4, 0), 0, 1), 'input', 0)).toBe(false);
   });
 
-  it('PLACE_TELEPORTER names the whole input buffer, not one input point', () => {
-    const s = actionsState([F(), piece('G', 'sphereFact', 4, 0, P0b)]);
-    const s2 = { ...s, players: s.players.map(p => (p.id === 0 ? { ...p, inventory: { ore: 6, plate: 0, sphere: 0, tesseract: 0 } } : p)) };
-    const a: Action = { type: 'PLACE_TELEPORTER', pieceId: 'G', bufferType: 'input' };
-    expect(legalActions(s2, 0).some(l => sameMove(l, a))).toBe(true);
-    const placed = expectOk(applyAction(s2, a));
-    expect(find(placed, 'G').input).toEqual({ slots: [null, null], teleporterOwner: 0 });
+  it('a touching output: input 1 with the teleporter gets nothing, input 2 still receives', () => {
+    // Input 1 touches F's output.
+    const cut = resolveDirectAdjacency(actionsState([F(), teleIn(G(4, 0), 0, 0)]));
+    expect(find(cut, 'G').input!.slots).toEqual([null, null]);
+    expect(find(cut, 'F').output!.slots).toEqual(['plate']);
+    expect(find(resolveDirectAdjacency(actionsState([F(), G(4, 0)])), 'G').input!.slots).toEqual(['plate', null]);
+    // Input 2 touches F's output: the teleporter on input 1 does not stop it.
+    expect(find(resolveDirectAdjacency(actionsState([F(), G(4, 5)])), 'G').input!.slots).toEqual([null, 'plate']);
+    expect(find(resolveDirectAdjacency(actionsState([F(), teleIn(G(4, 5), 0, 0)])), 'G').input!.slots).toEqual([null, 'plate']);
+  });
+
+  it('a belt from an output: input 1 with the teleporter gets nothing, input 2 still receives', () => {
+    expect(find(resolveDirectAdjacency(actionsState([F(), C, teleIn(G(5, 0), 0, 0)], [beltC])), 'G').input!.slots).toEqual([null, null]);
+    expect(find(resolveDirectAdjacency(actionsState([F(), C, G(5, 0)], [beltC])), 'G').input!.slots).toEqual(['plate', null]);
+    expect(find(resolveDirectAdjacency(actionsState([F(), C, teleIn(G(5, 5), 0, 0)], [beltC])), 'G').input!.slots).toEqual([null, 'plate']);
+  });
+
+  it('a Mine ore exit it touches: input 1 with the teleporter gets nothing, input 2 still receives', () => {
+    const g0 = teleIn(G(2, 0, P0), 0, 0);
+    expect(find(fillInputsFromAdjacentMines(actionsState([MINE, g0])), 'G').input!.slots).toEqual([null, null]);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, g0])), 'G').input!.slots).toEqual([null, null]);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, G(2, 0, P0)])), 'G').input!.slots).toEqual(['ore', null]);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, G(2, 5, P0)])), 'G').input!.slots).toEqual([null, 'ore']);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, teleIn(G(2, 5, P0), 0, 0)])), 'G').input!.slots).toEqual([null, 'ore']);
+  });
+
+  it('ore along a belt from a Mine: input 1 with the teleporter gets nothing, input 2 still receives', () => {
+    expect(find(resolveDirectAdjacency(actionsState([MINE, A, teleIn(G(3, 0, P0), 0, 0)], [beltA])), 'G').input!.slots).toEqual([null, null]);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, A, G(3, 0, P0)], [beltA])), 'G').input!.slots).toEqual(['ore', null]);
+    expect(find(resolveDirectAdjacency(actionsState([MINE, A, teleIn(G(3, 5, P0), 0, 0)], [beltA])), 'G').input!.slots).toEqual([null, 'ore']);
+  });
+
+  it('material already lying in the teleported input stays and is used', () => {
+    const ready = { ...actionsState([withIn(teleIn(G(4, 0), 0, 0), ['plate', 'plate'])]), pendingFactoryOps: [{ pieceId: 'G', ownerId: 0 as PlayerId }] };
+    expect(find(resolveDirectAdjacency(ready), 'G').input!.slots).toEqual(['plate', 'plate']);
+    const ran = expectOk(applyAction(ready, { type: 'OPERATE_BUILDING', pieceId: 'G', ownerId: 0 }));
+    expect(find(ran, 'G').output!.slots).toEqual(['sphere']);
+  });
+});
+
+describe('supplying a factory with some inputs teleported (#55)', () => {
+  // Sphere Factory G (module 5) of player 0, with player 0's teleporter on input 1 only.
+  const G = (slots: Array<Material | null>, claims: Claims = P0): BoardPiece => withIn(teleIn(piece('G', 'sphereFact', 4, 0, claims), 0, 0), slots);
+  const rich = (s: GameState): GameState => ({
+    ...s, players: s.players.map(p => ({ ...p, powerTokens: 5, inventory: { ore: 2, plate: 2, sphere: 0, tesseract: 0 } })),
+  });
+  const rolled = (board: BoardPiece[]): GameState =>
+    expectOk(applyAction({ ...rich(actionsState(board)), phase: 'roll' as const }, { type: 'ROLL_DICE', rolls: [5] }));
+
+  it('the supply fills only the teleported input; the other input must hold its material', () => {
+    // Input 2 holds a Plate (it arrived by belt): the owner names one material for input 1.
+    const s = rolled([G([null, 'plate'])]);
+    expect(s.pendingFactoryOps).toEqual([{ pieceId: 'G', ownerId: 0 }]);
+    const runs = legalActions(s, 0).filter(a => a.type === 'OPERATE_BUILDING');
+    expect(runs.map(a => (a.type === 'OPERATE_BUILDING' ? a.supply : null))).toEqual([['ore'], ['plate']]);
+    const ran = expectOk(applyAction(s, { type: 'OPERATE_BUILDING', pieceId: 'G', ownerId: 0, supply: ['ore'] }));
+    expect(find(ran, 'G').output!.slots).toEqual(['sphere']);
+    expect(ran.players[0]!.inventory.ore).toBe(1);
+    // Two materials (as if the teleporter covered both inputs) are refused.
+    const two = applyAction(s, { type: 'OPERATE_BUILDING', pieceId: 'G', ownerId: 0, supply: ['ore', 'plate'] });
+    expect(two.ok).toBe(false);
+    if (!two.ok) expect(two.error.code).toBe('INVALID_SUPPLY');
+  });
+
+  it('with the input without a teleporter still empty, the factory cannot run: no decision on the roll', () => {
+    const s = rolled([G([null, null])]);
+    expect(s.pendingFactoryOps).toEqual([]);
+    const ready = { ...rich(actionsState([G([null, null])])), pendingFactoryOps: [{ pieceId: 'G', ownerId: 0 as PlayerId }] };
+    const r = applyAction(ready, { type: 'OPERATE_BUILDING', pieceId: 'G', ownerId: 0, supply: ['ore'] });
+    expect(r.ok).toBe(false);
+  });
+
+  it('when only the input without a teleporter is empty, nothing can be supplied there either', () => {
+    // Input 1 (teleported) holds a Plate, input 2 is empty: the owner's teleporter has nothing to fill.
+    const s = rolled([G(['plate', null])]);
+    expect(s.pendingFactoryOps).toEqual([]);
+  });
+
+  it('a teleporter on every input supplies them all, as a whole-input teleporter did before', () => {
+    const both = withIn(teleIn(teleIn(piece('G', 'sphereFact', 4, 0, P0), 0, 0), 0, 1), [null, null]);
+    const s = rolled([both]);
+    expect(s.pendingFactoryOps).toEqual([{ pieceId: 'G', ownerId: 0 }]);
+    const runs = legalActions(s, 0).filter(a => a.type === 'OPERATE_BUILDING').map(a => (a.type === 'OPERATE_BUILDING' ? a.supply : null));
+    expect(runs).toEqual([['ore', 'plate'], ['plate', 'plate']]);
+    // And it receives nothing by itself: not from a touching output.
+    expect(find(resolveDirectAdjacency(actionsState([F(), both])), 'G').input!.slots).toEqual([null, null]);
+    // A Tesseract Factory with a teleporter on all three inputs likewise takes three materials.
+    let t = piece('T', 'tesseractFact', 4, 0, P0);
+    for (const i of [0, 1, 2]) t = teleIn(t, 0, i);
+    const st = expectOk(applyAction({
+      ...actionsState([t]), phase: 'roll' as const,
+      players: actionsState([t]).players.map(p => ({ ...p, powerTokens: 5, inventory: { ore: 0, plate: 1, sphere: 2, tesseract: 0 } })),
+    }, { type: 'ROLL_DICE', rolls: [5] }));
+    const tRuns = legalActions(st, 0).filter(a => a.type === 'OPERATE_BUILDING').map(a => (a.type === 'OPERATE_BUILDING' ? a.supply : null));
+    expect(tRuns.length).toBeGreaterThan(0);
+    expect(tRuns.every(sup => sup?.length === 3)).toBe(true);
+  });
+
+  it('on a building two players claim, each supplies only the input with their own teleporter', () => {
+    // Player 0's teleporter on input 1, player 1's on input 2; both have Control Module 5.
+    const shared = withIn(teleIn(teleIn(piece('G', 'sphereFact', 4, 0, [{ ownerId: 0, controlModule: 5 }, { ownerId: 1, controlModule: 5 }]), 0, 0), 1, 1), [null, null]);
+    const s = rolled([shared]);
+    // Neither can fill the other's input, so neither can run it.
+    expect(s.pendingFactoryOps).toEqual([]);
+    // With player 1's input holding a Plate, player 0 supplies input 1 alone.
+    const s2 = rolled([withIn(shared, [null, 'plate'])]);
+    expect(s2.pendingFactoryOps).toEqual([{ pieceId: 'G', ownerId: 0 }]);
+    expect(legalActions(s2, 0).filter(a => a.type === 'OPERATE_BUILDING').every(a => a.type === 'OPERATE_BUILDING' && a.supply?.length === 1)).toBe(true);
+  });
+});
+
+describe('placing teleporters on inputs (#55)', () => {
+  const rich = (s: GameState, ore = 6): GameState =>
+    ({ ...s, players: s.players.map(p => (p.id === 0 ? { ...p, inventory: { ore, plate: 0, sphere: 0, tesseract: 0 } } : p)) });
+  const T = (): BoardPiece => piece('T', 'tesseractFact', 4, 0, P0);
+  const listed = (s: GameState): string[] => legalActions(s, 0)
+    .filter(a => a.type === 'PLACE_TELEPORTER')
+    .map(a => (a.type === 'PLACE_TELEPORTER' ? `${a.pieceId}:${a.bufferType}${a.inputIndex === undefined ? '' : a.inputIndex}` : ''));
+
+  it('legalActions lists each free input of an own building, by its index, and the output', () => {
+    expect(listed(rich(actionsState([T()])))).toEqual(['T:input0', 'T:input1', 'T:input2', 'T:output']);
+    expect(listed(rich(actionsState([teleIn(T(), 0, 1)])))).toEqual(['T:input0', 'T:input2', 'T:output']);
+    expect(listed(rich(actionsState([teleOut(teleIn(teleIn(teleIn(T(), 1, 0), 0, 1), 1, 2))])))).toEqual([]);
+    // A Plate Factory has one input: it is input 0.
+    expect(listed(rich(actionsState([piece('P', 'plateFact', 4, 0, P0)])))).toEqual(['P:input0', 'P:output']);
+  });
+
+  it('one teleporter per input: each input may get one, a second on the same input is refused', () => {
+    const s0 = rich(actionsState([T()]), 20);
+    const s1 = expectOk(applyAction(s0, { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex: 2 }));
+    expect(find(s1, 'T').input!.teleporters).toEqual([null, null, 0]);
+    const again = applyAction(s1, { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex: 2 });
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.error.code).toBe('BUFFER_OCCUPIED');
+    const s2 = expectOk(applyAction(s1, { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex: 0 }));
+    expect(find(s2, 'T').input!.teleporters).toEqual([0, null, 0]);
+    const none = applyAction(s2, { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input', inputIndex: 3 });
+    expect(none.ok).toBe(false);
+    if (!none.ok) expect(none.error.code).toBe('NO_SUCH_INPUT');
+  });
+
+  it('each one is one of the 4 teleporters and pays the rising price (teleporters on the board + 1)', () => {
+    let s = rich(actionsState([T()]), 20);
+    const spots = [{ inputIndex: 0 }, { inputIndex: 1 }, { inputIndex: 2 }].map(x => ({ bufferType: 'input' as const, ...x }));
+    let paid = 0;
+    for (const [n, spot] of [...spots, { bufferType: 'output' as const }].entries()) {
+      const before = s.players[0]!.inventory.ore;
+      s = expectOk(applyAction(s, { type: 'PLACE_TELEPORTER', pieceId: 'T', ...spot }));
+      expect(before - s.players[0]!.inventory.ore).toBe(n + 1);
+      paid += n + 1;
+      expect(s.globalTeleporterCount).toBe(n + 1);
+      expect(s.players[0]!.teleportersRemaining).toBe(3 - n);
+    }
+    expect(paid).toBe(1 + 2 + 3 + 4);
+    // No fifth: none left (and no free spot either on another building).
+    const s5 = { ...s, board: [...s.board, piece('P', 'plateFact', 6, 0, P0)] };
+    const fifth = applyAction(s5, { type: 'PLACE_TELEPORTER', pieceId: 'P', bufferType: 'input', inputIndex: 0 });
+    expect(fifth.ok).toBe(false);
+    if (!fifth.ok) expect(fifth.error.code).toBe('NO_TELEPORTERS');
+  });
+
+  it('a move that names only the input (from before #55) means the first input', () => {
+    const s = rich(actionsState([T()]));
+    const old: Action = { type: 'PLACE_TELEPORTER', pieceId: 'T', bufferType: 'input' };
+    expect(legalActions(s, 0).some(l => sameMove(l, old))).toBe(true);
+    expect(find(expectOk(applyAction(s, old)), 'T').input!.teleporters).toEqual([0]);
+  });
+
+  it('R&D Tax Write-Off places its free teleporter on the input it names', () => {
+    const s = { ...actionsState([T()]), players: actionsState([T()]).players.map(p => (p.id === 0 ? { ...p, hand: ['rdTaxWriteOff' as const] } : p)) };
+    const plays = legalActions(s, 0).filter(a => a.type === 'PLAY_CARD' && a.cardType === 'rdTaxWriteOff');
+    expect(plays.map(a => (a.type === 'PLAY_CARD' ? `${a.bufferType}${a.inputIndex ?? ''}` : ''))).toEqual(['input0', 'input1', 'input2', 'output']);
+    const after = expectOk(applyAction(s, { type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: 'T', bufferType: 'input', inputIndex: 1 }));
+    expect(find(after, 'T').input!.teleporters).toEqual([null, 0]);
+    expect(after.globalTeleporterCount).toBe(1);
+  });
+
+  it('every teleporter of a player who loses their last claim returns: each input and the output', () => {
+    // Player 0 has teleporters on inputs 1 and 3 and the output; player 1 (a co-owner) on input 2.
+    const both: Claims = [{ ownerId: 0, controlModule: 5 }, { ownerId: 1, controlModule: 6 }];
+    const t = teleOut(teleIn(teleIn(teleIn(piece('T', 'tesseractFact', 4, 0, both), 0, 0), 1, 1), 0, 2));
+    const s = { ...actionsState([t]), globalTeleporterCount: 4, players: actionsState([t]).players.map(p => ({ ...p, teleportersRemaining: p.id === 0 ? 1 : 3 })) };
+    const lost = { ...s, board: [{ ...t, claims: [{ ownerId: 1 as PlayerId, controlModule: 6 }] }] };
+    const after = returnOrphanedTeleporters(lost);
+    expect(find(after, 'T').input!.teleporters).toEqual([null, 1]);
+    expect(find(after, 'T').output!.teleporters).toEqual([]);
+    expect(after.players[0]!.teleportersRemaining).toBe(4);
+    expect(after.players[1]!.teleportersRemaining).toBe(3);
+    expect(after.globalTeleporterCount).toBe(1);
+    expect(returnOrphanedTeleporters(s)).toBe(s); // nothing lost: the same state
   });
 });
 

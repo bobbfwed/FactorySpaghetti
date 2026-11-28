@@ -187,7 +187,7 @@ Every physical component is a 3D object, either on the board or in front of a pl
 | Meeple | 3D meeple in the owner's colour, standing on a building or a mine slot |
 | Ore, Plate, Sphere, Tesseract | 3D pieces in the print shapes (triangle, parallelogram, disc, cube) on buffers and in the player's area |
 | Power Tokens | Round lightning-bolt tokens |
-| Teleporters | The designer's teleporter piece in the owner's colour, standing beside the buffer it is on (see D4) |
+| Teleporters | The designer's teleporter piece in the owner's colour, standing beside the input it is on (each input of a Sphere or Tesseract Factory has its own, RULES_CHANGES.md #55) or beside the output (see D4) |
 | Leverage cards | A deck and discard pile on the table; your hand fanned at the bottom of the screen |
 | Bonus Tesseract cards | Face-up cards in front of the holder |
 | Dice | One die per mine, rolled on the table |
@@ -237,7 +237,7 @@ Every engine action has exactly one gesture:
 | `REMOVE_BELT`, `UNDO_BELTS` | Touch one of your belts → Remove; "Undo belts" button until the turn ends |
 | `BUY_BELT`, `BUY_CARD`, `BUY_MINE`, `EXCHANGE_MATERIALS` | The bank area: touch the item; the price and what you will pay with are shown before confirming |
 | `PLACE_MINE` | The mine lifts off its stack → touch a lit pair of cells → rotate → confirm |
-| `PLACE_TELEPORTER` | Building menu → Teleporter → input or output, with the current global price |
+| `PLACE_TELEPORTER` | Building menu → Teleporter → an input (each input of a Sphere or Tesseract Factory is its own lit target) or the output, with the current global price |
 | `CLAIM_BUILDING`, `UPGRADE_BUILDING` | Building menu → tray opens → touch a lit module; cost shown in upgrade units |
 | `LOAD_BUILDING_INPUT`, `COLLECT_OUTPUT` | Building menu, or drag a material from your area onto the input buffer |
 | `PLAY_CARD` | Touch a card in your hand → it enlarges with its text → Play → follow the lit targets for that card |
@@ -274,7 +274,7 @@ Feedback that makes the game readable:
 | Tesseract | Yellow-green open cross made of intersecting square frames | 10 mm |
 | Power Token | Yellow disc with an inlaid black lightning bolt | 22 mm |
 | Starting-player piece | Tall yellow-green piece in the tesseract's shape | 46 mm |
-| Teleporter | A small arched block in the player's colour, like a tunnel, with a round swirl-shaped portal on one end and a shallow foot under it. It has its own print file, `Teleporter.3mf`, in one colour. On the table it is drawn at three quarters of its printed size, lying beside the buffer's material and parallel to the stub, with the portal facing out towards the tile edge. | 15 × 10.4 × 11.9 mm |
+| Teleporter | A small arched block in the player's colour, like a tunnel, with a round swirl-shaped portal on one end and a shallow foot under it. It has its own print file, `Teleporter.3mf`, in one colour. On the table it is drawn at three quarters of its printed size, lying beside the material of the input (or output) it is on and parallel to that stub, with the portal facing out towards the tile edge; each input of a Sphere or Tesseract Factory has its own spot (RULES_CHANGES.md #55). | 15 × 10.4 × 11.9 mm |
 
 The material pieces are the same greens as the symbols on the tiles, so a symbol and the piece it stands for match by sight.
 

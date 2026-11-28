@@ -15,8 +15,8 @@ function makePiece(overrides: Partial<BoardPiece> & Pick<BoardPiece, 'type' | 'i
     type,
     coord: overrides.coord ?? { q: 1, r: 0 },
     claims: overrides.claims ?? [],
-    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporterOwner: null } : null),
-    output: overrides.output ?? (hasOutput ? { slots: [null], teleporterOwner: null } : null),
+    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporters: [] } : null),
+    output: overrides.output ?? (hasOutput ? { slots: [null], teleporters: [] } : null),
   };
 }
 

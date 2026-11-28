@@ -129,7 +129,7 @@ export const stepActions: Topic = {
         ['Buy a Leverage card', 'Bank: **Leverage card**', `Number of Mines + 1 (${cardPriceWords()})`],
         ['Play a Leverage card', 'Tap it in your hand, then **Play** (also in the other steps of your turn). [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ', cards played as soon as they are drawn included' : ''}`],
         ['Buy a Mine', 'Bank: **Mine**, then place it like a piece; either half may touch the board. [[mines|Mines]]', minePriceWords()],
-        ['Place a teleporter', 'Press the **Teleporters** tile (it reads **Place a teleporter** when you can), then tap the input or output of one of your buildings. [[teleporters|Teleporters]]', 'Teleporters on the board + 1'],
+        ['Place a teleporter', 'Press the **Teleporters** tile (it reads **Place a teleporter** when you can), then tap an input or the output of one of your buildings (each input of a Sphere or Tesseract Factory is its own spot). [[teleporters|Teleporters]]', 'Teleporters on the board + 1'],
         ['Exchange materials', 'Press a Plate, Sphere or Tesseract, or the bank\'s **Exchange**, then **Exchange** to confirm. [[bank#exchange|Exchanging]]', 'Free'],
       ],
     },

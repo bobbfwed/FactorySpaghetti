@@ -53,7 +53,7 @@ export const CARD_TEXT: Record<CardType, string> = {
   scoutingDrone: 'Look through the stacks, choose a piece and place it on the board now.',
   shortSale: 'Claim an unclaimed building (or add to one you hold a claim on) with your lowest Control Module that is not below the number of Mines.',
   embezzlement: 'Take 1 Sphere from the bank.',
-  sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to their owners.',
+  sinkHole: 'Remove an unclaimed board piece (not a Mine). Belts on it go back to the bank.',
   overstockSupplies: 'Draw 3 pieces and place them next to the board. Played as soon as it is drawn.',
   netSurplusSellOff: 'Each other player gives you 3 Power Tokens (or all they have), until you reach 10.',
   changingPriorities: 'Move one of your Control Modules to another building: an unclaimed one, or one you hold a claim on.',
@@ -205,7 +205,7 @@ export const W = {
   allMinesIn: 'All Mines are already in play.',
   mineDropPending: 'A dropped Mine must be placed first.',
   noTeleporters: 'You have placed all your teleporters.',
-  noFreeBuffer: 'None of your buildings has a buffer without a teleporter.',
+  noFreeBuffer: 'Every input and output of your buildings already has a teleporter.',
   nothingToExchange: 'You have no Plate, Sphere or Tesseract to break down.',
   noBeltsThisTurn: 'You have not placed a belt this turn.',
 
@@ -227,12 +227,23 @@ export const W = {
   totalValue: (n: number): string => `Total Value: ${n}`,
 
   // Teleporter
-  teleporterPick: 'Tap the buffer of one of your buildings for the teleporter.',
-  teleporterConfirm: (buffer: string, building: string): string =>
-    `Place a teleporter on the ${buffer} of this ${building}? You cannot take it back; it returns to you only if you lose your last claim on this building.`,
-  teleporterWhich: 'Which buffer gets the teleporter?',
+  teleporterPick: 'Tap an input or the output of one of your buildings for the teleporter. A Sphere or Tesseract Factory has a spot at each of its inputs.',
+  /** "Place a teleporter on input 2 of this Tesseract Factory? …" — `spot` from spotName. */
+  teleporterConfirm: (spot: string, building: string, oneOfSeveral: boolean): string =>
+    `Place a teleporter on ${spot} of this ${building}?${oneOfSeveral ? ` ${W.teleporterOneInput}` : ''} You cannot take it back; it returns to you only if you lose your last claim on this building.`,
+  teleporterOneInput: 'It cuts off only this input (belts, a touching building and a Mine no longer fill it) and you supply only this input from your materials; the other inputs keep their belts.',
+  teleporterWhich: 'Where does the teleporter go?',
   bufferName: (b: 'input' | 'output'): string => (b === 'input' ? 'input' : 'output'),
-  teleporterOn: (b: 'input' | 'output'): string => `Teleporter on the ${b === 'input' ? 'input' : 'output'}`,
+  /**
+   * An input or the output, as the interface names it: "the output", "the input" (a building with
+   * one input) or "input 2" (inputs counted in the engine's order, as lit on the table).
+   */
+  spotName: (b: 'input' | 'output', input: number | null, inputs: number): string =>
+    (b === 'output' ? 'the output' : inputs <= 1 ? 'the input' : `input ${(input ?? 0) + 1}`),
+  /** A menu or choice item: "Teleporter on input 2". */
+  teleporterOn: (spot: string): string => `Teleporter on ${spot}`,
+  /** What an input holds now, to tell the inputs apart in a list: "(empty)", "(holds Ore)". */
+  inputHolds: (what: string | null): string => (what ? `holds ${what}` : 'empty'),
   teleporterDetail: (price: number): string => `Price ${price}, paid from your materials with change`,
 
   // Belts
@@ -314,6 +325,9 @@ export const W = {
   menuOutput: (s: string): string => `Output: ${s}`,
   empty: 'empty',
   teleporterMark: ' (teleporter)',
+  /** The inputs of a building with several inputs that carry a teleporter: " (teleporter on input 2)". */
+  teleporterMarkInputs: (inputs: readonly number[]): string =>
+    ` (teleporter${inputs.length > 1 ? 's' : ''} on input${inputs.length > 1 ? 's' : ''} ${inputs.map(i => i + 1).join(' and ')})`,
   modulesOf: (name: string, mods: string): string => `${name}: ${mods}`,
   // Control Modules below the number of Mines in play (they can never be rolled).
   /** "4", or "1 (cannot be rolled)" for a module below the number of Mines in play. */
@@ -376,6 +390,8 @@ export const W = {
   supplyYouHold: 'Your materials',
   supplyInput: 'Its input',
   supplyLacking: 'You do not hold the materials for any of these.',
+  /** An empty input without the player's teleporter (#55): nothing they hand over fills it. */
+  supplyWaitsForFeed: 'An input without your teleporter is still empty: it fills only by belt, from a touching building or from a Mine.',
   supplyPlantNothing: 'You hold no Ore, Plate or Sphere to provide, so it runs as it is.',
   supplyPlantFull: `You already have ${POWER_TOKEN_CAP} Power Tokens, so it cannot run: skip it.`,
   supplyNoPower: (need: number, have: number): string => `It needs ${tokens(need)} to run; you have ${have}. Skip it.`,
@@ -392,14 +408,16 @@ export const W = {
   shortSalePick: (module: number): string => `Short Sale: tap a building to claim it with your Control Module ${module}.`,
   shortSaleConfirm: (building: string, module: number): string => `Claim this ${building} with Control Module ${module}?`,
   sinkHolePick: 'Sink Hole: tap an unclaimed piece to remove it.',
-  sinkHoleConfirm: (what: string): string => `Remove this ${what} from the board?`,
+  /** "Remove this blank tile from the board? The 2 belts on it go back to the bank: …" (#56). */
+  sinkHoleConfirm: (what: string, belts = 0): string =>
+    `Remove this ${what} from the board?${belts > 0 ? ` ${belts === 1 ? 'The belt on it goes' : `The ${belts} belts on it go`} back to the bank: their owners do not get them back.` : ''}`,
   cpPickFrom: 'Changing Priorities: tap the building to move a Control Module from.',
   cpPickTo: 'Now tap the building to move it to.',
   cpPickModule: 'Which Control Module moves?',
   cpConfirm: (module: number, from: string, to: string): string => `Move Control Module ${module} from the ${from} to the ${to}?`,
-  rdPick: 'R&D Tax Write-Off: tap the buffer of one of your buildings for a free teleporter.',
-  rdConfirm: (buffer: string, building: string): string =>
-    `Place a free teleporter on the ${buffer} of this ${building}? You cannot take it back; it returns to you only if you lose your last claim on this building.`,
+  rdPick: 'R&D Tax Write-Off: tap an input or the output of one of your buildings for a free teleporter.',
+  rdConfirm: (spot: string, building: string, oneOfSeveral: boolean): string =>
+    `Place a free teleporter on ${spot} of this ${building}?${oneOfSeveral ? ` ${W.teleporterOneInput}` : ''} You cannot take it back; it returns to you only if you lose your last claim on this building.`,
   dronePile: 'Scouting Drone: choose a piece from the stacks',
   droneItem: (stack: number, what: string): string => `Stack ${stack}: ${what}`,
   /** The same piece type is offered more than once from one stack: tell them apart by position. */

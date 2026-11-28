@@ -17,6 +17,7 @@ import { applyAction, legalActions } from '../engine/reducer';
 import { payMaterials } from '../engine/rules/flow';
 import { factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
+import { supplySlots } from '../engine/rules/teleporters';
 
 export const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
@@ -134,8 +135,9 @@ export function runPreview(piece: BoardPiece, player: Player, supply: readonly M
     return { power: 0, gain, nominal, consumed: inMat ? [inMat] : [], product: null };
   }
   if (!piece.input || !piece.output) return null;
-  let i = 0;
-  const slots = piece.input.slots.map(s => (s === null && i < supply.length ? supply[i++]! : s));
+  // The supply goes into the empty inputs that carry the player's teleporter (#55), in order.
+  const slots = [...piece.input.slots];
+  supplySlots(piece, player.id).forEach((slot, i) => { if (i < supply.length) slots[slot] = supply[i]!; });
   if (slots.some(s => s === null)) return null;
   const product = factoryProduct(piece.type, slots);
   if (!product) return null;
@@ -143,9 +145,17 @@ export function runPreview(piece: BoardPiece, player: Player, supply: readonly M
   return { power, gain: 0, nominal: 0, consumed: slots.filter((s): s is Material => s !== null), product };
 }
 
-/** The player's own teleporter sits on this building's input and an input slot is empty: they may supply it. */
+/** The player's own teleporter sits on an empty input of this building: they may supply it (#45, #55). */
 export function canSupply(piece: BoardPiece, player: PlayerId): boolean {
-  return !!piece.input && piece.input.teleporterOwner === player && piece.input.slots.some(s => s === null);
+  return supplySlots(piece, player).length > 0;
+}
+
+/**
+ * True when an empty input of this building has none of the player's teleporters: nothing they
+ * hand over fills it, so it must arrive by belt, a touching building or a Mine first (#55).
+ */
+export function inputWaitsForFeed(piece: BoardPiece, player: PlayerId): boolean {
+  return !!piece.input && piece.input.slots.filter(s => s === null).length > supplySlots(piece, player).length;
 }
 
 /**

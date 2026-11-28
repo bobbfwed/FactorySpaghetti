@@ -20,6 +20,7 @@ import {
   cardCost, pieceTemplate, teleporterCost,
 } from '../../engine/config';
 import { payMaterials } from '../../engine/rules/flow';
+import { freeTeleporterSlots, withTeleporter } from '../../engine/rules/teleporters';
 import { adjAt, getRole } from '../../engine/rules/flow';
 import { canLoadMaterial, factoryProduct } from '../../engine/rules/recipes';
 import { findInputCompletion } from '../../engine/rules/production';
@@ -175,6 +176,12 @@ function pickBest<T>(items: readonly T[], score: (t: T) => number): { item: T; s
 
 export function makeStyleBot(style: Style): BotFn {
   return (state: GameState, me: PlayerId): Action => decide(state, me, style);
+}
+
+/** What a teleporter on `pieceId`'s input `inputIndex` (or output) is worth to the bot (for tests). */
+export function teleporterWorthFor(state: GameState, me: PlayerId, style: Style, pieceId: string, buffer: 'input' | 'output', inputIndex = 0): number {
+  const b = state.board.find(p => p.id === pieceId);
+  return b ? teleporterWorth(makeCtx(state, me, style), b, buffer, inputIndex) : 0;
 }
 
 function decide(state: GameState, me: PlayerId, style: Style): Action {
@@ -345,7 +352,7 @@ function mineSpotScore(ctx: Ctx, mineId: string, coord: { q: number; r: number }
   const state = ctx.state;
   const mine: BoardPiece = {
     id: mineId, type: 'mine', coord, rotation: rot, claims: [], input: null,
-    output: { slots: [null], teleporterOwner: null },
+    output: { slots: [null], teleporters: [] },
   };
   const board2 = [...state.board, mine];
   const sec = mineSecondaryCoord(coord, rot);
@@ -701,7 +708,11 @@ function buyMine(ctx: Ctx): Action | null {
 
 // ── Teleporters ───────────────────────────────────────────────────────────────
 
-function teleporterWorth(ctx: Ctx, b: BoardPiece, buffer: 'input' | 'output'): number {
+// What a teleporter of mine on `b` is worth: on the output, the runs it carries away; on input
+// `inputIndex`, the share of the recipe it adds (#55: it supplies that one input and cuts it off
+// from belts, so an input my belts or a Mine already feed gains nothing — the bot picks an input
+// its supply chain does not reach).
+function teleporterWorth(ctx: Ctx, b: BoardPiece, buffer: 'input' | 'output', inputIndex = 0): number {
   const { state, me } = ctx;
   const mods = myModules(b, me);
   const runs = runsPerRound(state, mods, ctx.fw);
@@ -714,9 +725,10 @@ function teleporterWorth(ctx: Ctx, b: BoardPiece, buffer: 'input' | 'output'): n
     return runs * worth(ctx, product) * fed * ctx.horizon * 0.45;
   }
   if (!b.input || b.type === 'powerPlant') return 0;
-  const missing = 1 - fedFraction(state, b, me);
-  if (missing <= 0) return 0;
-  return runs * runWorth(b.type, ctx.pv) * missing * ctx.horizon * (b.type === 'tesseractFact' ? 0.6 : 0.3);
+  const withMine: BoardPiece = { ...b, input: withTeleporter(b.input, inputIndex, me) };
+  const gain = fedFraction(state, withMine, me) - fedFraction(state, b, me);
+  if (gain <= 0) return 0;
+  return runs * runWorth(b.type, ctx.pv) * gain * ctx.horizon * (b.type === 'tesseractFact' ? 0.6 : 0.3);
 }
 
 function buyTeleporter(ctx: Ctx): Action | null {
@@ -726,10 +738,11 @@ function buyTeleporter(ctx: Ctx): Action | null {
   if (!affordable(ctx, cost, style.teleporterAppetite >= 0.9)) return null;
   const cands: Array<{ a: Action; v: number }> = [];
   for (const b of myBuildings(state, ctx.me)) {
-    for (const buffer of ['input', 'output'] as const) {
-      const buf = buffer === 'input' ? b.input : b.output;
-      if (!buf || buf.teleporterOwner !== null) continue;
-      cands.push({ a: { type: 'PLACE_TELEPORTER', pieceId: b.id, bufferType: buffer }, v: teleporterWorth(ctx, b, buffer) });
+    for (const inputIndex of freeTeleporterSlots(b.input)) {
+      cands.push({ a: { type: 'PLACE_TELEPORTER', pieceId: b.id, bufferType: 'input', inputIndex }, v: teleporterWorth(ctx, b, 'input', inputIndex) });
+    }
+    if (freeTeleporterSlots(b.output).length > 0) {
+      cands.push({ a: { type: 'PLACE_TELEPORTER', pieceId: b.id, bufferType: 'output' }, v: teleporterWorth(ctx, b, 'output') });
     }
   }
   const best = pickBest(cands, c => c.v);
@@ -865,7 +878,7 @@ function playCard(ctx: Ctx): Action | null {
         break;
       case 'rdTaxWriteOff': {
         const b = state.board.find(x => x.id === a.pieceId);
-        v = b && a.bufferType ? teleporterWorth(ctx, b, a.bufferType) + teleporterCost(state.globalTeleporterCount) * 0.5 : -Infinity;
+        v = b && a.bufferType ? teleporterWorth(ctx, b, a.bufferType, a.inputIndex) + teleporterCost(state.globalTeleporterCount) * 0.5 : -Infinity;
         break;
       }
       case 'sinkHole':
@@ -924,9 +937,14 @@ function sinkHoleWorth(ctx: Ctx, a: Action): number {
   if (a.type !== 'PLAY_CARD' || !a.pieceId) return -Infinity;
   const b = ctx.state.board.find(x => x.id === a.pieceId);
   if (!b || !isBuilding(b)) return -Infinity;
+  // The belts lying on the piece go to the bank (RULES_CHANGES.md #56): mine are lost (a belt
+  // must be bought again), an opponent's loss is a small gain.
+  const beltsHere = ctx.state.belts.filter(x => x.pieceId === b.id);
+  const mine = beltsHere.filter(x => x.ownerId === ctx.me).length;
+  const beltLoss = mine * BELT_COST - (beltsHere.length - mine) * 0.3 * BELT_COST;
   // Deny an unclaimed Tesseract Factory that sits fed next to an opponent's output.
-  if (b.type !== 'tesseractFact') return 0;
-  let s = 0.5;
+  if (b.type !== 'tesseractFact') return -beltLoss;
+  let s = 0.5 - beltLoss;
   for (const pos of pointsWithRole(b, 'input_buffer')) {
     const f = feedAt(ctx.state, b, pos, ctx.me);
     if (f && f.material !== 'ore') {

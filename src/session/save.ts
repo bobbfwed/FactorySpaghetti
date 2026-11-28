@@ -107,10 +107,12 @@ function stable(x: unknown): unknown {
  *      Plants with one become a decision), Short Sale and Changing Priorities only onto unclaimed
  *      or own buildings, a Mine may touch the board with either hex, the discard pile is
  *      reshuffled, a Mine's upgrade point gives its printed number, and cards in every step.
- *   4: the designer's third set (#51–#54): a building's output touching an input moves material
+ *   4: the designer's third set (#51–#56): a building's output touching an input moves material
  *      only between buildings of the same player, picking up this turn's Mine belt frees the
- *      one-Mine-belt limit, a teleporter cuts its buffer off from belts and direct contact, and a
- *      removed belt goes back to the bank unless it was laid this turn.
+ *      one-Mine-belt limit, a teleporter cuts its buffer off from belts and direct contact, a
+ *      removed belt goes back to the bank unless it was laid this turn, a teleporter sits on one
+ *      input of a building and cuts off and supplies only that input (#55; also room format 2),
+ *      and the belts Sink Hole removes go back to the bank (#56). Not released yet, so still 4.
  */
 export const RULES_REVISION = 4;
 
@@ -388,8 +390,8 @@ function validateUnsafe(x: unknown): SaveEnvelope {
 /** Check a room's shape, versions, seat count against the game, and that the pieces add up. */
 function checkRoom(room: unknown): Room {
   check(isObj(room), 'room');
-  if (isInt(room.v) && room.v > 1) fail('unsupported-version', `room format ${room.v}`);
-  check(room.v === 1, 'room format');
+  if (isInt(room.v) && room.v > ROOM_FORMAT) fail('unsupported-version', `room format ${room.v}`);
+  check(room.v === 1 || room.v === ROOM_FORMAT, 'room format');
   check(isStr(room.code, 16) && room.code.length > 0, 'room code');
   check(room.phase === 'lobby' || room.phase === 'playing' || room.phase === 'finished', 'room phase');
   check(typeof room.hold === 'boolean', 'hold flag');
@@ -425,17 +427,47 @@ function checkRoom(room: unknown): Room {
   });
   check(isInt(room.hostSeat) && room.hostSeat >= 0 && room.hostSeat < pc, 'host seat');
 
+  // A room of format 1 (before #55) is read as format 2: its teleporters move to their slots.
+  const current = room.v === ROOM_FORMAT ? room : { ...room, v: ROOM_FORMAT };
   if (room.phase === 'lobby') {
     check(room.game === null, 'lobby has no game');
   } else {
     check(isObj(room.game), 'game');
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
     checkGame(room.game, pc);
-    const game = withUsableDraw(room.game);
-    if (game !== room.game) return { ...room, game } as unknown as Room;
+    const game = withUsableDraw(withTeleporterSlots(room.game));
+    if (game !== room.game) return { ...current, game } as unknown as Room;
   }
-  return room as unknown as Room;
+  return current as unknown as Room;
 }
+
+/**
+ * The room format. 2 since RULES_CHANGES.md #55 (a teleporter on each input): a buffer keeps its
+ * teleporters per slot (`teleporters`, an owner per input) instead of one owner for the whole buffer
+ * (`teleporterOwner` in format 1). Format 1 rooms still load (withTeleporterSlots); builds from
+ * before #55 refuse format 2 as "made by a newer version".
+ */
+export const ROOM_FORMAT = 2;
+
+/**
+ * The game with every buffer in the teleporter shape of #55: a buffer saved before it, with one
+ * `teleporterOwner` for the whole buffer, gets that teleporter on its first slot — the first input,
+ * or the output — exactly as an old move that names only the buffer places it. Returns `g` itself
+ * when nothing changes. Call after checkGame (the shapes are checked).
+ */
+export function withTeleporterSlots(g: Obj): Obj {
+  const board = g.board as Obj[];
+  if (!board.some(p => isLegacyBuffer(p.input) || isLegacyBuffer(p.output))) return g;
+  const fix = (b: unknown): unknown => {
+    if (!isLegacyBuffer(b)) return b;
+    const { teleporterOwner, ...rest } = b;
+    return { ...rest, teleporters: teleporterOwner === null ? [] : [teleporterOwner] };
+  };
+  return { ...g, board: board.map(p => ({ ...p, input: fix(p.input), output: fix(p.output) })) };
+}
+
+const isLegacyBuffer = (b: unknown): b is Obj & { teleporterOwner: number | null } =>
+  isObj(b) && 'teleporterOwner' in b && !('teleporters' in b);
 
 /** A room from outside, checked the same way as a save's room. Throws SaveError('invalid'). */
 export function validateRoom(x: unknown): Room {
@@ -540,27 +572,38 @@ function journalFits(j: JournalData, game: GameState, seq: number): boolean {
   return seed === game.seed && from + j.moves.length === seq;
 }
 
-/** True when `x` has the shape of an engine state (as checked for saves). */
-export function isGameState(x: unknown): x is GameState {
+/**
+ * `x` as an engine state when it has the shape of one (as checked for saves), or null. A state
+ * from before #55 (a replay's or a journal's starting state) comes back with its teleporters moved
+ * to their slots (withTeleporterSlots).
+ */
+export function asGameState(x: unknown): GameState | null {
   try {
-    if (!isObj(x)) return false;
+    if (!isObj(x)) return null;
     const pc = x.playerCount;
-    if (pc !== 2 && pc !== 3 && pc !== 4) return false;
+    if (pc !== 2 && pc !== 3 && pc !== 4) return null;
     checkGame(x, pc);
-    return true;
+    return withTeleporterSlots(x) as unknown as GameState;
   } catch {
-    return false;
+    return null;
   }
 }
 
 const isPiece = (p: unknown): boolean => isObj(p) && isStr(p.id, MAX_ID) && PIECE_TYPES.has(p.type as string);
 const isPlayerId = (pc: number) => (p: unknown): boolean => isInt(p) && p >= 0 && p < pc;
 
-function isBuffer(b: unknown): boolean {
+/**
+ * A buffer: its slots, and its teleporters — an owner (or null) per slot (`teleporters`, #55), or
+ * in a save from before #55 one owner for the whole buffer (`teleporterOwner`, see
+ * withTeleporterSlots).
+ */
+function isBuffer(b: unknown, pid: (p: unknown) => boolean): boolean {
   return b === null || (isObj(b)
     && Array.isArray(b.slots) && b.slots.length <= 4
     && b.slots.every(s => s === null || MATERIALS.has(s as string))
-    && (b.teleporterOwner === null || isInt(b.teleporterOwner)));
+    && (Array.isArray(b.teleporters)
+      ? b.teleporters.length <= b.slots.length && b.teleporters.every(o => o === null || pid(o))
+      : b.teleporterOwner === null || pid(b.teleporterOwner)));
 }
 
 /**
@@ -603,7 +646,7 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
     && isObj((p as Obj).coord) && isInt(((p as Obj).coord as Obj).q) && isInt(((p as Obj).coord as Obj).r)
     && Array.isArray((p as Obj).claims) && ((p as Obj).claims as unknown[]).length <= 12
     && ((p as Obj).claims as unknown[]).every(c => isObj(c) && pid(c.ownerId) && isInt(c.controlModule))
-    && isBuffer((p as Obj).input) && isBuffer((p as Obj).output)) as Obj[];
+    && isBuffer((p as Obj).input, pid) && isBuffer((p as Obj).output, pid)) as Obj[];
   const stacks = checkList(g.stacks, 3, 'stacks', s => isObj(s) && isInt(s.index) && typeof s.available === 'boolean') as Obj[];
   check(stacks.length === 3, 'stacks');
   for (const s of stacks) checkList(s.pieces, 200, 'stack pieces', isPiece);

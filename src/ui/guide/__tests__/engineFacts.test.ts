@@ -16,7 +16,7 @@ function actionsState(inventory: Record<Material, number>): GameState {
 }
 
 function mine(id: string, q: number): BoardPiece {
-  return { id, type: 'mine', coord: { q, r: 20 }, rotation: 0, claims: [], input: null, output: { slots: [null], teleporterOwner: null } };
+  return { id, type: 'mine', coord: { q, r: 20 }, rotation: 0, claims: [], input: null, output: { slots: [null], teleporters: [] } };
 }
 
 /** The state after the round's last turn ends, with each player's meeple on the given Mine point. */

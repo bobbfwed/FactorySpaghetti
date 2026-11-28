@@ -13,6 +13,7 @@ import {
   type SideLayout,
 } from './layout';
 import type { SideHeights } from './pick';
+import { teleporterOn } from '../engine/rules/teleporters';
 
 /** Flat ring geometry with soft alpha: rings[i] = [radius factor, alpha]; `sides` 6 = pointy-top hex. */
 export function softRing(sides: number, rings: ReadonlyArray<readonly [number, number]>, radius: number): THREE.BufferGeometry {
@@ -186,9 +187,13 @@ export class Overlay {
       case 'buffer': {
         const buf = t.buffer === 'input' ? piece.input : piece.output;
         if (!buf) return;
-        for (let i = 0; i < buf.slots.length; i++) { const p = bufferSlotWorld(piece, t.buffer, i); spot(p.x, TILE_TOP + 0.5, p.z, 8); }
-        // A teleporter already on the buffer is part of it (tapping it picks the buffer): light it too.
-        if (buf.teleporterOwner !== null) { const p = teleporterPlacement(piece, t.buffer); spot(p.x, TILE_TOP + 0.5, p.z, 8); }
+        // The whole buffer, or one input of it (t.slot, #55). A teleporter already on an input or
+        // the output is part of it (tapping it picks it): light it too.
+        for (let i = 0; i < buf.slots.length; i++) {
+          if (t.slot !== undefined && i !== t.slot) continue;
+          const p = bufferSlotWorld(piece, t.buffer, i); spot(p.x, TILE_TOP + 0.5, p.z, 8);
+          if (teleporterOn(buf, i) !== null) { const q = teleporterPlacement(piece, t.buffer, i); spot(q.x, TILE_TOP + 0.5, q.z, 8); }
+        }
         return;
       }
       case 'mineSlot': {

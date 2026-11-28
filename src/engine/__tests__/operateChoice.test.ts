@@ -22,8 +22,8 @@ function factory(id: string, type: BoardPiece['type'], owner: PlayerId, module: 
   return {
     id, type, coord: { q: 50, r: 0 }, rotation: 0, // far from the mine (no auto-feed)
     claims: [{ ownerId: owner, controlModule: module }],
-    input: buf.input ? { slots, teleporterOwner: null } : null,
-    output: buf.output ? { slots: [null], teleporterOwner: null } : null,
+    input: buf.input ? { slots, teleporters: [] } : null,
+    output: buf.output ? { slots: [null], teleporters: [] } : null,
   };
 }
 

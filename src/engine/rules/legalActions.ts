@@ -4,7 +4,8 @@
 // Note: ROLL_DICE is NOT returned here — dice values are caller-supplied;
 // bots and the sim generate them externally and pass them as ROLL_DICE actions.
 
-import type { GameState, PlayerId, HexCoord } from '../state';
+import type { BoardPiece, GameState, PlayerId, HexCoord } from '../state';
+import { freeTeleporterSlots } from './teleporters';
 import type { Action, OperateBuildingAction } from '../actions';
 import { canonicalAction, sameMove } from '../actions';
 import { scoutingDronePieceIndex, cardsLeftToDraw, mayAddClaimByCard, leavesMeepleUnowned } from './cards';
@@ -338,12 +339,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       if (!player || player.teleportersRemaining <= 0) break;
       for (const piece of state.board) {
         if (!piece.claims.some(c => c.ownerId === playerId)) continue;
-        if (piece.input?.teleporterOwner === null) {
-          out.push({ type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: piece.id, bufferType: 'input' });
-        }
-        if (piece.output?.teleporterOwner === null) {
-          out.push({ type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: piece.id, bufferType: 'output' });
-        }
+        for (const t of teleporterSpots(piece)) out.push({ type: 'PLAY_CARD', cardType: 'rdTaxWriteOff', pieceId: piece.id, ...t });
       }
       break;
     }
@@ -582,13 +578,18 @@ function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[])
 
   for (const piece of state.board) {
     if (!piece.claims.some(c => c.ownerId === playerId)) continue;
-    if (piece.input?.teleporterOwner === null) {
-      out.push({ type: 'PLACE_TELEPORTER', pieceId: piece.id, bufferType: 'input' });
-    }
-    if (piece.output?.teleporterOwner === null) {
-      out.push({ type: 'PLACE_TELEPORTER', pieceId: piece.id, bufferType: 'output' });
-    }
+    for (const t of teleporterSpots(piece)) out.push({ type: 'PLACE_TELEPORTER', pieceId: piece.id, ...t });
   }
+}
+
+// Every place on `piece` a teleporter may still go (RULES_CHANGES.md #55): each input without one,
+// named by its index, then the output when it has none. Shared by PLACE_TELEPORTER and R&D Tax
+// Write-Off.
+function teleporterSpots(piece: BoardPiece): Array<{ bufferType: 'input'; inputIndex: number } | { bufferType: 'output' }> {
+  return [
+    ...freeTeleporterSlots(piece.input).map(inputIndex => ({ bufferType: 'input' as const, inputIndex })),
+    ...(freeTeleporterSlots(piece.output).length > 0 ? [{ bufferType: 'output' as const }] : []),
+  ];
 }
 
 function addExchangeMaterials(state: GameState, playerId: PlayerId, out: Action[]) {

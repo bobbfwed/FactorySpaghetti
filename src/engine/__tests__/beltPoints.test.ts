@@ -18,8 +18,8 @@ function piece(id: string, type: PieceType, q: number, r: number, rotation = 0, 
   const hasOutput = type === 'plateFact' || type === 'sphereFact' || type === 'tesseractFact';
   return {
     id, type, coord: { q, r }, rotation, claims,
-    input: inputs ? { slots: new Array(inputs).fill(null), teleporterOwner: null } : null,
-    output: hasOutput || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: inputs ? { slots: new Array(inputs).fill(null), teleporters: [] } : null,
+    output: hasOutput || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
 

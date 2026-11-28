@@ -7,18 +7,21 @@ import type { BoardPiece, GameState, PlayerId } from '../../engine/state';
 import type { Material } from '../../engine/config';
 import { createGame } from '../../engine/rules/setup';
 import { resolveDirectAdjacency } from '../../engine/rules/flow';
-import { feedAt, inputFeeds, outputFeedsMine } from '../styles/analysis';
+import { feedAt, fedFraction, inputFeeds, outputFeedsMine } from '../styles/analysis';
+import { withTeleporter } from '../../engine/rules/teleporters';
+import { teleporterWorthFor } from '../styles/styleBot';
+import { TELEPORTER } from '../styles/profiles';
 
 type Claims = BoardPiece['claims'];
 
 // Plate Factory F at (3,0): its output #8 touches input #1 (position 0) of the Sphere Factory G at (4,0).
 const F = (claims: Claims, out: Material | null = 'plate'): BoardPiece => ({
   id: 'F', type: 'plateFact', coord: { q: 3, r: 0 }, rotation: 0, claims,
-  input: { slots: [null], teleporterOwner: null }, output: { slots: [out], teleporterOwner: null },
+  input: { slots: [null], teleporters: [] }, output: { slots: [out], teleporters: [] },
 });
 const G = (claims: Claims): BoardPiece => ({
   id: 'G', type: 'sphereFact', coord: { q: 4, r: 0 }, rotation: 0, claims,
-  input: { slots: [null, null], teleporterOwner: null }, output: { slots: [null], teleporterOwner: null },
+  input: { slots: [null, null], teleporters: [] }, output: { slots: [null], teleporters: [] },
 });
 const of = (p: PlayerId, m = 4): Claims => [{ ownerId: p, controlModule: m }];
 
@@ -54,18 +57,39 @@ describe('feedAt follows the engine on direct contact (#51)', () => {
   });
 
   it('teleporters (#53): a teleported output feeds nothing, a teleported single input is fed by nothing', () => {
-    const tOut = { ...F(of(0)), output: { slots: ['plate' as Material], teleporterOwner: 0 as PlayerId } };
+    const tOut = { ...F(of(0)), output: { slots: ['plate' as Material], teleporters: [0 as PlayerId] } };
     const s = state([tOut, G(of(0, 5))]);
     expect(feedAt(s, s.board[1]!, 0, 0)).toBeNull();
     // A Power Plant at (4,0) with a teleporter on its input: F's touching output does not count.
     const pp = (tele: PlayerId | null): BoardPiece => ({
       id: 'G', type: 'powerPlant', coord: { q: 4, r: 0 }, rotation: 0, claims: of(0, 5),
-      input: { slots: [null], teleporterOwner: tele }, output: null,
+      input: { slots: [null], teleporters: [tele] }, output: null,
     });
     const t = state([F(of(0)), pp(0)]);
     expect(feedAt(t, t.board[1]!, 0, 0)).toBeNull();
     const u = state([F(of(0)), pp(null)]);
     expect(feedAt(u, u.board[1]!, 0, 0)).not.toBeNull();
+  });
+
+  it('teleporters per input (#55): only the teleported input of a Sphere Factory is fed by nothing, as the engine moves it', () => {
+    // At rotation 0 F's output touches G's input 1 (point 0); at rotation 5 its input 2 (point 2).
+    for (const rotation of [0, 5]) {
+      for (const slot of [0, 1]) {
+        const g: BoardPiece = { ...G(of(0, 5)), rotation, input: withTeleporter(G(of(0, 5)).input!, slot, 0) };
+        const s = state([F(of(0)), g]);
+        const moved = resolveDirectAdjacency(s).board[1]!.input!.slots;
+        const feeds = inputFeeds(s, s.board[1]!, 0);
+        moved.forEach((m, i) => expect(feeds[i] !== null, `rotation ${rotation}, teleporter on input ${slot + 1}: input ${i + 1}`).toBe(m !== null));
+      }
+    }
+    // The bot values a teleporter on the input its supply chain does not reach, not on the fed one.
+    const fedFirst = state([F(of(0)), G(of(0, 5))]);
+    expect(teleporterWorthFor(fedFirst, 0, TELEPORTER, 'G', 'input', 0)).toBe(0);
+    expect(teleporterWorthFor(fedFirst, 0, TELEPORTER, 'G', 'input', 1)).toBeGreaterThan(0);
+    // An input with my teleporter counts as fed from my inventory, the other input by what feeds it.
+    const both = { ...G(of(0, 5)), input: withTeleporter(G(of(0, 5)).input!, 1, 0) };
+    expect(fedFraction(state([F(of(0)), both]), both, 0)).toBe(1);
+    expect(fedFraction(state([both]), both, 0)).toBe(0.5);
   });
 
   it('counts a direct feed exactly when the engine moves the material', () => {

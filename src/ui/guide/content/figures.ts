@@ -412,20 +412,23 @@ export const BELT_RULE_FIGURE: FigureBlock = {
 
 export const TELEPORTER_FIGURE: FigureBlock = {
   k: 'figure',
-  alt: 'Blue\'s Plate Factory with a teleporter on its output, and Blue\'s Power Plant with a teleporter on its input.',
-  caption: 'Two of Blue\'s teleporters: one on an output, one on an input.',
+  alt: 'Blue\'s Sphere Factory with a teleporter on its output and one on its input 1, while Blue\'s belt brings a Plate from Blue\'s Plate Factory to its input 2.',
+  caption: 'A teleporter sits on one input: input 1 is supplied from Blue\'s materials, input 2 still gets its Plate by belt.',
   show: {
     kind: 'scene',
     scene: {
       pieces: [
-        { id: 'pf', type: 'plateFact', q: 0, r: 0, claims: [[0, 3]], tpOut: 0 },
-        { id: 'pp', type: 'powerPlant', q: 0, r: 1, claims: [[0, 2]], tpIn: 0 },
+        { id: 'pf', type: 'plateFact', q: 0, r: 0, claims: [[0, 3]] },
+        { id: 'bl', type: 'blank', q: 1, r: 0 },
+        { id: 'sf', type: 'sphereFact', q: 2, r: 0, rot: 5, claims: [[0, 5]], input: [null, 'plate'], tpIn: [0, null], tpOut: 0 },
       ],
-      aspect: 4 / 3,
+      belts: [{ piece: 'bl', a: 0, b: 7 }],
+      aspect: 16 / 9,
     },
     callouts: [
-      { mark: '1', at: { piece: 'pf', teleporter: 'output' }, text: 'On the output: whatever the Plate Factory makes goes straight into your materials.' },
-      { mark: '2', at: { piece: 'pp', teleporter: 'input' }, text: 'On the input: when the Power Plant runs, you may hand over a material of yours for more Power Tokens.' },
+      { mark: '1', at: { piece: 'sf', teleporter: 'output' }, text: 'On the output: whatever the Sphere Factory makes goes straight into your materials.' },
+      { mark: '2', at: { piece: 'sf', teleporter: 'input', slot: 0 }, text: 'On input 1: when the Sphere Factory runs, you may hand over a material of yours for this input. Belts, touching pieces and Mines no longer fill it.' },
+      { mark: '3', at: { piece: 'bl', belt: 0 }, text: 'Input 2 has no teleporter: the belt still brings it Plates from the Plate Factory.' },
     ],
     icon: 'teleporter',
   },

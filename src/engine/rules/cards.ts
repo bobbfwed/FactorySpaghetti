@@ -7,7 +7,6 @@ import type {
   BoardPiece,
   UnplacedPiece,
   PlayerId,
-  Buffer,
   PieceStack,
 } from '../state';
 import type {
@@ -28,7 +27,7 @@ import {
   PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
 } from '../config';
 import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation, drawnStack, OWN_TURN_STEPS } from './pieces';
-import { payMaterials } from './flow';
+import { mineBeltAmong, payMaterials, teleporterTarget } from './flow';
 import { shuffle } from '../rng';
 
 export type ActionResult =
@@ -492,7 +491,12 @@ function resolveEmbezzlement(state: GameState, activeId: PlayerId): ActionResult
   };
 }
 
-// sinkHole: discard any unclaimed non-mine board piece; return its belts to owners.
+// sinkHole: discard any unclaimed non-mine board piece. The belts lying on it go back to the bank
+// (RULES_CHANGES.md #56): their owners do not get them back and must buy belts again, also for a
+// belt laid this turn (Sink Hole is not a take-back, unlike REMOVE_BELT's same-turn case, #54).
+// A belt laid this turn that it removes leaves this turn's list, so Undo belts cannot bring it
+// back, and the one-Mine-belt mark is worked out again as after REMOVE_BELT (#52): it stays used
+// only while a belt laid this turn still has an end facing a Mine ore exit.
 function resolveSinkHole(
   state: GameState,
   action: PlayCardAction,
@@ -507,18 +511,22 @@ function resolveSinkHole(
   if (piece.claims.length > 0) return err('PIECE_CLAIMED', 'Cannot discard a claimed piece');
 
   const newBoard = state.board.filter(p => p.id !== pieceId);
-  const beltsOnPiece = state.belts.filter(b => b.pieceId === pieceId);
-  const newBelts = state.belts.filter(b => b.pieceId !== pieceId);
+  const sunk = new Set(state.belts.filter(b => b.pieceId === pieceId).map(b => b.id));
+  if (sunk.size === 0) return { ok: true, state: { ...state, board: newBoard } };
+  const newBelts = state.belts.filter(b => !sunk.has(b.id));
+  const placedThisTurn = state.beltsPlacedThisTurn.filter(id => !sunk.has(id));
+  const tookThisTurns = placedThisTurn.length !== state.beltsPlacedThisTurn.length;
 
-  let newPlayers = state.players;
-  for (const belt of beltsOnPiece) {
-    newPlayers = mapPlayer(newPlayers, belt.ownerId, p => ({
-      ...p,
-      beltsRemaining: p.beltsRemaining + 1,
-    }));
-  }
-
-  return { ok: true, state: { ...state, board: newBoard, belts: newBelts, players: newPlayers } };
+  return {
+    ok: true,
+    state: {
+      ...state,
+      board: newBoard,
+      belts: newBelts,
+      beltsPlacedThisTurn: placedThisTurn,
+      mineBeltPlacedThisTurn: tookThisTurns ? mineBeltAmong(newBoard, newBelts, placedThisTurn) : state.mineBeltPlacedThisTurn,
+    },
+  };
 }
 
 // netSurplusSellOff: clockwise from next player, collect 3 Power Tokens (or all they have).
@@ -739,22 +747,15 @@ function resolveRdTaxWriteOff(
     return err('NOT_OWNER', 'You must own this building to place a teleporter');
   }
 
-  const buffer = bufferType === 'input' ? piece.input : piece.output;
-  if (!buffer) return err('NO_BUFFER', `${pieceId} has no ${bufferType} buffer`);
-  if (buffer.teleporterOwner !== null) {
-    return err('TELEPORTER_EXISTS', `A teleporter is already on the ${bufferType} buffer of ${pieceId}`);
+  // One input (inputIndex, the first when not named) or the output, as PLACE_TELEPORTER (#55).
+  const placed = teleporterTarget(piece, bufferType, action.inputIndex);
+  if (!placed.ok) {
+    return placed.error.code === 'BUFFER_OCCUPIED'
+      ? err('TELEPORTER_EXISTS', `A teleporter is already on that ${bufferType} of ${pieceId}`)
+      : placed;
   }
-
-  const newBuffer: Buffer = { ...buffer, teleporterOwner: activeId };
-  const newBoard = state.board.map(p =>
-    p.id === pieceId
-      ? {
-          ...p,
-          input:  bufferType === 'input'  ? newBuffer : p.input,
-          output: bufferType === 'output' ? newBuffer : p.output,
-        }
-      : p,
-  );
+  const newPiece = placed.piece(activeId);
+  const newBoard = state.board.map(p => (p.id === pieceId ? newPiece : p));
 
   return {
     ok: true,

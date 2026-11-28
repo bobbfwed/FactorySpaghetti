@@ -50,6 +50,16 @@ function pieceName(state: GameState, pieceId: string | undefined): string {
   return alike > 1 ? `the ${BUILDING_NAME[piece.type]} ${whereWords(state, piece.coord)}` : `the ${BUILDING_NAME[piece.type]}`;
 }
 
+/**
+ * Where a teleporter goes, in the words the play screen uses: "the output", "the input" (a building
+ * with one input) or "input 2" (one of several inputs, #55; the first when none is named).
+ */
+function teleporterSpot(state: GameState, pieceId: string, buffer: 'input' | 'output', inputIndex: number | undefined): string {
+  if (buffer === 'output') return 'the output';
+  const inputs = state.board.find(p => p.id === pieceId)?.input?.slots.length ?? 1;
+  return inputs > 1 ? `input ${(inputIndex ?? 0) + 1}` : 'the input';
+}
+
 /** "the second stack": stacks in rulebook words, by index. */
 export const STACK_ORDINAL: Readonly<Record<0 | 1 | 2, string>> = { 0: 'first', 1: 'second', 2: 'third' };
 
@@ -160,7 +170,7 @@ function describeVerb(s: GameState, a: Action, after: GameState | null | undefin
     case 'PLACE_BELT': return `placed a belt on ${pieceName(s, a.pieceId)}`;
     case 'REMOVE_BELT': return 'picked up a belt';
     case 'UNDO_BELTS': return 'took back the belts placed this turn';
-    case 'PLACE_TELEPORTER': return `placed a teleporter on the ${a.bufferType} of ${pieceName(s, a.pieceId)}`;
+    case 'PLACE_TELEPORTER': return `placed a teleporter on ${teleporterSpot(s, a.pieceId, a.bufferType, a.inputIndex)} of ${pieceName(s, a.pieceId)}`;
     case 'CLAIM_BUILDING': {
       const next = stateAfter(s, a, after);
       const paid = next ? paidWith(s, next) : null;
@@ -194,6 +204,9 @@ function describeVerb(s: GameState, a: Action, after: GameState | null | undefin
       }
       if (a.cardType === 'changingPriorities' && a.toPieceId !== undefined && a.controlModule !== undefined) {
         return `${played}, moving Control Module ${a.controlModule} to ${pieceName(s, a.toPieceId)}`;
+      }
+      if (a.cardType === 'rdTaxWriteOff' && a.pieceId !== undefined && a.bufferType !== undefined) {
+        return `${played}, placing a free teleporter on ${teleporterSpot(s, a.pieceId, a.bufferType, a.inputIndex)} of ${pieceName(s, a.pieceId)}`;
       }
       return played;
     }

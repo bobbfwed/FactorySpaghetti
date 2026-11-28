@@ -11,7 +11,11 @@ import { jsonSize, normalizePreview, PREVIEW_MAX_BYTES } from './preview';
 
 // The move journal (N11) only added optional fields and one request/answer pair, which older
 // builds ignore or refuse with BAD_MESSAGE, so the protocol version did not change.
-export const PROTOCOL = 1;
+// 2: teleporters sit per input (RULES_CHANGES.md #55). The room the host sends has a new shape
+// (room format 2: `teleporters` per slot) that a build from before cannot read or run, so a
+// client or host of the other version is turned away at `hello` instead of joining (or, after a
+// host hand-over, hosting) a game it would misread.
+export const PROTOCOL = 2;
 
 /** Error codes the host uses for refusals it makes itself (the engine adds its own codes). */
 export type SessionErrorCode =

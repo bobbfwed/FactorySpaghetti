@@ -186,8 +186,8 @@ describe('findRoute', () => {
     const pf: BoardPiece = {
       id: 'pf', type: 'plateFact', coord: { q: 4, r: 0 }, rotation: 0,
       claims: claimMe,
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     };
     const state = fixture([
       mk('mine', 'mine', { q: 0, r: 0 }),

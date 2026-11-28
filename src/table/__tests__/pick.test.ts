@@ -1,7 +1,7 @@
 // Picking without WebGL: a tap where a target is drawn must resolve to that target.
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import type { GameState } from '../../engine/state';
+import type { BoardPiece, GameState, PlayerId } from '../../engine/state';
 import { createBotGame, playUntil } from '../botGame';
 import { boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, BELT_PICK_Y, TELEPORTER_PICK_Y, type SideHeights } from '../pick';
 import { boardBounds, sideLayout, pointCount, pointRole, teleporterPlacement, TILE_TOP } from '../layout';
@@ -71,16 +71,20 @@ describe('picking', () => {
     }
   });
 
-  it('a tap on a teleporter picks its buffer (hit-tested half-way up the model), and buffers, points and pieces still resolve', () => {
-    // A teleporter on every buffer of every claimed building.
+  it('a tap on a teleporter picks its input or the output (hit-tested half-way up the model), and buffers, points and pieces still resolve', () => {
+    // A teleporter on every input (each input of a Sphere or Tesseract Factory has its own, #55)
+    // and on the output of every claimed building.
+    const all = (buf: NonNullable<BoardPiece['input']>, owner: PlayerId): NonNullable<BoardPiece['input']> =>
+      ({ ...buf, teleporters: buf.slots.map(() => owner) });
     const withTeleporters: GameState = {
       ...game,
       board: game.board.map(p => (p.claims.length === 0 || p.type === 'mine' ? p : {
         ...p,
-        input: p.input ? { ...p.input, teleporterOwner: p.claims[0]!.ownerId } : null,
-        output: p.output ? { ...p.output, teleporterOwner: p.claims[0]!.ownerId } : null,
+        input: p.input ? all(p.input, p.claims[0]!.ownerId) : null,
+        output: p.output ? all(p.output, p.claims[0]!.ownerId) : null,
       })),
     };
+    expect(withTeleporters.board.some(p => (p.input?.teleporters.length ?? 0) > 1)).toBe(true);
     const side = sideLayout(boardBounds(withTeleporters.board), withTeleporters.mineCount);
     // The isometric camera looks down at 45 degrees: a ray through the teleporter's middle meets the
     // tile top a few millimetres behind it. Try it from four directions.
@@ -90,17 +94,27 @@ describe('picking', () => {
     for (const piece of withTeleporters.board) {
       for (const buffer of ['input', 'output'] as const) {
         const buf = buffer === 'input' ? piece.input : piece.output;
-        if (!buf || buf.teleporterOwner === null || piece.type === 'mine') continue;
-        const t: Target = { kind: 'buffer', pieceId: piece.id, buffer };
-        const at = teleporterPlacement(piece, buffer);
-        for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
-          const hit = choose(boardCandidates(withTeleporters, at.x + dx * drop, at.z + dz * drop, undefined, at), new Set());
-          expect(hit, `${piece.id} ${buffer}`).toEqual(t);
+        if (!buf || buf.teleporters.length === 0 || piece.type === 'mine') continue;
+        const whole: Target = { kind: 'buffer', pieceId: piece.id, buffer };
+        for (let slot = 0; slot < buf.slots.length; slot++) {
+          // Each input is its own target when lit (placing a teleporter); the output is the buffer.
+          const own: Target = buffer === 'input' ? { kind: 'buffer', pieceId: piece.id, buffer, slot } : whole;
+          const lit = new Set(buf.slots.map((_, i) => targetKey(buffer === 'input' ? { kind: 'buffer', pieceId: piece.id, buffer, slot: i } : whole)));
+          const at = teleporterPlacement(piece, buffer, slot);
+          for (const [dx, dz] of [[0, 1], [1, 0], [0, -1], [-1, 0]] as const) {
+            const cands = boardCandidates(withTeleporters, at.x + dx * drop, at.z + dz * drop, undefined, at);
+            const label = `${piece.id} ${buffer} ${slot}`;
+            expect(choose(cands, new Set()), label).toEqual(whole); // nothing lit: the buffer, as before
+            expect(choose(cands, lit), `${label} lit`).toEqual(own);
+          }
+          // Its material picks it too.
+          const m = targetAnchor(withTeleporters, side, heights, own)!;
+          expect(choose(boardCandidates(withTeleporters, m.x, m.z), lit), `${piece.id} ${buffer} ${slot} material`).toEqual(own);
+          n++;
         }
-        // Still picked at its slots, as before.
-        const a = targetAnchor(withTeleporters, side, heights, t)!;
-        expect(choose(boardCandidates(withTeleporters, a.x, a.z), new Set())).toEqual(t);
-        n++;
+        // Still picked at its anchor, as before.
+        const a = targetAnchor(withTeleporters, side, heights, whole)!;
+        expect(choose(boardCandidates(withTeleporters, a.x, a.z), new Set())).toEqual(whole);
       }
       for (let pos = 0; pos < pointCount(piece); pos++) {
         if (pointRole(piece, pos) === 'disabled') continue;

@@ -19,7 +19,10 @@ export interface HexCoord {
 // null in a slot means the slot is empty.
 export interface Buffer {
   readonly slots: ReadonlyArray<Material | null>;
-  readonly teleporterOwner: PlayerId | null; // set when a teleporter is placed here
+  // The Teleporters on this buffer, by slot (RULES_CHANGES.md #55): entry i is the owner of the
+  // Teleporter on input i (an output has one slot, entry 0). A missing or null entry means none;
+  // kept without trailing nulls, so [] means no Teleporter. Read it through rules/teleporters.ts.
+  readonly teleporters: ReadonlyArray<PlayerId | null>;
 }
 
 // A piece that has not yet been placed on the board (sits in a stack or mine pool).

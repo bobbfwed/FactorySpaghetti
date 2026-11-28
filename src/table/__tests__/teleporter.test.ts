@@ -108,12 +108,21 @@ const BUILDINGS: ReadonlyArray<{ type: PieceType; inputs: number }> = [
   { type: 'plateFact', inputs: 1 }, { type: 'sphereFact', inputs: 2 }, { type: 'tesseractFact', inputs: 3 }, { type: 'powerPlant', inputs: 1 },
 ];
 
+/** A building with a teleporter on every input and on the output (RULES_CHANGES.md #55). */
 function building(type: PieceType, inputs: number, rotation: number): BoardPiece {
-  const buf = (n: number): BoardPiece['input'] => ({ slots: new Array(n).fill(null), teleporterOwner: 0 });
+  const buf = (n: number): BoardPiece['input'] => ({ slots: new Array(n).fill(null), teleporters: new Array(n).fill(0) });
   return {
     id: `t-${type}`, type, coord: { q: 2, r: -1 }, rotation, claims: [],
     input: buf(inputs), output: type === 'powerPlant' ? null : buf(1),
   } as BoardPiece;
+}
+
+/** Every spot a teleporter can stand on a building: each input, then the output. */
+function spots(type: PieceType, inputs: number): Array<{ buffer: 'input' | 'output'; slot: number }> {
+  return [
+    ...Array.from({ length: inputs }, (_, slot) => ({ buffer: 'input' as const, slot })),
+    ...(type === 'powerPlant' ? [] : [{ buffer: 'output' as const, slot: 0 }]),
+  ];
 }
 
 describe('where a teleporter stands on a building', () => {
@@ -125,39 +134,38 @@ describe('where a teleporter stands on a building', () => {
   const meeple = halfSize('meeple');
 
   const cases = BUILDINGS.flatMap(b => [0, 1, 2, 3, 4, 5].flatMap(rotation =>
-    (['input', 'output'] as const)
-      .filter(buffer => buffer === 'input' || b.type !== 'powerPlant')
-      .map(buffer => ({ ...b, rotation, buffer }))));
+    spots(b.type, b.inputs).map(s => ({ ...b, rotation, ...s }))));
+  const label = (c: (typeof cases)[number]): string => `${c.type} r${c.rotation} ${c.buffer} ${c.slot}`;
 
-  it('is checked on every buffer of every building type, at all six rotations', () => {
-    expect(cases.length).toBe(42);
+  it('is checked on every input and the output of every building type, at all six rotations', () => {
+    // Plate Factory 2 spots, Sphere Factory 3, Tesseract Factory 4, Power Plant 1; six rotations.
+    expect(cases.length).toBe((2 + 3 + 4 + 1) * 6);
   });
 
   it('lies inside its own tile, at least 0.5 mm in from every edge', () => {
     for (const c of cases) {
       const piece = building(c.type, c.inputs, c.rotation);
-      const t = teleporterPlacement(piece, c.buffer);
+      const t = teleporterPlacement(piece, c.buffer, c.slot);
       const centre = axialToWorld(piece.coord);
       for (const q of corners(rect(t, t.yaw, tele.hu, tele.hv))) {
         for (let ve = 0; ve < 6; ve++) {
           const n = edgeNormal(ve);
-          expect(APOTHEM - ((q.x - centre.x) * n.x + (q.z - centre.z) * n.z), `${c.type} r${c.rotation} ${c.buffer}`).toBeGreaterThan(0.5);
+          expect(APOTHEM - ((q.x - centre.x) * n.x + (q.z - centre.z) * n.z), label(c)).toBeGreaterThan(0.5);
         }
       }
     }
   });
 
-  it('clears the material in both buffers, the Control Modules (1 to 3, at any camera angle) and the meeple', () => {
+  it('clears the material in every input and the output, the Control Modules (1 to 3, at any camera angle) and the meeple', () => {
     for (const c of cases) {
       const piece = building(c.type, c.inputs, c.rotation);
       const pl = piecePlacement(piece);
-      const t = teleporterPlacement(piece, c.buffer);
+      const t = teleporterPlacement(piece, c.buffer, c.slot);
       const T = rect(t, t.yaw, tele.hu, tele.hv);
-      const label = `${c.type} r${c.rotation} ${c.buffer}`;
       for (const buffer of ['input', 'output'] as const) {
         const buf = buffer === 'input' ? piece.input : piece.output;
         for (let i = 0; i < (buf?.slots.length ?? 0); i++) {
-          expect(gap(T, rect(bufferSlotWorld(piece, buffer, i), pl.yaw, mat.x, mat.z)), `${label}: ${buffer} slot ${i}`).toBeGreaterThan(0.3);
+          expect(gap(T, rect(bufferSlotWorld(piece, buffer, i), pl.yaw, mat.x, mat.z)), `${label(c)}: ${buffer} slot ${i}`).toBeGreaterThan(0.3);
         }
       }
       // Control Modules and the meeple turn to face the viewer, so try every camera angle.
@@ -167,28 +175,76 @@ describe('where a teleporter stands on a building', () => {
           const lay = claimLayout(n);
           for (const off of lay.offsets) {
             const w = modelToWorld({ x: pl.x, z: pl.z, yaw: az }, off.x, off.z);
-            expect(gap(T, rect(w, az, mod.x * lay.scale, mod.z * lay.scale)), `${label}: ${n} modules at ${deg} deg`).toBeGreaterThan(1);
+            expect(gap(T, rect(w, az, mod.x * lay.scale, mod.z * lay.scale)), `${label(c)}: ${n} modules at ${deg} deg`).toBeGreaterThan(1);
           }
         }
-        expect(gap(T, rect(buildingMeepleWorld(piece), az, meeple.x, meeple.z)), `${label}: meeple at ${deg} deg`).toBeGreaterThan(1);
+        expect(gap(T, rect(buildingMeepleWorld(piece), az, meeple.x, meeple.z)), `${label(c)}: meeple at ${deg} deg`).toBeGreaterThan(1);
       }
     }
   });
 
-  it('points its portal out towards the edge its stubs meet, and stands next to the buffer', () => {
+  it('clears the other teleporters when every input and the output carry one', () => {
+    for (const b of BUILDINGS) {
+      for (let rotation = 0; rotation < 6; rotation++) {
+        const piece = building(b.type, b.inputs, rotation);
+        const all = spots(b.type, b.inputs).map(s => ({ s, t: teleporterPlacement(piece, s.buffer, s.slot) }));
+        for (let i = 0; i < all.length; i++) {
+          for (let j = i + 1; j < all.length; j++) {
+            const x = all[i]!, y = all[j]!;
+            expect(gap(rect(x.t, x.t.yaw, tele.hu, tele.hv), rect(y.t, y.t.yaw, tele.hu, tele.hv)),
+              `${b.type} r${rotation}: ${x.s.buffer} ${x.s.slot} and ${y.s.buffer} ${y.s.slot}`).toBeGreaterThan(1);
+          }
+        }
+      }
+    }
+  });
+
+  it('points its portal out towards the edge of its own stub, and stands next to that stub (nearer to it than to any other stub)', () => {
     for (const c of cases) {
       const piece = building(c.type, c.inputs, c.rotation);
-      const t = teleporterPlacement(piece, c.buffer);
+      const t = teleporterPlacement(piece, c.buffer, c.slot);
       const portal = { x: Math.cos(t.yaw), z: -Math.sin(t.yaw) };
       const positions = positionsWithRole(piece, c.buffer === 'input' ? 'input_buffer' : 'output_buffer');
-      const first = positions[0]!;
+      const own = positions[c.slot]!;
       // Outwards = from the stub's slot back to its hole on the edge.
-      const slot = bufferSlotWorld(piece, c.buffer, 0), hole = pointWorld(piece, first, 0);
+      const slot = bufferSlotWorld(piece, c.buffer, c.slot), hole = pointWorld(piece, own, 0);
       const out = { x: hole.x - slot.x, z: hole.z - slot.z };
       const l = Math.hypot(out.x, out.z);
-      expect((portal.x * out.x + portal.z * out.z) / l, `${c.type} r${c.rotation} ${c.buffer}`).toBeGreaterThan(0.8);
-      // Right next to the buffer's material.
-      expect(Math.hypot(t.x - slot.x, t.z - slot.z), `${c.type} r${c.rotation} ${c.buffer}`).toBeLessThan(16);
+      expect((portal.x * out.x + portal.z * out.z) / l, label(c)).toBeGreaterThan(0.8);
+      // Right next to its own material, and nearer to it than to any other stub's material.
+      const d = Math.hypot(t.x - slot.x, t.z - slot.z);
+      expect(d, label(c)).toBeLessThan(16);
+      for (const other of spots(c.type, c.inputs)) {
+        if (other.buffer === c.buffer && other.slot === c.slot) continue;
+        const o = bufferSlotWorld(piece, other.buffer, other.slot);
+        expect(Math.hypot(t.x - o.x, t.z - o.z), `${label(c)} vs ${other.buffer} ${other.slot}`).toBeGreaterThan(d + 1);
+      }
+    }
+  });
+});
+
+describe("the Tesseract Factory's meeple (moved to the top right for the teleporter on its third input, #55)", () => {
+  it('stands inside its tile and clear of the material in every input and the output, at any rotation and camera angle', () => {
+    const mats = ['ore', 'plate', 'sphere', 'tesseract'].map(halfSize);
+    const mat = { x: Math.max(...mats.map(m => m.x)) * BUFFER_MATERIAL_SCALE, z: Math.max(...mats.map(m => m.z)) * BUFFER_MATERIAL_SCALE };
+    const meeple = halfSize('meeple');
+    for (let rotation = 0; rotation < 6; rotation++) {
+      const piece = building('tesseractFact', 3, rotation);
+      const pl = piecePlacement(piece);
+      const centre = axialToWorld(piece.coord);
+      for (let deg = 0; deg < 360; deg += 3) {
+        const az = (deg * Math.PI) / 180;
+        const M = rect(buildingMeepleWorld(piece), az, meeple.x, meeple.z);
+        for (const q of corners(M)) {
+          for (let ve = 0; ve < 6; ve++) {
+            const n = edgeNormal(ve);
+            expect(APOTHEM - ((q.x - centre.x) * n.x + (q.z - centre.z) * n.z), `r${rotation} ${deg} deg`).toBeGreaterThan(0.5);
+          }
+        }
+        for (const s of spots('tesseractFact', 3)) {
+          expect(gap(M, rect(bufferSlotWorld(piece, s.buffer, s.slot), pl.yaw, mat.x, mat.z)), `r${rotation} ${deg} deg: ${s.buffer} ${s.slot}`).toBeGreaterThan(1);
+        }
+      }
     }
   });
 });

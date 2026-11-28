@@ -13,7 +13,7 @@ import { ClientSession, promoteToHost } from '../clientSession';
 import { activeSeat } from '../room';
 import type { Room } from '../room';
 import type { SaveEnvelope } from '../save';
-import { acceptHostRoom, packLink, parseSaveFile, serializeSaveFile, toSave, unpackLink, validateSave } from '../save';
+import { acceptHostRoom, packLink, parseSaveFile, serializeSaveFile, toSave, unpackLink, validateSave, withTeleporterSlots } from '../save';
 import { ManualScheduler, findState, join, playingRoom, settle } from './helpers';
 
 const NAMES = ['Ann', 'Bea', 'Cy', 'Dee'];
@@ -114,7 +114,9 @@ describe('the drawn stack in received rooms and loaded saves', () => {
     const old = (JSON.parse(text) as { room: SaveEnvelope }).room;
     const save = validateSave(old);
     expect(save.room.game).not.toHaveProperty('drawnStackIndex');
-    expect(save.room.game).toEqual(old.room.game);
+    // As it is, but for the teleporter shape of #55 (room format 1 to 2: no teleporters there).
+    expect(save.room.game).toEqual(withTeleporterSlots(old.room.game as never));
+    expect(JSON.stringify(save.room.game)).not.toContain('teleporterOwner');
     const g = save.room.game!;
     expect(legalActions(g, activeSeat(g)! as PlayerId).length).toBeGreaterThan(0);
   });

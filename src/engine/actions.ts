@@ -77,13 +77,16 @@ export interface RemoveBeltAction {
   readonly beltId: string;
 }
 
-// Place a teleporter on a buffer of a building you own.
-// Input teleporter: feeds the building's inputs from your inventory on any turn.
-// Output teleporter: diverts produced materials directly to your inventory.
+// Place a teleporter on one input, or the output, of a building you own (RULES_CHANGES.md #55).
+// Input teleporter: sits on input `inputIndex` (0 = the first input; absent means 0, which is how
+// moves from before #55 read). It cuts that input off from belts and direct contact (#53), and
+// its owner may supply that input from their inventory when the building runs (#45).
+// Output teleporter: diverts produced materials directly to your inventory (`inputIndex` unused).
 export interface PlaceTeleporterAction {
   readonly type: 'PLACE_TELEPORTER';
   readonly pieceId: string;
   readonly bufferType: 'input' | 'output';
+  readonly inputIndex?: number;
 }
 
 // ── M4 actions ────────────────────────────────────────────────────────────────
@@ -146,7 +149,7 @@ export interface BuyCardAction {
 //   scoutingDrone  : stackIndex + pieceIndex + coord (+ rotation?)
 //   shortSale      : pieceId
 //   sinkHole       : pieceId
-//   rdTaxWriteOff  : pieceId + bufferType
+//   rdTaxWriteOff  : pieceId + bufferType (+ inputIndex for an input, as PLACE_TELEPORTER)
 //   changingPriorities: pieceId (from) + toPieceId + controlModule
 //   all others     : no extra params
 export interface PlayCardAction {
@@ -160,6 +163,7 @@ export interface PlayCardAction {
   readonly toPieceId?: string;
   readonly controlModule?: number;
   readonly bufferType?: 'input' | 'output';
+  readonly inputIndex?: number;
 }
 
 // Place one Overstock Supplies piece (valid in actions phase when overstockPieces is non-empty).
@@ -286,6 +290,8 @@ export type Action =
 //   • an optional flag set to false is the same as leaving it out, and an upgrade paid from Mine
 //     credits or Production Increase ignores the other payment fields, as the engine does;
 //   • a Leverage card play keeps only the choices that card takes (the engine ignores others);
+//   • a teleporter on an input (PLACE_TELEPORTER, R&D Tax Write-Off) without an input named is on
+//     input 0, and one on the output names no input;
 //   • an OPERATE_BUILDING supply is sorted (Ore, Plate, Sphere, Tesseract), and an empty one is
 //     the same as none.
 // Every other action is returned unchanged. For a Scouting Drone play, which copy of a piece
@@ -294,7 +300,7 @@ const CARD_CHOICES: Readonly<Record<string, readonly string[]>> = {
   scoutingDrone: ['stackIndex', 'pieceIndex', 'coord', 'rotation'],
   shortSale: ['pieceId'],
   sinkHole: ['pieceId'],
-  rdTaxWriteOff: ['pieceId', 'bufferType'],
+  rdTaxWriteOff: ['pieceId', 'bufferType', 'inputIndex'],
   changingPriorities: ['pieceId', 'toPieceId', 'controlModule'],
 };
 
@@ -322,6 +328,12 @@ export function canonicalAction(a: Action): Action {
   const placement = a.type === 'PLACE_PIECE' || a.type === 'PLACE_MINE' || a.type === 'BUY_MINE' ||
     a.type === 'PLACE_OVERSTOCK_PIECE' || (a.type === 'PLAY_CARD' && a.cardType === 'scoutingDrone');
   if (placement && rec.rotation === undefined) { rec.rotation = 0; changed = true; }
+  // A teleporter on an input names the input (#55); none named is the first input, as the engine
+  // reads it (moves from before #55). On the output the input is not part of the move.
+  if (a.type === 'PLACE_TELEPORTER' || (a.type === 'PLAY_CARD' && a.cardType === 'rdTaxWriteOff')) {
+    if (rec.bufferType === 'input' && rec.inputIndex === undefined) { rec.inputIndex = 0; changed = true; }
+    if (rec.bufferType !== 'input') drop('inputIndex');
+  }
   if (a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') {
     for (const f of ['fromProductionIncrease', 'fromFreeClaim', 'fromMineCredit']) if (rec[f] === false) drop(f);
     if (rec.fromMineCredit === true) { drop('fromProductionIncrease'); drop('freeCredits'); }
