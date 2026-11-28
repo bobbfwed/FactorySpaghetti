@@ -14,8 +14,9 @@ import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, MINE_RESOURCE_REWARD, MINE_UPG
 const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
 /**
- * The Teleporter's round swirl portal is on its +X end: turned 60 degrees so the portal faces the
- * viewer at an angle that also shows the arched top (as tools/gallery does).
+ * The Teleporter's glowing portal is on its +X end: turned 60 degrees so the portal faces the
+ * viewer at an angle that also shows the arched top and a side in the owner's colour (as
+ * tools/gallery does).
  */
 const TELEPORTER_YAW = -Math.PI / 3;
 
@@ -431,8 +432,12 @@ export const TELEPORTER_FIGURE: FigureBlock = {
       belts: [{ piece: 'bl', a: 0, b: 7 }],
       aspect: 1.25,
       // A close-up of the Sphere Factory, with the end of the belt beside it: big enough for the
-      // teleporters to read as the model; the one on input 1 shows its portal.
+      // teleporters to read as the model. A teleporter's portal faces in along its stub, so the
+      // ones on input 1 and on the output face opposite ways: the view is turned half round so
+      // the portal of the one on input 1 faces the viewer (30 degrees off), and the one on the
+      // output shows its back and side in Blue's colour.
       frame: { pieces: ['sf'], pad: 6 },
+      turn: 3,
     },
     callouts: [
       { mark: '1', at: { piece: 'sf', teleporter: 'output' }, text: 'On the output: whatever the Sphere Factory makes goes straight into your materials.' },

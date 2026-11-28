@@ -12,6 +12,7 @@ import { Overlay } from '../../../table/overlay';
 import { CameraRig } from '../../../table/camera';
 import { numeralAtlas, numeralCell, woodTexture, NUMERAL_COLS, NUMERAL_ROWS } from '../../../table/textures';
 import { NUMERAL_LIVE } from '../../../table/moduleLook';
+import { PORTAL_STILL_TIME, portalGeometry, portalMaterial } from '../../../table/portal';
 import {
   TILE_TOP, axialToWorld, boardBounds, bufferAnchorWorld, mineSlotWorld, piecePlacement, pointWorld,
   beltCurve, sampleCurve, curveFrameAt, teleporterPlacement, TELEPORTER_HEIGHT, TELEPORTER_SCALE, type Bounds,
@@ -198,6 +199,12 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
       const n = new THREE.Mesh(g, m);
       n.position.y = box.max.y + 0.04;
       group.add(n);
+      made.push(g, m);
+    }
+    // The Teleporter's glowing portal, as the table draws it, still (a fixed time: pictures are deterministic).
+    if (job.model === 'teleporter') {
+      const g = portalGeometry(), m = portalMaterial(PORTAL_STILL_TIME);
+      group.add(new THREE.Mesh(g, m));
       made.push(g, m);
     }
     if (job.yaw !== undefined) group.rotation.y = job.yaw;

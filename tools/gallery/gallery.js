@@ -5,6 +5,7 @@
 // Run: npx vite, then open /tools/gallery/index.html. Sets window.__ready when drawn.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { PORTAL_STILL_TIME, portalGeometry, portalMaterial } from '../../src/table/portal.ts';
 
 const params = new URLSearchParams(location.search);
 const view = params.get('view') ?? 'all';
@@ -145,6 +146,8 @@ for (const row of rowInfo) {
         }
       }
     });
+    // The Teleporter's glowing portal, as the table draws it (a still frame).
+    if (m.name === 'teleporter') obj.add(new THREE.Mesh(portalGeometry(), portalMaterial(PORTAL_STILL_TIME)));
     const cx = x + m.bbox.size[0] / 2 - (m.bbox.min[0] + m.bbox.max[0]) / 2;
     const cz = z + row.depth / 2 - (m.bbox.min[2] + m.bbox.max[2]) / 2;
     obj.position.set(cx, 0, cz);

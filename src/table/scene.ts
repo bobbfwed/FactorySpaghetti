@@ -18,6 +18,7 @@ import {
 } from './layout';
 import { sideAnchor } from './framing';
 import { moduleColors } from './moduleLook';
+import { PORTAL_STILL_TIME, portalGeometry, portalMaterial } from './portal';
 import {
   cardBackTexture, cardFaceTexture, diceAtlas, diceCell, numeralAtlas, numeralCell,
   NUMERAL_COLS, NUMERAL_ROWS,
@@ -175,6 +176,10 @@ export class TableScene {
   private readonly materialParts = new Map<Material, InstancedPart>();
   private readonly meeples: InstancedPart;
   private readonly teleporters: InstancedPart[];
+  /** The glowing portal on each Teleporter's end (portal.ts): one instanced quad, the Teleporters' own matrices. */
+  private readonly portals: InstancedPart;
+  private readonly portalMat: THREE.ShaderMaterial;
+  private readonly portalGeo: THREE.BufferGeometry;
   private readonly stackLayers: InstancedPart;
   private readonly stackTops: InstancedPart[] = [];
   private readonly shadowCasters: InstancedPart;
@@ -235,6 +240,9 @@ export class TableScene {
     // Teleporters: the designer's model, tinted with the owner's colour like the meeples (one
     // instanced mesh per colour part; the model has a single 'player' part).
     this.teleporters = partsOf(lib, 'teleporter').map(p => new InstancedPart(this.root, p.geometry, p.mat, { cast: true, receive: true, colors: p.material === 'player' }, 8));
+    this.portalGeo = portalGeometry();
+    this.portalMat = portalMaterial(PORTAL_STILL_TIME);
+    this.portals = new InstancedPart(this.root, this.portalGeo, this.portalMat, {}, 8);
 
     // Face-down stacks: plain hexagonal layers, with a real (flipped) blank tile on top so the
     // holes of the tile back show.
@@ -356,7 +364,7 @@ export class TableScene {
   rebuild(now: number, az: number): void {
     const game = this.game;
     for (const parts of this.tileParts.values()) for (const p of parts) p.begin();
-    this.modules.begin(); this.numerals.begin(); this.meeples.begin(); for (const p of this.teleporters) p.begin();
+    this.modules.begin(); this.numerals.begin(); this.meeples.begin(); for (const p of this.teleporters) p.begin(); this.portals.begin();
     for (const p of this.materialParts.values()) p.begin();
     this.shadowCasters.begin();
     for (const g of this.mineGroups.values()) g.visible = false;
@@ -372,7 +380,7 @@ export class TableScene {
     // Piles (the drawn piece above its pile is one of the tile instances).
     this.buildStacks(game, now);
     for (const parts of this.tileParts.values()) for (const p of parts) p.end();
-    this.modules.end(); this.numerals.end(); this.meeples.end(); for (const p of this.teleporters) p.end();
+    this.modules.end(); this.numerals.end(); this.meeples.end(); for (const p of this.teleporters) p.end(); this.portals.end();
     for (const p of this.materialParts.values()) p.end();
     this.shadowCasters.end();
 
@@ -447,6 +455,7 @@ export class TableScene {
         const m = mat4(t.x, TILE_TOP + y, t.z, t.yaw, TELEPORTER_SCALE * (k ?? 1));
         const color = this.colorOf(owner);
         for (const part of this.teleporters) part.push(m, color);
+        this.portals.push(m);
       }
     }
   }
@@ -705,8 +714,17 @@ export class TableScene {
     return this.heads;
   }
 
+  /** How many Teleporters (and so portals) the last rebuild drew. */
+  get portalCount(): number { return this.portals.count; }
+
+  /** Set the portals' swirl time (seconds); a fixed value gives a still frame. */
+  setPortalTime(t: number): void { this.portalMat.uniforms['uTime']!.value = t; }
+
   dispose(): void {
     for (const mesh of this.dropBelts.values()) mesh.geometry.dispose();
+    this.portals.dispose();
+    this.portalGeo.dispose();
+    this.portalMat.dispose();
     this.dropBelts.clear();
     for (const parts of this.tileParts.values()) for (const p of parts) p.dispose();
     for (const t of this.textures) t.dispose();
