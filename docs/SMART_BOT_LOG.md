@@ -127,3 +127,11 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 10b | Power Token value 1.6 → 2.0 | batch 11 | 2.087 → 2.117; +0.030 (95% −0.077 to +0.136) | dropped (inconclusive) |
 | **10c** | **Belt routes of at most 4 belts instead of 6** | batch 11 | 2.087 → **2.130**; **+0.043 (95% +0.005 to +0.080)** | **kept** (commit below) |
 | 10d | Belt routes of at most 8 belts | batch 11 | identical but for one game: +0.000 (95% −0.018 to +0.018) | dropped |
+| 11a | Belt routes of at most 3 belts | batch 12: `--mode gauntlet --bots greedy,route3,breadth6,breadth4,inv1.6,emp1.4,nocloser --import cand/batch12.ts --seeds 120 --start 408000 --jobs 8` | 2.159 → 2.208; +0.049 (95% −0.000 to +0.098) | not kept: the interval touches 0 (stopped before a stage 2, see below) |
+| 11b | One more building worth 5 → 6 | batch 12 | 2.159 → 2.074; −0.085 (95% −0.161 to −0.010) | dropped (worse) |
+| 11c | One more building worth 5 → 4 | batch 12 | 2.159 → 2.122; −0.037 (95% −0.093 to +0.019) | dropped |
+| 11d | The Investor weight 2.0 → 1.6 | batch 12 | 2.159 → 2.053; −0.106 (95% −0.194 to −0.019) | dropped (worse) |
+| **11e** | **Factory Empire weight 1.7 → 1.4** | batch 12 | 2.159 → **2.192**; **+0.032 (95% +0.005 to +0.060)** | **kept** (commit 04eb859) |
+| 11f | Check: closer (4d) switched off again, after all the weight changes | batch 12 | 2.159 → 2.156; −0.004 (95% −0.042 to +0.035) | closer stays: switching it off is not better (its effect is now too small to see) |
+
+**Stopping.** The last two rounds gained +0.043 and +0.032 x share, against +0.13 to +0.25 for the sweep steps before them, and most candidates in them were dropped; the sweep has reached a plateau around these weights. The final tables below are played on fresh seeds (from 900000) that no attempt used.
