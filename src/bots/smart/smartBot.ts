@@ -226,6 +226,15 @@ function pickBest<T>(items: readonly T[], score: (t: T) => number): { item: T; s
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+/**
+ * For tests: what the bot thinks its Control Modules are worth if they stood as in `changes`
+ * (building id → my modules on it; other buildings as they are) — production over the planning
+ * horizon plus the Bonus Tesseracts held or approached.
+ */
+export function claimWorthFor(state: GameState, me: PlayerId, style: Style, changes: ReadonlyMap<string, number[]>): number {
+  return claimSetWorth(makeCtx(state, me, style), new Map(changes));
+}
+
 export function makeSmartBot(style: Style): BotFn {
   return (state: GameState, me: PlayerId): Action => decide(state, me, style);
 }
