@@ -268,7 +268,7 @@ export const W = {
   routeTotals: (n: number, have: number, buy: number, short: number): string =>
     `Route: ${plural(n, 'belt', 'belts')}. You have ${have}${buy > 0 ? `, can buy ${buy} more now` : ''}${short > 0 ? `, ${short} short` : ''}.`,
   routePlaceAll: (n: number): string => `Place ${plural(n, 'belt', 'belts')}`,
-  routePlaceOwn: (n: number): string => `Place ${n} from inventory`,
+  routePlaceOwn: (n: number): string => `Place ${n} from your supply`,
   routeBuyPlace: (m: number, total: number): string => `Buy ${m} and place ${total}`,
   routeOwnDetail: 'From the belts in your supply',
   routeNothingNow: 'You have no belts and cannot buy one now: keep the plan for a later turn.',

@@ -1330,6 +1330,9 @@ export class PlayController {
     const refusal = (tryOwn?.placed ?? 0) === 0 && (tryBuy?.placed ?? 0) === 0
       ? tryOwn?.refusal ?? tryBuy?.refusal ?? null : null;
     if (refusal) {
+      // Nothing of it can be laid now: every belt is drawn and counted as one for a later turn,
+      // not as "from your supply" or "to buy now".
+      v.route = t.map(x => ({ pieceId: x.pieceId, from: x.from, to: x.to, tier: 'cant' as const }));
       v.instruction = `${totals} ${partly ? W.routeRestRefused : W.routeRefused} ${refusalText(refusal)}`;
       items.push(cancelItem);
       if (takeBackItem) items.push(takeBackItem);

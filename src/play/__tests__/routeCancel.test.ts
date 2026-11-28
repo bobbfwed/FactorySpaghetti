@@ -130,6 +130,12 @@ describe('a belt route refused at its first belt', () => {
     expect(ids(c)).not.toContain('route:continue');
   });
 
+  it('counts and draws every belt of the refused route as one for a later turn (never "from your supply")', () => {
+    const { c } = twoRoutes(f);
+    expect(c.view.route).toHaveLength(f.segs.length);
+    expect(c.view.route!.every(x => x.tier === 'cant')).toBe(true);
+  });
+
   it('the ✕ (cancel) drops the plan too', () => {
     const { c, sent } = twoRoutes(f);
     c.cancel();
