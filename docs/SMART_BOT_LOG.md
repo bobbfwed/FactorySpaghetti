@@ -233,3 +233,16 @@ One process on an otherwise idle machine, the gauntlet on seeds 940000–940005 
 | classic | 4 | 2,818 | 0.09 | 16.95 | 133.7 | 6.7 |
 
 Twenty more 4-player games (the new bot against three styles) gave a median of 0.20 ms, a 95th percentile of 3.1 ms and a worst decision of 22.6 ms. On a machine running 12 simulator processes at once the worst decisions were several times slower (before attempt 5e and the memoised long-route search, failed Belt Weaver searches took up to about 560 ms there; after them the worst seen under that load was about 75 ms). The bot makes about 2 more decisions per turn than the classic bot: it takes more of the round-end steps (claims, Mine-credit upgrades, free upgrades, collect, run) one by one; it never repeats a move pair (no game stalled).
+
+## After the review (2026-11-28): card purchases judged on public knowledge only
+
+An independent review of the merge found one thing: the Smart Bot and the play-style bots valued a Leverage card purchase by averaging over the cards left in the deck. The deck's order was never read, but its contents are not public either, because the other players' hands are hidden. The bots now average over the deck and the other players' hands together (`cardsABuyMayBring` in `src/bots/styles/analysis.ts`), which is exactly what a player who watched the discard pile can know. Test: `src/bots/__tests__/hiddenCards.test.ts`.
+
+The final gauntlet replayed on the same seeds (`npm run sim -- --mode gauntlet --bots greedy --players 2,3,4 --seeds 150 --start 900000`, 1,350 games, none unfinished, no refused move):
+
+| | 2 players | 3 players | 4 players |
+|---|---|---|---|
+| Before the change | 88.7% | 75.1% | 52.5% |
+| After the change | 88.7% (85–92) | 74.9% (71–79) | 51.8% (48–56) |
+
+No measurable change. The other tables above were not rerun.

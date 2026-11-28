@@ -4,7 +4,7 @@
 // these helpers read the state through the engine's own geometry (adjAt, getRole) and never
 // decide what is legal — every move a bot makes is still checked by applyAction.
 
-import type { BoardPiece, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../../engine/state';
+import type { BoardPiece, CardType, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../../engine/state';
 import { MATERIAL_VALUES, POWER_PLANT_MATERIAL_YIELD, pieceTemplate } from '../../engine/config';
 import { adjAt, directFlowAllowed, getRole, inputIndexAt, isReservedPoint, teleporterCutsOff } from '../../engine/rules/flow';
 import { teleporterOn } from '../../engine/rules/teleporters';
@@ -23,6 +23,20 @@ export const PRODUCT: Partial<Record<PieceType, Material>> = {
 
 /** Power Tokens spent to run a factory, by product. */
 export const POWER_COST: Record<Material, number> = { ore: 0, plate: 1, sphere: 2, tesseract: 3 };
+
+/**
+ * The Leverage cards the next card bought could be, as far as player `me` can tell at the table.
+ * The deck is face down and the other players' hands are hidden, so a player cannot tell which of
+ * those cards sit where: together they are everything not in the face-up discard pile and not in
+ * the player's own hand. An empty deck is refilled from the discard pile, which everyone can see.
+ * The order of the deck is never read.
+ */
+export function cardsABuyMayBring(state: GameState, me: PlayerId): CardType[] {
+  if (state.cardDeck.length === 0) return [...state.cardDiscard];
+  const unseen: CardType[] = [...state.cardDeck];
+  for (const p of state.players) if (p.id !== me) unseen.push(...p.hand);
+  return unseen;
+}
 
 export function isBuilding(p: BoardPiece): boolean {
   return p.type !== 'mine' && p.type !== 'blank';

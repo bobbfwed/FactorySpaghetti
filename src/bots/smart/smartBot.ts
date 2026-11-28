@@ -31,7 +31,8 @@ import { hexNeighbours, isCoordsOccupied, mineSecondaryCoord } from '../../engin
 import { longestBeltChain } from '../../engine/rules/beltWeaver';
 import { tesseractCount, resourcePoints } from '../../engine/rules/scoring';
 import {
-  MATS, PRODUCT, POWER_COST, across, bufferedValue, buildingValue, fedFraction, feedAt, hexDistance,
+  MATS, PRODUCT, POWER_COST, across, bufferedValue, buildingValue, cardsABuyMayBring, fedFraction, feedAt,
+  hexDistance,
   isBuilding, myBuildings, myModules, outputFeedsMine, owns, pointsWithRole, powerYield, runWorth,
   runsPerRound, unfedInputs,
 } from '../styles/analysis';
@@ -274,7 +275,7 @@ function fallback(state: GameState, me: PlayerId): Action {
   const acts = legalActions(state, me);
   const end = acts.find(x => x.type === 'END_ACTIONS' || x.type === 'END_TURN' || x.type === 'SKIP_FACTORY_ROLL');
   const a = end ?? acts[0];
-  if (!a) throw new Error(`style bot: no legal move for player ${me} in phase "${state.phase}"`);
+  if (!a) throw new Error(`Smart Bot: no legal move for player ${me} in phase "${state.phase}"`);
   return a;
 }
 
@@ -990,9 +991,9 @@ function cardWorth(ctx: Ctx, card: CardType): number {
 
 function buyCard(ctx: Ctx): Action | null {
   const { state, style } = ctx;
-  // The deck's order is hidden; what is left in it is known (the discards are face-up). An
-  // empty deck is refilled from the discard pile when a card is bought.
-  const pool = state.cardDeck.length > 0 ? state.cardDeck : state.cardDiscard;
+  // Judged on what a player at the table can know: the deck and the other players' hands are
+  // hidden, so the card could be any of those (analysis.ts, cardsABuyMayBring).
+  const pool = cardsABuyMayBring(state, ctx.me);
   if (pool.length === 0 || ctx.thrifty) return null;
   const cost = cardCost(state.mineCount);
   if (!affordable(ctx, cost)) return null;
