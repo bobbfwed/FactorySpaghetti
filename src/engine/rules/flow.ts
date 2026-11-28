@@ -155,7 +155,7 @@ export function beltEndpointFacesOreExit(
 }
 
 // True when point `pos` of `piece` is an input or output of a building that has at least one
-// claim and none of them is `playerId`'s: the point is reserved for the building's owners.
+// claim and none of them is `playerId`'s: the point is reserved for the building's owner.
 // One predicate for two rules: a NEW belt of that player may not end facing it (placement,
 // POINT_RESERVED, RULES_CHANGES.md #31), and a belt of that player already lying there is a
 // dead end — no material enters or leaves the belt chain through that end (flow, the Belt

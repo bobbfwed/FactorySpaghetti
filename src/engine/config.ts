@@ -123,7 +123,7 @@ export const CONTROL_MODULE_MAX = 18; // modules numbered 1–18
 // ── Limits and goal ───────────────────────────────────────────────────────────
 
 export const MAX_CARDS_PLAYED_PER_TURN = 2;  // Leverage cards played per turn (see PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT)
-export const MAX_CLAIMS_PER_BUILDING = 3;    // one player's Control Modules on one building
+export const MAX_CLAIMS_PER_BUILDING = 3;    // Control Modules on one building (all of its one owner's, #57)
 export const TESSERACTS_TO_WIN = 4;          // Tesseracts (bonus cards count) shown on your own turn
 
 // Pieces pulled from stack 0 for each player during S5 of setup.

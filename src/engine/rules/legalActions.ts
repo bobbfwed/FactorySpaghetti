@@ -301,7 +301,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
       for (const piece of state.board) {
         if (piece.type === 'blank' || piece.type === 'mine') continue;
         if (!mayAddClaim(piece, playerId)) continue; // never another player's building
-        if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
+        if (piece.claims.length >= MAX_CLAIMS_PER_BUILDING) continue;
         out.push({ type: 'PLAY_CARD', cardType: 'shortSale', pieceId: piece.id });
       }
       break;
@@ -327,7 +327,7 @@ function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: 
             if (toPiece.type === 'mine' || toPiece.type === 'blank') continue;
             if (toPiece.id === fromPiece.id) continue;
             if (!mayAddClaim(toPiece, playerId)) continue; // never another player's building
-            if (toPiece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
+            if (toPiece.claims.length >= MAX_CLAIMS_PER_BUILDING) continue;
             out.push({
               type: 'PLAY_CARD', cardType: 'changingPriorities',
               pieceId: fromPiece.id, toPieceId: toPiece.id, controlModule: claim.controlModule,
@@ -391,7 +391,7 @@ function addClaimBuilding(
     if (piece.type === 'blank' || piece.type === 'mine') continue;
     // One owner per building (#57)
     if (!mayAddClaim(piece, playerId)) continue;
-    if (piece.claims.filter(c => c.ownerId === playerId).length >= MAX_CLAIMS_PER_BUILDING) continue;
+    if (piece.claims.length >= MAX_CLAIMS_PER_BUILDING) continue;
     for (const module of validModules) {
       // Claiming never costs materials. Placing module M draws (M − mineCount + 1)
       // upgrade-units from whichever budget funds this claim (mine credits or PI).
@@ -554,7 +554,7 @@ function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]): void
     for (let i = 0; i < beltPts.length; i++) {
       const a = beltPts[i]!;
       if (state.belts.some(b => b.pieceId === piece.id && (b.fromPoint === a || b.toPoint === a))) continue;
-      if (beltEndpointBlocked(state, piece, a, playerId)) continue; // joins opponent belt / reserved for a building's owners
+      if (beltEndpointBlocked(state, piece, a, playerId)) continue; // joins opponent belt / reserved for a building's owner
       for (let j = i + 1; j < beltPts.length; j++) {
         const b = beltPts[j]!;
         if (state.belts.some(blt => blt.pieceId === piece.id && (blt.fromPoint === b || blt.toPoint === b))) continue;
