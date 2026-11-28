@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import type { BoardPiece, GameState, Material, PieceType, PlayerId } from '../engine/state';
 import { partsOf, type ModelLib, type ModelPart } from './models';
+import { teleportersOf } from '../engine/rules/teleporters';
 import type { SceneFx } from './animator';
 import { arrowEnds, beltHeadMap } from './beltArrows';
 import {
@@ -438,12 +439,13 @@ export class TableScene {
         const p = bufferSlotWorld(piece, which, i);
         this.materialParts.get(m)!.push(mat4(p.x, TILE_TOP + y + 0.05, p.z, pl.yaw, BUFFER_MATERIAL_SCALE * (k ?? 1)));
       });
-      if (buf.teleporterOwner !== null) {
-        const k = fx ? fx.teleporter(piece.id, which) : null;
+      // Each teleporter at its own input (#55), or at the output.
+      for (const { slot, owner } of teleportersOf(buf)) {
+        const k = fx ? fx.teleporter(piece.id, which, slot) : null;
         if (k !== null && k <= 0) continue;
-        const t = teleporterPlacement(piece, which);
+        const t = teleporterPlacement(piece, which, slot);
         const m = mat4(t.x, TILE_TOP + y, t.z, t.yaw, TELEPORTER_SCALE * (k ?? 1));
-        const color = this.colorOf(buf.teleporterOwner);
+        const color = this.colorOf(owner);
         for (const part of this.teleporters) part.push(m, color);
       }
     }

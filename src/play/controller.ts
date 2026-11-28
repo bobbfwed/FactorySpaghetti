@@ -18,13 +18,14 @@ import { piecesExhausted, revealedStack as revealedStackOf } from '../engine/rul
 import { cardsLeftToDraw } from '../engine/rules/cards';
 import { moduleBelowFloor } from '../engine/rules/modules';
 import { beltLaidThisTurn } from '../engine/rules/flow';
+import { hasTeleporter, teleportersOf } from '../engine/rules/teleporters';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
 import type { Ghost, Target } from '../table/types';
 import type { Item, PlayView, Prompt, Selection, SupplyView, TrayEntry } from './types';
 import {
-  EXCHANGE_GETS, MATERIALS, actionKey, activeId, canSupply, collectable, exchangeOutcome, factoryRunCost, inventoryValue, isBuilding,
+  EXCHANGE_GETS, MATERIALS, actionKey, activeId, canSupply, collectable, exchangeOutcome, factoryRunCost, inputWaitsForFeed, inventoryValue, isBuilding,
   legalFor, neededSets, nextMinePrice, paymentWithChange, pieceById, runBlock, runPreview, teleporterSpotFree,
 } from './info';
 import {
@@ -58,15 +59,18 @@ type Mode =
   | { k: 'route' }
   /** Remove a belt: my removable belts are lit; one may be selected for removal. */
   | { k: 'removeBelt'; beltId: string | null }
-  | { k: 'teleporter'; pick: { pieceId: string; buffer: Buf } | null; whichOn: string | null }
+  | { k: 'teleporter'; pick: TpSpot | null; whichOn: string | null }
   | { k: 'exchange' }
   /** One material pressed in my inventory: break it down, awaiting confirmation. */
   | { k: 'exchangeOne'; give: Material }
-  | { k: 'card'; card: CardType; a: string | null; b: string | null; module: number | null; buffer: Buf | null; whichOn: string | null }
+  | { k: 'card'; card: CardType; a: string | null; b: string | null; module: number | null; spot: TpSpot | null; whichOn: string | null }
   | { k: 'drone' }
   | { k: 'meeple'; pieceId: string; slot: 0 | 1 | null }
   | { k: 'meepleSlot'; pieceId: string }
   | { k: 'pi' };
+
+/** Where a teleporter may go: one input of a building (`input` = its index, #55) or its output (`input` null). */
+interface TpSpot { readonly pieceId: string; readonly buffer: Buf; readonly input: number | null }
 
 const IDLE: Mode = { k: 'idle' };
 
@@ -95,12 +99,33 @@ function ofType<T extends Action['type']>(legal: readonly Action[], t: T): Of<T>
   return legal.filter((a): a is Of<T> => a.type === t);
 }
 
+/** The spot a listed teleporter move names: an input (the first when none is named) or the output. */
+function tpSpotOf(pieceId: string, buffer: Buf, inputIndex: number | undefined): TpSpot {
+  return { pieceId, buffer, input: buffer === 'input' ? inputIndex ?? 0 : null };
+}
+const sameSpot = (x: TpSpot, y: TpSpot): boolean => x.pieceId === y.pieceId && x.buffer === y.buffer && x.input === y.input;
+/** The table target of a spot: that one input (its stub, material and teleporter), or the output. */
+function spotTarget(s: TpSpot): Target {
+  return s.input === null ? { kind: 'buffer', pieceId: s.pieceId, buffer: s.buffer } : { kind: 'buffer', pieceId: s.pieceId, buffer: s.buffer, slot: s.input };
+}
+/** "the output", "the input", "input 2". */
+function spotWords(piece: BoardPiece, s: TpSpot): string {
+  return W.spotName(s.buffer, s.input, piece.input?.slots.length ?? 0);
+}
+/** The spot is one of several inputs: say what a teleporter there does to the others. */
+const severalInputs = (piece: BoardPiece, s: TpSpot): boolean => s.buffer === 'input' && (piece.input?.slots.length ?? 0) > 1;
+/** What lies in input `i` of the building, in rulebook words, or null when it is empty. */
+function holds(piece: BoardPiece, i: number): string | null {
+  const m = piece.input?.slots[i] ?? null;
+  return m ? MATERIAL_NAME[m] : null;
+}
+
 export function targetKey(t: Target): string {
   switch (t.kind) {
     case 'cell': return `cell:${t.q},${t.r}`;
     case 'piece': return `piece:${t.pieceId}`;
     case 'point': return `point:${t.pieceId}:${t.point}`;
-    case 'buffer': return `buffer:${t.pieceId}:${t.buffer}`;
+    case 'buffer': return `buffer:${t.pieceId}:${t.buffer}${t.slot === undefined ? '' : `:${t.slot}`}`;
     case 'mineSlot': return `mineSlot:${t.pieceId}:${t.slot}`;
     case 'belt': return `belt:${t.beltId}`;
     case 'stack': return `stack:${t.index}`;
@@ -244,6 +269,10 @@ export class PlayController {
 
   tap(target: Target): void {
     const fn = this.current.taps.get(targetKey(target))
+      // One input of a buffer (#55) stands for its whole buffer where only the buffer is lit.
+      ?? (target.kind === 'buffer' && target.slot !== undefined
+        ? this.current.taps.get(targetKey({ kind: 'buffer', pieceId: target.pieceId, buffer: target.buffer }))
+        : undefined)
       ?? (target.kind === 'buffer' || target.kind === 'point' || target.kind === 'mineSlot'
         ? this.current.taps.get(targetKey({ kind: 'piece', pieceId: target.pieceId }))
         : undefined);
@@ -542,6 +571,7 @@ export class PlayController {
       if (roundEnd && player.meepleOperatedThisRound) missing = W.alreadyRan;
       else if (piece.type === 'powerPlant') missing = player.powerTokens >= POWER_TOKEN_CAP ? W.supplyPlantFull : W.supplyPlantNothing;
       else if ((piece.output?.slots ?? []).some(x => x !== null)) missing = W.promptCannotRun;
+      else if (inputWaitsForFeed(piece, player.id)) missing = W.supplyWaitsForFeed;
       else if (player.powerTokens < factoryRunCost(piece)) missing = W.supplyNoPower(factoryRunCost(piece), player.powerTokens);
       else missing = W.supplyLacking;
     }
@@ -1058,14 +1088,19 @@ export class PlayController {
         ? { k: 'upgrade', src, pieceId: id, old: olds[0]! }
         : { k: 'upgradeOld', src, pieceId: id })));
     }
-    // Teleporters.
-    for (const buf of ['input', 'output'] as const) {
-      const tp = legal.find(a => a.type === 'PLACE_TELEPORTER' && a.pieceId === id && a.bufferType === buf);
-      if (tp) {
-        const price = teleporterCost(g.globalTeleporterCount);
-        items.push(b.item({ id: `menu:teleporter:${buf}`, label: W.teleporterOn(buf), detail: W.teleporterDetail(price) + keepText(player, [price]), enabled: true, danger: true },
-          () => this.send(tp)));
-      }
+    // Teleporters: one item per free input (#55) and the output. On a building with several inputs
+    // the item opens the teleporter step with that input lit, so the player sees which input it is
+    // before confirming.
+    for (const tp of ofType(legal, 'PLACE_TELEPORTER').filter(a => a.pieceId === id)) {
+      const spot = tpSpotOf(id, tp.bufferType, tp.inputIndex);
+      const price = teleporterCost(g.globalTeleporterCount);
+      const several = severalInputs(piece, spot);
+      items.push(b.item({
+        id: `menu:teleporter:${tp.bufferType}${spot.input === null ? '' : `:${spot.input}`}`,
+        label: W.teleporterOn(spotWords(piece, spot)),
+        detail: (several ? `${W.inputHolds(holds(piece, spot.input ?? 0))} · ` : '') + W.teleporterDetail(price) + keepText(player, [price]),
+        enabled: true, danger: true,
+      }, () => (several ? this.setMode({ k: 'teleporter', pick: spot, whichOn: null }) : this.send(tp))));
     }
     return items;
   }
@@ -1079,8 +1114,13 @@ export class PlayController {
       parts.push(W.menuSubtitleModules([...byOwner].map(([o, ms]) => W.modulesOf(this.nameOf(o), W.moduleNumbers(ms, g.mineCount))).join('; ')));
     }
     const buf = (slots: ReadonlyArray<Material | null>): string => slots.map(s => (s ? MATERIAL_NAME[s] : W.empty)).join(', ');
-    if (piece.input) parts.push(W.menuInput(buf(piece.input.slots)) + (piece.input.teleporterOwner !== null ? W.teleporterMark : ''));
-    if (piece.output) parts.push(W.menuOutput(buf(piece.output.slots)) + (piece.output.teleporterOwner !== null ? W.teleporterMark : ''));
+    if (piece.input) {
+      // On a building with several inputs, say which carry a teleporter (#55).
+      const on = teleportersOf(piece.input).map(t => t.slot);
+      const mark = on.length === 0 ? '' : piece.input.slots.length > 1 ? W.teleporterMarkInputs(on) : W.teleporterMark;
+      parts.push(W.menuInput(buf(piece.input.slots)) + mark);
+    }
+    if (piece.output) parts.push(W.menuOutput(buf(piece.output.slots)) + (hasTeleporter(piece.output) ? W.teleporterMark : ''));
     return parts.join(' · ');
   }
 
@@ -1373,43 +1413,48 @@ export class PlayController {
     v.instruction = W.teleporterPick;
     v.selection = { kind: 'teleporter', label: selectionLabel.teleporter };
     v.confirmBar = { confirm: false, rotate: false, cancel: true };
-    this.bufferTargets(b, tps.map(a => ({ pieceId: a.pieceId, buffer: a.bufferType })),
+    const spots = tps.map(a => tpSpotOf(a.pieceId, a.bufferType, a.inputIndex));
+    this.teleporterTargets(b, g, spots, m.whichOn,
       pick => this.setMode({ ...m, pick, whichOn: null }),
       pieceId => this.setMode({ ...m, pick: null, whichOn: pieceId }));
-    if (m.whichOn) {
-      const on = m.whichOn;
-      const opts = tps.filter(a => a.pieceId === on);
-      if (opts.length === 0) return false;
-      v.choices = {
-        title: W.teleporterWhich,
-        items: opts.map(a => b.item({ id: `buffer:${a.bufferType}`, label: W.teleporterOn(a.bufferType), enabled: true },
-          () => this.setMode({ ...m, pick: { pieceId: on, buffer: a.bufferType }, whichOn: null }))),
-      };
-    }
+    if (m.whichOn && !spots.some(s => s.pieceId === m.whichOn)) return false;
     if (m.pick) {
       const pick = m.pick;
-      const tp = tps.find(a => a.pieceId === pick.pieceId && a.bufferType === pick.buffer);
+      const tp = tps.find(a => sameSpot(tpSpotOf(a.pieceId, a.bufferType, a.inputIndex), pick));
       const piece = pieceById(g, pick.pieceId);
       if (!tp || !piece) return false;
-      v.instruction = W.teleporterConfirm(W.bufferName(pick.buffer), pieceName(piece.type));
+      v.instruction = W.teleporterConfirm(spotWords(piece, pick), pieceName(piece.type), severalInputs(piece, pick));
       v.confirmBar = { confirm: true, rotate: false, cancel: true };
       b.onConfirm = (): void => this.send(tp);
     }
     return true;
   }
 
-  /** Light buffers; tapping a piece picks its only buffer or asks which one. */
-  private bufferTargets(
-    b: Builder,
-    opts: { pieceId: string; buffer: Buf }[],
-    pick: (p: { pieceId: string; buffer: Buf }) => void,
+  /**
+   * Light every spot a teleporter may go: each input on its own (#55) and the output. Tapping a
+   * spot picks it; tapping the building picks its only spot or lists them (`whichOn`).
+   */
+  private teleporterTargets(
+    b: Builder, g: GameState, spots: readonly TpSpot[], whichOn: string | null,
+    pick: (p: TpSpot) => void,
     ask: (pieceId: string) => void,
   ): void {
-    for (const o of opts) b.lit({ kind: 'buffer', pieceId: o.pieceId, buffer: o.buffer }, () => pick(o));
-    for (const id of new Set(opts.map(o => o.pieceId))) {
-      const mine = opts.filter(o => o.pieceId === id);
+    for (const o of spots) b.lit(spotTarget(o), () => pick(o));
+    for (const id of new Set(spots.map(o => o.pieceId))) {
+      const mine = spots.filter(o => o.pieceId === id);
       b.lit({ kind: 'piece', pieceId: id }, () => (mine.length === 1 ? pick(mine[0]!) : ask(id)));
     }
+    const piece = whichOn ? pieceById(g, whichOn) : null;
+    const here = spots.filter(o => o.pieceId === whichOn);
+    if (!piece || here.length === 0) return;
+    b.view.choices = {
+      title: W.teleporterWhich,
+      items: here.map(o => b.item({
+        id: `buffer:${o.buffer}${o.input === null ? '' : `:${o.input}`}`, label: W.teleporterOn(spotWords(piece, o)),
+        ...(o.buffer === 'input' && (piece.input?.slots.length ?? 0) > 1 ? { detail: W.inputHolds(holds(piece, o.input ?? 0)) } : {}),
+        enabled: true,
+      }, () => pick(o))),
+    };
   }
 
   // ── Exchange ────────────────────────────────────────────────────────────────
@@ -1487,25 +1532,17 @@ export class PlayController {
       }
       case 'rdTaxWriteOff': {
         v.instruction = W.rdPick;
-        const opts = plays.filter(a => a.pieceId && a.bufferType).map(a => ({ pieceId: a.pieceId!, buffer: a.bufferType! }));
-        this.bufferTargets(b, opts,
-          p => this.setMode({ ...m, a: p.pieceId, buffer: p.buffer, whichOn: null }),
-          id => this.setMode({ ...m, a: null, buffer: null, whichOn: id }));
-        if (m.whichOn) {
-          const on = m.whichOn;
-          const here = opts.filter(o => o.pieceId === on);
-          if (here.length === 0) return false;
-          v.choices = {
-            title: W.teleporterWhich,
-            items: here.map(o => b.item({ id: `buffer:${o.buffer}`, label: W.teleporterOn(o.buffer), enabled: true },
-              () => this.setMode({ ...m, a: on, buffer: o.buffer, whichOn: null }))),
-          };
-        }
-        if (m.a && m.buffer) {
-          const a = plays.find(x => x.pieceId === m.a && x.bufferType === m.buffer);
-          const piece = pieceById(g, m.a);
+        const spots = plays.filter(a => a.pieceId && a.bufferType).map(a => tpSpotOf(a.pieceId!, a.bufferType!, a.inputIndex));
+        this.teleporterTargets(b, g, spots, m.whichOn,
+          p => this.setMode({ ...m, a: p.pieceId, spot: p, whichOn: null }),
+          id => this.setMode({ ...m, a: null, spot: null, whichOn: id }));
+        if (m.whichOn && !spots.some(s => s.pieceId === m.whichOn)) return false;
+        if (m.spot) {
+          const spot = m.spot;
+          const a = plays.find(x => x.pieceId && x.bufferType && sameSpot(tpSpotOf(x.pieceId, x.bufferType, x.inputIndex), spot));
+          const piece = pieceById(g, spot.pieceId);
           if (!a || !piece) return false;
-          ready(a, W.rdConfirm(W.bufferName(m.buffer), pieceName(piece.type)));
+          ready(a, W.rdConfirm(spotWords(piece, spot), pieceName(piece.type), severalInputs(piece, spot)));
         }
         return true;
       }
@@ -1784,7 +1821,7 @@ export class PlayController {
       const it: Item = { id: `card:${card}`, label: W.cardCount(CARD_NAME[card], n), count: n, enabled, ...(reason ? { reason } : {}) };
       b.item(it, enabled ? (): void => this.setMode(card === 'scoutingDrone'
         ? { k: 'drone' }
-        : { k: 'card', card, a: null, b: null, module: null, buffer: null, whichOn: null }) : undefined);
+        : { k: 'card', card, a: null, b: null, module: null, spot: null, whichOn: null }) : undefined);
       out.push({ ...it, card, text: CARD_TEXT[card] });
     }
     return out;

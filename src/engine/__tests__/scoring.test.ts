@@ -32,8 +32,8 @@ function claimedPlateFact(id: string, coord: { q: number; r: number }, ...ownerM
   return {
     id, type: 'plateFact', coord, rotation: 0,
     claims: ownerModules.map(([ownerId, controlModule]) => ({ ownerId, controlModule })),
-    input: { slots: [null], teleporterOwner: null },
-    output: { slots: [null], teleporterOwner: null },
+    input: { slots: [null], teleporters: [] },
+    output: { slots: [null], teleporters: [] },
   };
 }
 
@@ -163,8 +163,8 @@ describe('recomputeBonuses — factoryEmpire', () => {
       coord: { q: i + 2, r: 0 },
       rotation: 0,
       claims: [{ ownerId: pid0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     }));
     s = patch(s, { board: [...s.board, ...pieces] });
 
@@ -184,8 +184,8 @@ describe('recomputeBonuses — factoryEmpire', () => {
       coord: { q: i + 2, r: 0 },
       rotation: 0,
       claims: [{ ownerId: pid0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     }));
     const multiClaim: BoardPiece = {
       id: 'pf-mc',
@@ -196,8 +196,8 @@ describe('recomputeBonuses — factoryEmpire', () => {
         { ownerId: pid0, controlModule: 3 },
         { ownerId: pid0, controlModule: 5 },
       ],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     };
     s = patch(s, { board: [...s.board, ...pieces, multiClaim] });
 
@@ -217,8 +217,8 @@ describe('recomputeBonuses — factoryEmpire', () => {
       coord: { q: i + 2, r: 0 },
       rotation: 0,
       claims: [{ ownerId: pid0, controlModule: 3 }],
-      input: { slots: [null], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
     }));
     s = patch(s, { board: [...s.board, ...pieces] });
 

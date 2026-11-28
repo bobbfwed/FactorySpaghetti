@@ -6,7 +6,8 @@
 
 import type { BoardPiece, GameState, HexCoord, Material, PieceType, Player, PlayerId } from '../../engine/state';
 import { MATERIAL_VALUES, POWER_PLANT_MATERIAL_YIELD, pieceTemplate } from '../../engine/config';
-import { adjAt, directFlowAllowed, getRole, isReservedPoint, teleporterCutsOff } from '../../engine/rules/flow';
+import { adjAt, directFlowAllowed, getRole, inputIndexAt, isReservedPoint, teleporterCutsOff } from '../../engine/rules/flow';
+import { teleporterOn } from '../../engine/rules/teleporters';
 import { canLoadMaterial } from '../../engine/rules/recipes';
 import { hexNeighbours, isCoordsOccupied, mineSecondaryCoord } from '../../engine/rules/pieces';
 import { plannedHitChance } from './dice';
@@ -67,8 +68,8 @@ export interface Feed {
  * delivers there.
  */
 export function feedAt(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): Feed | null {
-  // A teleported single input takes nothing by itself (#53).
-  if (teleporterCutsOff(piece, 'input')) return null;
+  // A teleported input takes nothing by itself (#53, per input since #55).
+  if (teleporterCutsOff(piece, 'input', inputIndexAt(piece, pos))) return null;
   let n = adjAt(piece.coord, piece.rotation ?? 0, pos, state.board);
   let belts = 0;
   const seen = new Set<string>();
@@ -107,17 +108,20 @@ export function inputFeeds(state: GameState, piece: BoardPiece, me: PlayerId): A
 /**
  * How much of the building's recipe arrives by itself, 0–1: the fed inputs that can be part of
  * one valid recipe, over the number of input slots. A Power Plant counts as fed when ore (or
- * better) reaches it. An input teleporter of the owner counts as a full feed from inventory.
+ * better) reaches it. An input with the owner's teleporter counts as fed from the inventory (a
+ * teleporter sits on one input and supplies only that one, #55; another player's teleporter
+ * cuts that input off from `me`).
  */
 export function fedFraction(state: GameState, piece: BoardPiece, me: PlayerId): number {
   if (!piece.input) return 0;
-  if (piece.input.teleporterOwner === me) return 1;
+  const input = piece.input;
   const feeds = inputFeeds(state, piece, me);
   // Material already waiting in a slot counts as arrived (it may have come along a co-owner's belt).
   const slots: Array<Material | null> = feeds.map(() => null);
   let fed = 0;
   feeds.forEach((f, i) => {
-    const m = f?.material ?? piece.input!.slots[i] ?? null;
+    if (teleporterOn(input, i) === me) { fed++; return; } // supplied from the inventory
+    const m = f?.material ?? input.slots[i] ?? null;
     if (m && canLoadMaterial(piece.type, slots, m)) { slots[i] = m; fed++; }
   });
   if (piece.type === 'powerPlant') return fed > 0 ? 1 : 0;
@@ -134,6 +138,7 @@ export function unfedInputs(state: GameState, piece: BoardPiece, me: PlayerId): 
   const out: Array<{ pos: number; wants: Material[] }> = [];
   positions.forEach((pos, i) => {
     if (slots[i] !== null) return;
+    if (teleporterOn(piece.input, i) !== null) return; // a teleported input takes nothing by belt (#53, #55)
     const wants = (['ore', 'plate', 'sphere'] as Material[]).filter(m => canLoadMaterial(piece.type, slots, m));
     if (wants.length > 0) out.push({ pos, wants });
   });
@@ -174,7 +179,7 @@ export function buildingValue(
 ): number {
   if (modules.length === 0) return 0;
   const fed = fedFraction(state, piece, me);
-  const outTele = piece.output?.teleporterOwner === me || piece.type === 'powerPlant';
+  const outTele = teleporterOn(piece.output) === me || piece.type === 'powerPlant';
   // A full output buffer blocks the next run until someone collects it; an output teleporter
   // (or a chain that carries the output away) keeps it running.
   // Without either, a run is only worth something when the meeple comes to collect it.

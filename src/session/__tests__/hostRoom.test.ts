@@ -1,6 +1,7 @@
 // A room received from the host is another browser's word: its seats are cleaned (colours to the
 // printed four, names to 1-20 characters) and a room of the wrong shape is refused, never thrown on.
 
+import { PROTOCOL } from '../protocol';
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../../engine';
 import { ClientSession } from '../clientSession';
@@ -69,7 +70,7 @@ describe('a room from the host', () => {
     tampered.seats[1]!.color = '"><img src=x>';
     tampered.seats[1]!.name = 'B'.repeat(300);
     hostEnd.onmessage = (raw): void => {
-      if ((raw as { t: string }).t === 'hello') hostEnd.send({ t: 'welcome', v: 1, seat: 1, room: tampered, now: 1 });
+      if ((raw as { t: string }).t === 'hello') hostEnd.send({ t: 'welcome', v: PROTOCOL, seat: 1, room: tampered, now: 1 });
     };
     const c = new ClientSession(clientEnd, { name: 'Bea', token: 'tok-bea-0123456789' });
     await settle();
@@ -84,7 +85,7 @@ describe('a room from the host', () => {
     // A welcome naming a seat that does not exist is refused too.
     const [h2, c2end] = memoryPair();
     h2.onmessage = (raw): void => {
-      if ((raw as { t: string }).t === 'hello') h2.send({ t: 'welcome', v: 1, seat: 9, room: good, now: 1 });
+      if ((raw as { t: string }).t === 'hello') h2.send({ t: 'welcome', v: PROTOCOL, seat: 9, room: good, now: 1 });
     };
     const c2 = new ClientSession(c2end, { name: 'Cy', token: 'tok-cy-0123456789xx' });
     await settle();

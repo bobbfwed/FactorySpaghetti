@@ -122,7 +122,7 @@ describe('Leverage cards', () => {
     c.choose('card:rdTaxWriteOff');
     c.tap({ kind: 'piece', pieceId: withTwo.pieceId! });
     expect(c.view.choices?.title).toBe(W.teleporterWhich);
-    c.choose(`buffer:${withTwo.bufferType}`);
+    c.choose(withTwo.bufferType === 'input' ? `buffer:input:${withTwo.inputIndex}` : 'buffer:output');
     c.confirm();
     expect(sent).toEqual([withTwo]);
   });

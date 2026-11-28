@@ -91,7 +91,7 @@ describe('moves', () => {
     const owner = (1 - active) as 0 | 1;
     const tpf: GameState['board'][number] = {
       id: 'tpf', type: 'plateFact', coord: { q: 60, r: 0 }, rotation: 0, claims: [{ ownerId: owner, controlModule: 9 }],
-      input: { slots: [null], teleporterOwner: owner }, output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [owner] }, output: { slots: [null], teleporters: [] },
     };
     // The factory takes the place of a piece of the first stack, so the pieces still add up.
     const withOre = (g: GameState): GameState => ({

@@ -25,15 +25,19 @@ function patchPlayer(s: GameState, p: PlayerId, patch: Partial<Player>): GameSta
   return { ...s, players: s.players.map((x, i) => (i === p ? { ...x, ...patch } : x)) };
 }
 
-/** A building far from the Mine (no ore flows into it), with an optional teleporter on its input. */
+/**
+ * A building far from the Mine (no ore flows into it), with an optional teleporter of `tele` on
+ * every one of its inputs (since #55 a teleporter sits on one input; one on each input is what a
+ * teleporter "on the input" was before).
+ */
 function building(
   id: string, type: BoardPiece['type'], claims: Claims, slots: (Material | null)[] = [], tele: PlayerId | null = null, q = 50,
 ): BoardPiece {
   const hasOutput = type === 'plateFact' || type === 'sphereFact' || type === 'tesseractFact';
   return {
     id, type, coord: { q, r: 0 }, rotation: 0, claims,
-    input: slots.length > 0 ? { slots, teleporterOwner: tele } : null,
-    output: hasOutput ? { slots: [null], teleporterOwner: null } : null,
+    input: slots.length > 0 ? { slots, teleporters: tele === null ? [] : slots.map(() => tele) } : null,
+    output: hasOutput ? { slots: [null], teleporters: [] } : null,
   };
 }
 
@@ -199,7 +203,7 @@ describe('a teleporter on an input lets its owner choose what to supply (#45)', 
     const noTele = patchPlayer(onBoard([building('pf', 'plateFact', [{ ownerId: 0, controlModule: 4 }], [null], null)], 'roundEnd'), 0,
       { meepleOnPieceId: 'pf', meepleSlotIndex: null, powerTokens: 5, inventory: inv(2, 0, 0, 0) });
     expect(code(noTele, { type: 'OPERATE_BUILDING', pieceId: 'pf', supply: ['ore'] })).toBe('NO_INPUT_TELEPORTER');
-    const othersTele = { ...noTele, board: noTele.board.map(p => (p.id === 'pf' ? { ...p, input: { slots: [null], teleporterOwner: 1 as const } } : p)) };
+    const othersTele = { ...noTele, board: noTele.board.map(p => (p.id === 'pf' ? { ...p, input: { slots: [null], teleporters: [1 as const] } } : p)) };
     expect(code(othersTele, { type: 'OPERATE_BUILDING', pieceId: 'pf', supply: ['ore'] })).toBe('NO_INPUT_TELEPORTER');
   });
 

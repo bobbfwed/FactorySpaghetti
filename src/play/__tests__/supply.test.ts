@@ -22,7 +22,7 @@ function patchPiece(s: GameState, id: string, patch: Partial<BoardPiece>): GameS
   return { ...s, board: s.board.map(x => (x.id === id ? { ...x, ...patch } : x)) };
 }
 
-/** A building of `owner`'s turned into `type` with their teleporter on its input, activated for them. */
+/** A building of `owner`'s turned into `type` with their teleporter on every input (#55), activated for them. */
 function activated(owner: 'active' | 'other', type: 'tesseractFact' | 'sphereFact' | 'powerPlant', slots: (Material | null)[], inv: Inv, power = 5):
   { s: GameState; p: PlayerId; pieceId: string } {
   const { state } = atActions(5, 3);
@@ -32,8 +32,8 @@ function activated(owner: 'active' | 'other', type: 'tesseractFact' | 'sphereFac
   const piece = state.board.find(x => x.type === kind && x.claims.some(c => c.ownerId === p))!;
   let s = patchPiece(state, piece.id, {
     type,
-    input: { slots, teleporterOwner: p },
-    output: type === 'powerPlant' ? piece.output : { slots: [null], teleporterOwner: null },
+    input: { slots, teleporters: slots.map(() => p) },
+    output: type === 'powerPlant' ? piece.output : { slots: [null], teleporters: [] },
   });
   s = patchPlayer(s, p, { inventory: inv, powerTokens: power });
   s = { ...s, pendingFactoryOps: [{ pieceId: piece.id, ownerId: p }] };
@@ -168,7 +168,7 @@ describe('supply chooser: the meeple\'s building at round end', () => {
       return !!b && b.type === 'plateFact' && pl.meepleSlotIndex === null && !pl.meepleOperatedThisRound;
     });
     const id = state.players[player]!.meepleOnPieceId!;
-    let s = patchPiece(state, id, { input: { slots: [null], teleporterOwner: player }, output: { slots: [null], teleporterOwner: null } });
+    let s = patchPiece(state, id, { input: { slots: [null], teleporters: [player] }, output: { slots: [null], teleporters: [] } });
     s = patchPlayer(s, player, { inventory: { ore: 2, plate: 0, sphere: 0, tesseract: 0 } });
     const runs = legalActions(s, player).filter(a => a.type === 'OPERATE_BUILDING' && a.pieceId === id);
     expect(runs).toEqual([{ type: 'OPERATE_BUILDING', pieceId: id, supply: ['ore'] }]);

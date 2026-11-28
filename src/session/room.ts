@@ -68,7 +68,7 @@ export type TableEvent =
   | { kind: 'gameOver'; winner: number | null; tied: number[]; reason: 'tesseracts' | 'boardExhausted' | null };
 
 export interface Room {
-  v: 1;
+  v: 2; // the room format (save.ts ROOM_FORMAT): 2 since teleporters sit per input (RULES_CHANGES.md #55)
   code: string;
   phase: 'lobby' | 'playing' | 'finished';
   hold: boolean;                // a resumed game is paused until the host continues
@@ -120,7 +120,7 @@ export function newLobbyRoom(code: string, hostName: string, settings: RoomSetti
   for (let i = 0; i < settings.playerCount; i++) seats.push(openSeat(i, SEAT_COLORS[i]!));
   seats[0] = { ...seats[0]!, kind: 'human', name: hostName };
   return {
-    v: 1,
+    v: 2,
     code,
     phase: 'lobby',
     hold: false,

@@ -12,6 +12,7 @@ import { chooseAction as greedy } from '../../bots/greedyBot';
 import type { Room } from '../room';
 import { activeSeat } from '../room';
 import { HostSession, MAX_WAITING } from '../hostSession';
+import { PROTOCOL } from '../protocol';
 import { ClientSession, promoteToHost } from '../clientSession';
 import { memoryPair } from '../memoryConn';
 import { normalizeAction } from '../normalize';
@@ -140,7 +141,7 @@ describe('the waiting list, and rooms from a host', () => {
       const [h, c] = memoryPair();
       host.accept(h);
       c.onmessage = (m): void => { if ((m as { t: string }).t === 'closed') closed.push(m); };
-      c.send({ t: 'hello', v: 1, name: `Visitor ${i}`, token: `tok-visitor-${i}-0123456789` });
+      c.send({ t: 'hello', v: PROTOCOL, name: `Visitor ${i}`, token: `tok-visitor-${i}-0123456789` });
     }
     await settle();
     expect(host.room.waiting).toHaveLength(MAX_WAITING);
@@ -273,7 +274,7 @@ describe('journal requests are limited', () => {
     const [h, c] = memoryPair();
     host.accept(h);
     c.onmessage = (m): void => { const t = (m as { t: string }).t; if (t === 'journal' || t === 'nope') answers.push(m as never); };
-    c.send({ t: 'hello', v: 1, name: 'Visitor', token: 'tok-visitor-0123456789' });
+    c.send({ t: 'hello', v: PROTOCOL, name: 'Visitor', token: 'tok-visitor-0123456789' });
     await settle();
     c.send({ t: 'journal', seed: game.seed, have: null, id: 'v1' });
     await settle();

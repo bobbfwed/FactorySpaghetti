@@ -22,8 +22,8 @@ function makePiece(overrides: Partial<BoardPiece> & Pick<BoardPiece, 'type' | 'i
     type,
     coord: overrides.coord ?? { q: 1, r: 0 },
     claims: overrides.claims ?? [],
-    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporterOwner: null } : null),
-    output: overrides.output ?? (hasOutput ? { slots: [null], teleporterOwner: null } : null),
+    input: overrides.input ?? (inputSlots > 0 ? { slots: new Array(inputSlots).fill(null), teleporters: [] } : null),
+    output: overrides.output ?? (hasOutput ? { slots: [null], teleporters: [] } : null),
   };
 }
 
@@ -63,7 +63,7 @@ describe('buffer rules — plate factory (1 Ore → 1 Plate)', () => {
     const piece = makePiece({
       id: 'pf-1', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
       coord: { q: 50, r: 0 }, // away from the mine: isolate production from mine auto-feed
     });
     const state = rollState(base, piece);
@@ -89,7 +89,7 @@ describe('buffer rules — plate factory (1 Ore → 1 Plate)', () => {
     const piece = makePiece({
       id: 'pf-2', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
     const state = rollState(base, piece);
 
@@ -125,7 +125,7 @@ describe('same number rolled twice with full output buffer = nothing', () => {
     const piece = makePiece({
       id: 'pf-dbl', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
     const state = rollState(base, piece, 10);
 
@@ -158,7 +158,7 @@ describe('same number rolled twice with full output buffer = nothing', () => {
     const piece = makePiece({
       id: 'pf-pow', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 2 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
     const initState = rollState(base, piece, 5);
 
@@ -199,7 +199,7 @@ describe('power payment', () => {
     const piece = makePiece({
       id: 'pf-p0', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 6 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
     const state = rollState(base, piece, 3);
     const initialTokens = state.players[0]!.powerTokens;
@@ -217,7 +217,7 @@ describe('power payment', () => {
     const piece = makePiece({
       id: 'sf-p1', type: 'sphereFact',
       claims: [{ ownerId: 0, controlModule: 5 }],
-      input: { slots: ['ore', 'plate'], teleporterOwner: null },
+      input: { slots: ['ore', 'plate'], teleporters: [] },
     });
     const state = rollState(base, piece, 5);
     const initialTokens = state.players[0]!.powerTokens;
@@ -236,7 +236,7 @@ describe('power payment', () => {
     const piece = makePiece({
       id: 'sf-p2', type: 'sphereFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: ['plate', 'plate'], teleporterOwner: null },
+      input: { slots: ['plate', 'plate'], teleporters: [] },
     });
     const state = rollState(base, piece, 5);
     const initialTokens = state.players[0]!.powerTokens;
@@ -255,7 +255,7 @@ describe('power payment', () => {
     const piece = makePiece({
       id: 'tf-p3', type: 'tesseractFact',
       claims: [{ ownerId: 0, controlModule: 6 }],
-      input: { slots: ['ore', 'plate', 'sphere'], teleporterOwner: null },
+      input: { slots: ['ore', 'plate', 'sphere'], teleporters: [] },
     });
     const state = rollState(base, piece, 5);
     const initialTokens = state.players[0]!.powerTokens;
@@ -274,7 +274,7 @@ describe('power payment', () => {
     const piece = makePiece({
       id: 'sf-broke', type: 'sphereFact',
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: ['plate', 'plate'], teleporterOwner: null },
+      input: { slots: ['plate', 'plate'], teleporters: [] },
     });
     const state = rollState(base, piece, 1); // only 1 token; need 2
 
@@ -295,7 +295,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-base', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: [null], teleporterOwner: null },
+      input: { slots: [null], teleporters: [] },
       coord: { q: 50, r: 0 }, // away from the mine: verify base yield with a genuinely empty input
     });
     const state = rollState(base, piece, 3);
@@ -310,7 +310,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-ore', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
       coord: { q: 50, r: 0 }, // away from the mine: input is exactly the 1 ore we set, then consumed
     });
     const state = rollState(base, piece, 0);
@@ -326,7 +326,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-plate', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 2 }],
-      input: { slots: ['plate'], teleporterOwner: null },
+      input: { slots: ['plate'], teleporters: [] },
     });
     const state = rollState(base, piece, 0);
 
@@ -340,7 +340,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-sphere', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 6 }],
-      input: { slots: ['sphere'], teleporterOwner: null },
+      input: { slots: ['sphere'], teleporters: [] },
     });
     const state = rollState(base, piece, 0);
 
@@ -354,7 +354,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-cap', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 5 }],
-      input: { slots: ['sphere'], teleporterOwner: null },
+      input: { slots: ['sphere'], teleporters: [] },
     });
     const state = rollState(base, piece, 8); // already at 8; sphere would give 10
 
@@ -368,7 +368,7 @@ describe('power plant production', () => {
     const piece = makePiece({
       id: 'pp-tess', type: 'powerPlant',
       claims: [{ ownerId: 0, controlModule: 3 }],
-      input: { slots: ['tesseract'], teleporterOwner: null },
+      input: { slots: ['tesseract'], teleporters: [] },
     });
     const state = rollState(base, piece, 0);
 
@@ -390,13 +390,13 @@ describe('activation on any roll (every owner is prompted, then operates)', () =
     const piece0 = makePiece({
       id: 'pf-p0', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
     const piece1 = makePiece({
       id: 'pf-p1', type: 'plateFact',
       coord: { q: -1, r: 0 },
       claims: [{ ownerId: 1, controlModule: 4 }],
-      input: { slots: ['ore'], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
     });
 
     // Give both players enough tokens (plate factory costs 0 anyway, but keep it realistic)
@@ -484,7 +484,7 @@ describe('tesseract factory input validation', () => {
       const piece = makePiece({
         id, type: 'tesseractFact',
         claims: [{ ownerId: 0, controlModule: 5 }],
-        input: { slots: inputs as ('ore' | 'plate' | 'sphere' | 'tesseract')[], teleporterOwner: null },
+        input: { slots: inputs as ('ore' | 'plate' | 'sphere' | 'tesseract')[], teleporters: [] },
       });
       const state = rollState(base, piece, 10);
       const rollRes = roll(state, 5);
@@ -538,7 +538,7 @@ describe('round-end output collection', () => {
     const piece = makePiece({
       id: 'pf-collect', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      output: { slots: ['plate'], teleporterOwner: null },
+      output: { slots: ['plate'], teleporters: [] },
       coord: { q: 50, r: 0 },
     });
     const state = roundEndWithMeeple(base, piece);
@@ -555,7 +555,7 @@ describe('round-end output collection', () => {
     const piece = makePiece({
       id: 'pf-nomeeple', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      output: { slots: ['plate'], teleporterOwner: null },
+      output: { slots: ['plate'], teleporters: [] },
       coord: { q: 50, r: 0 },
     });
     const state: GameState = {
@@ -576,8 +576,8 @@ describe('round-end output collection', () => {
     const piece = makePiece({
       id: 'pf-opcollect', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      input: { slots: ['ore'], teleporterOwner: null },
-      output: { slots: [null], teleporterOwner: null },
+      input: { slots: ['ore'], teleporters: [] },
+      output: { slots: [null], teleporters: [] },
       coord: { q: 50, r: 0 },
     });
     const state = roundEndWithMeeple(base, piece);
@@ -608,7 +608,7 @@ describe('round-end output collection', () => {
     const piece = makePiece({
       id: 'pf-capfull', type: 'plateFact',
       claims: [{ ownerId: 0, controlModule: 4 }],
-      output: { slots: ['plate'], teleporterOwner: null },
+      output: { slots: ['plate'], teleporters: [] },
       coord: { q: 50, r: 0 },
     });
     const state: GameState = {

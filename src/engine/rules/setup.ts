@@ -26,7 +26,7 @@ import { hexNeighbours, mineSecondaryCoord } from './pieces';
 function makeBuffer(slotCount: number): Buffer {
   return {
     slots: new Array<Material | null>(slotCount).fill(null),
-    teleporterOwner: null,
+    teleporters: [],
   };
 }
 

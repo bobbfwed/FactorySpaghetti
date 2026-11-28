@@ -18,6 +18,7 @@ import {
 import type { Material, PointRole } from '../config';
 import { hexNeighbours, mineSecondaryCoord } from './pieces';
 import { canLoadMaterial } from './recipes';
+import { teleporterOn, teleportersOf, withTeleporter } from './teleporters';
 
 // ── Geometry constants ────────────────────────────────────────────────────────
 
@@ -100,7 +101,7 @@ export function getRole(piece: BoardPiece, pos: number): PointRole {
 }
 
 // Index of this input_buffer position within the piece's input slot array.
-function inputSlotIdx(piece: BoardPiece, pos: number): number {
+function inputSlotIdx(piece: Pick<BoardPiece, 'type' | 'id'>, pos: number): number {
   const inputs = pieceTemplate(piece).points
     .filter(p => p.role === 'input_buffer')
     .map(p => p.position)
@@ -165,17 +166,24 @@ export function isReservedPoint(piece: BoardPiece, pos: number, playerId: Player
     piece.claims.length > 0 && !piece.claims.some(c => c.ownerId === playerId);
 }
 
-// True when a teleporter cuts this side of `piece` off from belts and direct contact
-// (RULES_CHANGES.md #53): an output with a teleporter is never a source for a belt chain or a
-// touching input (only the teleporter drains it); the input of a building with ONE input
-// (Plate Factory, Power Plant) with a teleporter receives nothing from a Mine, a belt or a
-// touching output. A teleporter belongs to the whole input buffer, so on a building with
-// several inputs (Sphere, Tesseract Factory) it cuts nothing off: which single input it should
-// block is the designer's open question OQ-11. Used by the flow resolver, the table's flow
-// display and the bots, so all three agree.
-export function teleporterCutsOff(piece: Pick<BoardPiece, 'input' | 'output'>, side: 'input' | 'output'): boolean {
-  if (side === 'output') return piece.output != null && piece.output.teleporterOwner != null;
-  return piece.input != null && piece.input.teleporterOwner != null && piece.input.slots.length === 1;
+// True when a teleporter cuts this buffer point of `piece` off from belts and direct contact
+// (RULES_CHANGES.md #53, per input since #55): an output with a teleporter is never a source for
+// a belt chain or a touching input (only the teleporter drains it); an input with a teleporter
+// (input `inputIndex`, the engine's slot order) receives nothing from a Mine, a belt or a
+// touching output. A teleporter sits on one input, so the other inputs of a Sphere or Tesseract
+// Factory keep receiving. Used by the flow resolver, the table's flow display and the bots, so
+// all three agree.
+export function teleporterCutsOff(piece: Pick<BoardPiece, 'output'>, side: 'output'): boolean;
+export function teleporterCutsOff(piece: Pick<BoardPiece, 'input'>, side: 'input', inputIndex: number): boolean;
+export function teleporterCutsOff(piece: Partial<Pick<BoardPiece, 'input' | 'output'>>, side: 'input' | 'output', inputIndex = 0): boolean {
+  if (side === 'output') return teleporterOn(piece.output, 0) !== null;
+  return !!piece.input && inputIndex >= 0 && inputIndex < piece.input.slots.length && teleporterOn(piece.input, inputIndex) !== null;
+}
+
+// The input slot (engine order) that input point `pos` of `piece` fills, or -1 when `pos` is not
+// one of its inputs. Exported for the table and the bots, which ask teleporterCutsOff per point.
+export function inputIndexAt(piece: Pick<BoardPiece, 'type' | 'id'>, pos: number): number {
+  return inputSlotIdx(piece, pos);
 }
 
 // May material move from building `src`'s output into building `dst`'s input (RULES_CHANGES.md
@@ -389,20 +397,9 @@ export function applyPlaceTeleporter(
     return err('CANNOT_AFFORD', `Teleporter costs ${cost} value unit(s)`);
   }
 
-  let newPiece: BoardPiece;
-  if (action.bufferType === 'input') {
-    if (!piece.input) return err('NO_BUFFER', 'This piece has no input buffer');
-    if (piece.input.teleporterOwner !== null) {
-      return err('BUFFER_OCCUPIED', 'This input buffer already has a teleporter');
-    }
-    newPiece = { ...piece, input: { ...piece.input, teleporterOwner: activeId } };
-  } else {
-    if (!piece.output) return err('NO_BUFFER', 'This piece has no output buffer');
-    if (piece.output.teleporterOwner !== null) {
-      return err('BUFFER_OCCUPIED', 'This output buffer already has a teleporter');
-    }
-    newPiece = { ...piece, output: { ...piece.output, teleporterOwner: activeId } };
-  }
+  const placed = teleporterTarget(piece, action.bufferType, action.inputIndex);
+  if (!placed.ok) return placed;
+  const newPiece = placed.piece(activeId);
 
   const newBoard = state.board.map(p => (p.id === piece.id ? newPiece : p));
   const newPlayers = mapPlayer(state.players, activeId, p => ({
@@ -422,30 +419,60 @@ export function applyPlaceTeleporter(
   };
 }
 
+// Where a teleporter named by (`bufferType`, `inputIndex`) goes on `piece`, checked: the input
+// must exist (input `inputIndex`, 0 when not named — moves from before #55) and carry no
+// teleporter yet; the output likewise. One teleporter per input and one on the output
+// (RULES_CHANGES.md #55). Shared by PLACE_TELEPORTER and R&D Tax Write-Off.
+export function teleporterTarget(
+  piece: BoardPiece,
+  bufferType: 'input' | 'output',
+  inputIndex: number | undefined,
+): { ok: true; piece: (owner: PlayerId) => BoardPiece } | { ok: false; error: RulesError } {
+  if (bufferType === 'input') {
+    const input = piece.input;
+    if (!input) return err('NO_BUFFER', 'This piece has no input buffer');
+    const slot = inputIndex ?? 0;
+    if (!Number.isInteger(slot) || slot < 0 || slot >= input.slots.length) {
+      return err('NO_SUCH_INPUT', `This building has no input ${slot + 1}`);
+    }
+    if (teleporterOn(input, slot) !== null) {
+      return err('BUFFER_OCCUPIED', 'This input already has a teleporter');
+    }
+    return { ok: true, piece: owner => ({ ...piece, input: withTeleporter(input, slot, owner) }) };
+  }
+  const output = piece.output;
+  if (!output) return err('NO_BUFFER', 'This piece has no output buffer');
+  if (teleporterOn(output, 0) !== null) {
+    return err('BUFFER_OCCUPIED', 'This output buffer already has a teleporter');
+  }
+  return { ok: true, piece: owner => ({ ...piece, output: withTeleporter(output, 0, owner) }) };
+}
+
 // ── Teleporters that lost their claim ─────────────────────────────────────────
 
 // A teleporter works for the building it sits on only while its placer holds a claim there.
 // As soon as a player holds no claim on a building any more (today only Changing Priorities
-// can move their last Control Module off it), every teleporter of theirs on that building's
-// buffers goes back to their supply, the buffer has no teleporter, and the teleporter price
-// drops with the count on the board (RULES_CHANGES.md #37). Material in the buffers stays.
+// can move their last Control Module off it), every teleporter of theirs on that building —
+// each one on an input and the one on the output (#55) — goes back to their supply, that input
+// or output has no teleporter, and the teleporter price drops with the count on the board
+// (RULES_CHANGES.md #37). Material in the buffers stays.
 // Pure; run after every action (reducer) so any future claim-removing effect is covered too.
 export function returnOrphanedTeleporters(state: GameState): GameState {
   // Fast path (this runs after every action, including every move a bot tries).
-  const orphaned = (piece: BoardPiece, owner: PlayerId | null | undefined): boolean =>
-    owner != null && !piece.claims.some(c => c.ownerId === owner);
-  if (!state.board.some(p => orphaned(p, p.input?.teleporterOwner) || orphaned(p, p.output?.teleporterOwner))) return state;
+  const orphaned = (piece: BoardPiece): boolean => [piece.input, piece.output].some(buf =>
+    !!buf && buf.teleporters.some(owner => owner != null && !piece.claims.some(c => c.ownerId === owner)));
+  if (!state.board.some(orphaned)) return state;
   let returned = 0;
   let players = state.players;
   const board = state.board.map(piece => {
     let next = piece;
     for (const side of ['input', 'output'] as const) {
-      const buf = next[side];
-      const owner = buf?.teleporterOwner ?? null;
-      if (!buf || owner === null || next.claims.some(c => c.ownerId === owner)) continue;
-      next = { ...next, [side]: { ...buf, teleporterOwner: null } };
-      players = mapPlayer(players, owner, p => ({ ...p, teleportersRemaining: p.teleportersRemaining + 1 }));
-      returned++;
+      for (const { slot, owner } of teleportersOf(next[side])) {
+        if (next.claims.some(c => c.ownerId === owner)) continue;
+        next = { ...next, [side]: withTeleporter(next[side]!, slot, null) };
+        players = mapPlayer(players, owner, p => ({ ...p, teleportersRemaining: p.teleportersRemaining + 1 }));
+        returned++;
+      }
     }
     return next;
   });
@@ -693,7 +720,6 @@ export function fillInputsFromAdjacentMines(state: GameState): GameState {
   for (let i = 0; i < board.length; i++) {
     const piece = board[i]!;
     if (piece.claims.length === 0 || !piece.input) continue;
-    if (teleporterCutsOff(piece, 'input')) continue; // a teleported input takes no Ore by itself (#53)
 
     const template = pieceTemplate(piece);
     for (const ptDef of template.points) {
@@ -707,6 +733,7 @@ export function fillInputsFromAdjacentMines(state: GameState): GameState {
       if (!cur.input) continue;
       const si = inputSlotIdx(cur, ptDef.position);
       if (si < 0 || cur.input.slots[si] !== null) continue;
+      if (teleporterCutsOff(cur, 'input', si)) continue; // a teleported input takes no Ore by itself (#53, #55)
       // Only deliver ore if it keeps a valid recipe reachable (e.g. never a 2nd ore into a
       // Sphere Factory) — flow respects the recipe table, same as manual loading.
       if (!canLoadMaterial(cur.type, cur.input.slots, 'ore')) continue;
@@ -734,8 +761,8 @@ export function drainOutputTeleporters(state: GameState): GameState {
   let players = state.players;
   let changed = false;
   const board = state.board.map(piece => {
-    if (!piece.output || piece.output.teleporterOwner === null) return piece;
-    const owner = piece.output.teleporterOwner;
+    const owner = teleporterOn(piece.output, 0);
+    if (!piece.output || owner === null) return piece;
     const slots = [...piece.output.slots] as Array<Material | null>;
     let pieceChanged = false;
     for (let i = 0; i < slots.length; i++) {
@@ -787,9 +814,9 @@ export function resolveDirectAdjacency(state: GameState): GameState {
   // Deliver ore (unlimited mine supply) to a claimed building's input slot.
   function deliverOre(dstPiece: BoardPiece, dstPos: number): boolean {
     if (dstPiece.claims.length === 0) return false;
-    if (teleporterCutsOff(dstPiece, 'input')) return false; // #53
     const si = inputSlotIdx(dstPiece, dstPos);
     if (si < 0 || !dstPiece.input) return false;
+    if (teleporterCutsOff(dstPiece, 'input', si)) return false; // #53, per input (#55)
     if (dstPiece.input.slots[si] !== null) return false;
     if (!canLoadMaterial(dstPiece.type, dstPiece.input.slots, 'ore')) return false; // recipe-aware
     const slots = [...dstPiece.input.slots] as Array<Material | null>;
@@ -808,14 +835,15 @@ export function resolveDirectAdjacency(state: GameState): GameState {
   ): boolean {
     if (!directFlowAllowed(srcPiece, dstPiece)) return false;
     // A teleported output is drained only by its teleporter, even when it cannot drain (owner at
-    // the cap); a teleported single input takes nothing by itself (#53).
-    if (teleporterCutsOff(srcPiece, 'output') || teleporterCutsOff(dstPiece, 'input')) return false;
+    // the cap); a teleported input takes nothing by itself (#53, per input since #55).
+    if (teleporterCutsOff(srcPiece, 'output')) return false;
     const srcSi = outputSlotIdx(srcPiece, srcPos);
     if (srcSi < 0 || !srcPiece.output) return false;
     const material = srcPiece.output.slots[srcSi];
     if (material == null) return false; // null or undefined → slot empty
     const dstSi = inputSlotIdx(dstPiece, dstPos);
     if (dstSi < 0 || !dstPiece.input) return false;
+    if (teleporterCutsOff(dstPiece, 'input', dstSi)) return false;
     if (dstPiece.input.slots[dstSi] !== null) return false;
     if (!canLoadMaterial(dstPiece.type, dstPiece.input.slots, material)) return false; // recipe-aware
 
@@ -920,7 +948,6 @@ export function resolveDirectAdjacency(state: GameState): GameState {
 
   for (const building of state.board) {
     if (building.claims.length === 0) continue; // only claimed buildings receive material
-    if (teleporterCutsOff(building, 'input')) continue; // nor a teleported single input (#53)
     const template = pieceTemplate(building);
     for (const ptDef of template.points) {
       if (ptDef.role !== 'input_buffer' || !ptDef.enabled) continue;
@@ -928,6 +955,7 @@ export function resolveDirectAdjacency(state: GameState): GameState {
       if (!b.input) continue;
       const si = inputSlotIdx(b, ptDef.position);
       if (si < 0 || b.input.slots[si] !== null) continue; // slot invalid or already full
+      if (teleporterCutsOff(b, 'input', si)) continue;     // nor a teleported input (#53, #55)
 
       const q = adjAt(b.coord, b.rotation ?? 0, ptDef.position, board);
       if (!q || q.piece.type === 'mine') continue;           // direct mine adjacency handled above

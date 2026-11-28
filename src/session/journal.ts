@@ -13,7 +13,7 @@
 import type { Action } from '../engine/actions';
 import type { GameState } from '../engine/state';
 import { applyAction, createGame } from '../engine';
-import { isGameState } from './save';
+import { asGameState } from './save';
 
 /** Where a journal (or a replay) begins: a new game from its seed, or a snapshot at move `seq`. */
 export type ReplayStart =
@@ -189,7 +189,9 @@ export function parseStart(x: unknown): ReplayStart | null {
     return isInt(x.seed) && x.seed >= 0 && x.seed <= 0xffffffff && (pc === 2 || pc === 3 || pc === 4)
       ? { seed: x.seed, playerCount: pc } : null;
   }
-  return isInt(x.seq) && x.seq >= 0 && isGameState(x.state) ? { state: x.state, seq: x.seq } : null;
+  if (!isInt(x.seq) || x.seq < 0) return null;
+  const state = asGameState(x.state); // a state from before #55 gets its teleporters on their slots
+  return state ? { state, seq: x.seq } : null;
 }
 
 /** A journal from outside (a file, a save, another browser), checked; null if it is not usable. */

@@ -138,7 +138,7 @@ describe('expectedProduction (B4 feature)', () => {
 // ── bufferedOutput + meepleHarvest (produce → collect loop) ───────────────────
 
 function buf(slots: Array<Material | null>): Buffer {
-  return { slots, teleporterOwner: null };
+  return { slots, teleporters: [] };
 }
 
 // A claimed factory with explicit input/output buffers.

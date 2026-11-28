@@ -200,7 +200,7 @@ function sceneProblems(spec: SceneSpec, marks: readonly CalloutAt[]): string[] {
       for (const m of p.output.slots) if (m && m !== FACTORY_RECIPES[p.type]?.product) out.push(`${p.id}: makes no ${m}`);
     }
     for (const b of [p.input, p.output]) {
-      if (b?.teleporterOwner != null && !p.claims.some(c => c.ownerId === b.teleporterOwner)) out.push(`${p.id}: teleporter on a building its owner has not claimed`);
+      if (b?.teleporters.some(o => o != null && !p.claims.some(c => c.ownerId === o))) out.push(`${p.id}: teleporter on a building its owner has not claimed`);
     }
   }
   // Meeples: on a Mine point (one each) or on a building of their own.
@@ -245,9 +245,9 @@ function sceneProblems(spec: SceneSpec, marks: readonly CalloutAt[]): string[] {
     const p = s.board.find(x => x.id === m.piece);
     if (!p) { out.push(`marker on missing piece ${m.piece}`); continue; }
     if ('buffer' in m && !(m.buffer === 'input' ? p.input : p.output)) out.push(`${p.id} has no ${m.buffer}`);
-    if ('slot' in m && p.type !== 'mine') out.push(`${p.id} has no meeple point`);
+    if ('slot' in m && !('teleporter' in m) && p.type !== 'mine') out.push(`${p.id} has no meeple point`);
     if ('belt' in m && !s.belts.filter(b => b.pieceId === p.id)[m.belt]) out.push(`${p.id} has no belt ${m.belt}`);
-    if ('teleporter' in m && (m.teleporter === 'input' ? p.input : p.output)?.teleporterOwner == null) out.push(`${p.id} has no teleporter on its ${m.teleporter}`);
+    if ('teleporter' in m && (m.teleporter === 'input' ? p.input : p.output)?.teleporters[m.slot ?? 0] == null) out.push(`${p.id} has no teleporter on its ${m.teleporter}`);
     if ('point' in m && (m.point < 0 || m.point >= (p.type === 'mine' ? 24 : 12))) out.push(`${p.id} has no point ${m.point}`);
   }
   return out;

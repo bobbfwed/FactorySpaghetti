@@ -2,6 +2,7 @@
 // filled in on request, carried over a host hand-over, stored with the automatic save, and in the
 // save file but never in the save link. Replaying it reproduces the game exactly.
 
+import { PROTOCOL } from '../protocol';
 import { describe, it, expect } from 'vitest';
 import type { GameState } from '../../engine/state';
 import type { HostSession } from '../hostSession';
@@ -196,7 +197,7 @@ describe('the move journal through a host and its clients', () => {
     const [hostEnd, clientEnd] = memoryPair();
     hostEnd.onmessage = (raw): void => {
       const m = raw as { t: string; id?: string };
-      if (m.t === 'hello') hostEnd.send({ t: 'welcome', v: 1, seat: 1, room, now: 1 });
+      if (m.t === 'hello') hostEnd.send({ t: 'welcome', v: PROTOCOL, seat: 1, room, now: 1 });
       else if (m.t === 'journal') hostEnd.send({ t: 'nope', id: m.id ?? null, error: { code: 'BAD_MESSAGE', message: 'That message was not understood.' } });
     };
     const c = new ClientSession(clientEnd, { name: 'Bea', token: 'tok-bea-other-0123456789' });

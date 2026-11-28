@@ -171,7 +171,7 @@ describe('belts on a tile', () => {
   });
 
   it('bendBelts points every belt of a chain at its head: away from a Mine, whichever way it was tapped', () => {
-    const mine: BoardPiece = { id: 'mine-1', type: 'mine', coord: { q: 0, r: 0 }, rotation: 0, claims: [], input: null, output: { slots: [null], teleporterOwner: null } };
+    const mine: BoardPiece = { id: 'mine-1', type: 'mine', coord: { q: 0, r: 0 }, rotation: 0, claims: [], input: null, output: { slots: [null], teleporters: [] } };
     const A = { ...tile(2, 0), id: 'A' }, B = { ...tile(3, 0), id: 'B' };
     const p = base.getAttribute('position') as THREE.BufferAttribute;
     let iMin = 0;

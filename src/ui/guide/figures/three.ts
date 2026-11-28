@@ -236,7 +236,7 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
       return { x: c.x + (m.x - c.x) * k, y, z: c.z + (m.z - c.z) * k };
     }
     if ('teleporter' in at) {
-      const t = teleporterPlacement(piece, at.teleporter);
+      const t = teleporterPlacement(piece, at.teleporter, at.slot ?? 0);
       return { x: t.x, y: TILE_TOP + TELEPORTER_HEIGHT * TELEPORTER_SCALE + 9, z: t.z };
     }
     if ('point' in at) { const c = pointWorld(piece, at.point); return { x: c.x, y, z: c.z }; }

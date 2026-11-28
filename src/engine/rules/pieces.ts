@@ -61,7 +61,7 @@ export function isAdjacentToBoard(coord: HexCoord, board: ReadonlyArray<BoardPie
 function makeBuffer(slotCount: number): Buffer {
   return {
     slots: new Array<Material | null>(slotCount).fill(null),
-    teleporterOwner: null,
+    teleporters: [],
   };
 }
 

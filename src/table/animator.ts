@@ -27,7 +27,7 @@ export interface SceneFx {
   claim(pieceId: string, index: number): { y: number; s: number } | 'hide' | null;
   /** Scale of the material in a buffer slot (0 = not there yet). */
   slot(pieceId: string, buffer: Buf, index: number): number | null;
-  teleporter(pieceId: string, buffer: Buf): number | null;
+  teleporter(pieceId: string, buffer: Buf, slot: number): number | null;
   meeple(player: number): { x: number; y: number; z: number } | 'hide' | null;
   /** 'hide' before the belt is laid, a height while it drops, null once it lies. */
   belt(id: string): number | 'hide' | null;
@@ -266,10 +266,10 @@ export class Animator implements SceneFx {
     return null;
   }
 
-  teleporter(pieceId: string, buffer: Buf): number | null {
+  teleporter(pieceId: string, buffer: Buf, slot: number): number | null {
     if (this.placing(pieceId)) return 0;
     for (const s of this.steps) {
-      if (s.kind !== 'teleporter' || s.pieceId !== pieceId || s.buffer !== buffer) continue;
+      if (s.kind !== 'teleporter' || s.pieceId !== pieceId || s.buffer !== buffer || s.slot !== slot) continue;
       const p = this.progress(s);
       if (p >= 1) continue;
       return p <= 0 ? 0 : Math.max(0.01, easeBack(p));

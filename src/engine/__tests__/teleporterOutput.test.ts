@@ -11,8 +11,8 @@ function plateFactory(overrides: Partial<BoardPiece> = {}): BoardPiece {
   return {
     id: 'pf', type: 'plateFact', coord: { q: 1, r: 0 },
     claims: [{ ownerId: ME, controlModule: 3 }],
-    input: { slots: ['ore'], teleporterOwner: null },
-    output: { slots: [null], teleporterOwner: ME }, // output teleporter owned by me
+    input: { slots: ['ore'], teleporters: [] },
+    output: { slots: [null], teleporters: [ME] }, // output teleporter owned by me
     ...overrides,
   };
 }
@@ -45,7 +45,7 @@ describe('output teleporter → inventory', () => {
 
   it('drains material already stuck in the buffer (placed teleporter after production)', () => {
     // A plate is already in the buffer (e.g. produced before the teleporter, or overflow).
-    const stuck = plateFactory({ output: { slots: ['plate'], teleporterOwner: ME } });
+    const stuck = plateFactory({ output: { slots: ['plate'], teleporters: [ME] } });
     const s = rollState(base, stuck);
     const rolled = applyAction(s, { type: 'ROLL_DICE', rolls: [3] });
     expect(rolled.ok).toBe(true);
@@ -76,21 +76,21 @@ describe('output teleporter → inventory', () => {
       ...base,
       players: base.players.map((p, i) => (i === ME ? { ...p, inventory: { ...p.inventory, plate: INVENTORY_CAP } } : p)),
     };
-    const stuck = plateFactory({ output: { slots: ['plate'], teleporterOwner: ME } });
+    const stuck = plateFactory({ output: { slots: ['plate'], teleporters: [ME] } });
     const drained = drainOutputTeleporters({ ...atCap, board: [...atCap.board, stuck] });
     expect(drained.players[ME]!.inventory.plate).toBe(INVENTORY_CAP);          // unchanged
     expect(drained.board.find(p => p.id === 'pf')!.output?.slots[0]).toBe('plate'); // stays
   });
 
   it('leaves non-teleporter output buffers untouched', () => {
-    const noTele = plateFactory({ output: { slots: ['plate'], teleporterOwner: null } });
+    const noTele = plateFactory({ output: { slots: ['plate'], teleporters: [] } });
     const drained = drainOutputTeleporters({ ...base, board: [...base.board, noTele] });
     expect(drained.board.find(p => p.id === 'pf')!.output?.slots[0]).toBe('plate'); // not drained
     expect(drained.players[ME]!.inventory.plate).toBe(0);
   });
 
   it('drainOutputTeleporters only credits the teleporter owner', () => {
-    const owned = plateFactory({ output: { slots: ['plate'], teleporterOwner: 1 as PlayerId } });
+    const owned = plateFactory({ output: { slots: ['plate'], teleporters: [1 as PlayerId] } });
     const drained = drainOutputTeleporters({ ...base, board: [...base.board, owned] });
     expect(drained.players[1]!.inventory.plate).toBe(1);
     expect(drained.players[ME]!.inventory.plate).toBe(0);

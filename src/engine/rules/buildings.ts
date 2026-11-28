@@ -50,7 +50,7 @@ function unlockStack(
 
 // Build a placed mine BoardPiece with a 1-slot output buffer.
 function makeMineOnBoard(id: string, coord: BoardPiece['coord'], rotation: number): BoardPiece {
-  const output: Buffer = { slots: [null], teleporterOwner: null };
+  const output: Buffer = { slots: [null], teleporters: [] };
   return { id, type: 'mine', coord, rotation, claims: [], input: null, output };
 }
 

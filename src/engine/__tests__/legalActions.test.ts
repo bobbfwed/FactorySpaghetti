@@ -95,8 +95,8 @@ function factory(id: string, claims: BoardPiece['claims'], slots: (Material | nu
   return {
     id, type: 'plateFact', coord: { q: 50, r: 0 }, rotation: 0, // far from the mine (no auto-feed)
     claims,
-    input: buf.input ? { slots, teleporterOwner } : null,
-    output: buf.output ? { slots: [null], teleporterOwner: null } : null,
+    input: buf.input ? { slots, teleporters: teleporterOwner === null ? [] : [teleporterOwner] } : null,
+    output: buf.output ? { slots: [null], teleporters: [] } : null,
   };
 }
 

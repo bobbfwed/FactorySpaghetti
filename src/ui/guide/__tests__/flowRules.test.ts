@@ -28,8 +28,20 @@ describe('a teleporter cuts its buffer off from belts and direct contact (#53)',
   it('Teleporters says so, and the change is listed', () => {
     const t = text('teleporters');
     expect(t).toContain('never down a belt or into a touching input, even while it waits because you are at your limit');
-    expect(t).toContain('The input of a Plate Factory or Power Plant with a teleporter takes nothing from a Mine, a belt or a touching output');
+    expect(t).toContain('An input with a teleporter takes nothing from a Mine, a belt or a touching output');
     expect(titles()).toContain('A teleporter cuts its buffer off from belts');
+  });
+});
+
+describe('a teleporter sits on one input (#55)', () => {
+  it('Teleporters says it cuts off and supplies only its own input, and the interim words are gone', () => {
+    const t = text('teleporters');
+    expect(t).toContain('A teleporter goes on **one input** or on the **output**');
+    expect(t).toContain('the other inputs of a Sphere or Tesseract Factory keep receiving');
+    expect(t).toContain('Each teleporter supplies only its own input');
+    expect(everywhere()).not.toContain('still receive material as before, for now');
+    expect(everywhere()).not.toContain('one per buffer');
+    expect(titles()).toContain('A teleporter sits on one input');
   });
 });
 

@@ -18,8 +18,8 @@ function piece(id: string, type: PieceType, q: number, r: number, claims: BoardP
   const inputs = type === 'plateFact' ? 1 : 0;
   return {
     id, type, coord: { q, r }, rotation: 0, claims,
-    input: inputs ? { slots: [null], teleporterOwner: null } : null,
-    output: type === 'plateFact' || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: inputs ? { slots: [null], teleporters: [] } : null,
+    output: type === 'plateFact' || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
 

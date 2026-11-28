@@ -49,7 +49,7 @@ function addBoardPiece(state: GameState, piece: BoardPiece): GameState {
 }
 
 function makeBuffer(slots: (Material | null)[]): Buffer {
-  return { slots, teleporterOwner: null };
+  return { slots, teleporters: [] };
 }
 
 function plateFact(id: string, coord: { q: number; r: number }, overrides: Partial<BoardPiece> = {}): BoardPiece {
@@ -522,7 +522,7 @@ describe('rdTaxWriteOff', () => {
     expect(r.ok).toBe(true);
     const ns = (r as { ok: true; state: GameState }).state;
     const piece = ns.board.find(p => p.id === 'pf-rd')!;
-    expect(piece.output!.teleporterOwner).toBe(pid);
+    expect(piece.output!.teleporters).toEqual([pid]);
     expect(ns.players[pid]!.teleportersRemaining).toBe(prevTeleporters - 1);
     expect(ns.globalTeleporterCount).toBe(s.globalTeleporterCount + 1);
   });

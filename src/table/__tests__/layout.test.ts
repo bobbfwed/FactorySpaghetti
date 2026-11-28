@@ -179,7 +179,7 @@ describe('buffers and belts', () => {
   it('buffer slots follow the engine slot order and sit inside their tile', () => {
     const tess: BoardPiece = {
       id: 't', type: 'tesseractFact', coord: { q: 2, r: -1 }, rotation: 4, claims: [],
-      input: { slots: [null, null, null], teleporterOwner: null }, output: { slots: [null], teleporterOwner: null },
+      input: { slots: [null, null, null], teleporters: [] }, output: { slots: [null], teleporters: [] },
     };
     expect(positionsWithRole('tesseractFact', 'input_buffer')).toEqual([0, 2, 11]);
     const c = axialToWorld(tess.coord);

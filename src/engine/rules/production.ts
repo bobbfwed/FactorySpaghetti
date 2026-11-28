@@ -15,6 +15,7 @@ import {
 import { resolveDirectAdjacency, fillInputsFromAdjacentMines } from './flow';
 import { factoryProduct, canLoadMaterial } from './recipes';
 import { mineSlotReward } from './mineRewards';
+import { hasInputTeleporterOf, supplySlots, teleporterOn } from './teleporters';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -111,18 +112,20 @@ export { canLoadMaterial };
 
 // ── Supplying a building through its input teleporter ────────────────────────
 
-// Why `supply` (materials from the operator's inventory, through the input teleporter) may not
+// Why `supply` (materials from the operator's inventory, through their input teleporters) may not
 // go into `piece`'s input as `operatorId` runs it, or null when it may (or there is none). The
 // supply fills empty input slots only, from whole units the operator holds, through a teleporter
-// of the operator's own; it is never taken without being named (RULES_CHANGES.md #45).
+// of the operator's own; it is never taken without being named (RULES_CHANGES.md #45). A
+// teleporter sits on one input and supplies only that input (#55): the supply names exactly one
+// material for each empty input carrying the operator's teleporter (supplySlots), or nothing.
 function supplyError(piece: BoardPiece, operator: Player, supply: ReadonlyArray<Material>): ActionResult | null {
   if (supply.length === 0) return null;
-  if (!piece.input || piece.input.teleporterOwner !== operator.id) {
-    return err('NO_INPUT_TELEPORTER', 'Materials can be supplied from your inventory only through your teleporter on the input');
+  if (!hasInputTeleporterOf(piece, operator.id)) {
+    return err('NO_INPUT_TELEPORTER', 'Materials can be supplied from your inventory only through your teleporter on an input');
   }
-  const empty = piece.input.slots.filter(s => s === null).length;
+  const empty = supplySlots(piece, operator.id).length;
   if (supply.length !== empty) {
-    return err('INVALID_SUPPLY', `Supply exactly one material for each of the ${empty} empty input slot(s)`);
+    return err('INVALID_SUPPLY', `Supply exactly one material for each of the ${empty} empty input(s) with your teleporter`);
   }
   const need = new Map<Material, number>();
   for (const m of supply) need.set(m, (need.get(m) ?? 0) + 1);
@@ -134,10 +137,12 @@ function supplyError(piece: BoardPiece, operator: Player, supply: ReadonlyArray<
   return null;
 }
 
-// The input slots with their empty slots filled, in order, by `supply`.
-function withSupply(slots: ReadonlyArray<Material | null>, supply: ReadonlyArray<Material>): Array<Material | null> {
-  let i = 0;
-  return slots.map(s => (s === null && i < supply.length ? supply[i++]! : s));
+// The input slots with the operator's supply slots (the empty inputs with their teleporter, #55)
+// filled, in order, by `supply`. Other empty inputs stay empty.
+function withSupply(piece: BoardPiece, operatorId: PlayerId, supply: ReadonlyArray<Material>): Array<Material | null> {
+  const slots = [...(piece.input?.slots ?? [])];
+  supplySlots(piece, operatorId).forEach((slot, i) => { if (i < supply.length) slots[slot] = supply[i]!; });
+  return slots;
 }
 
 // `inventory` less the supplied materials.
@@ -151,15 +156,16 @@ function lessSupply(inventory: Readonly<Record<Material, number>>, supply: Reado
 // automatic run: the owner's own teleporter sits on its input and the input is empty, so they
 // choose what (if anything) to supply from their inventory (RULES_CHANGES.md #45).
 export function isPowerPlantDecision(piece: BoardPiece, ownerId: PlayerId): boolean {
-  return piece.type === 'powerPlant' && piece.input !== null &&
-    piece.input.teleporterOwner === ownerId && piece.input.slots.some(s => s === null);
+  return piece.type === 'powerPlant' && supplySlots(piece, ownerId).length > 0;
 }
 
 // Every supply with which `ownerId` could run `pieceId` right now, as its operator: [] (nothing
 // supplied, run from the building's own input) first when that works, then each distinct
-// multiset of materials they hold that fills the empty input slots through their input
-// teleporter and runs, in the fixed material order. Empty when the building cannot run at all.
-// Pure; shared by roll resolution (is an activation a decision?), legalActions and the interface.
+// multiset of materials they hold that fills the empty inputs carrying their teleporter (one
+// material each, supplySlots; #55) and runs, in the fixed material order. Empty when the building
+// cannot run at all — also when an input without their teleporter is still empty, since nothing
+// but its belt, a touching building or a Mine fills that one. Pure; shared by roll resolution (is
+// an activation a decision?), legalActions and the interface.
 export function operateSupplies(state: GameState, pieceId: string, ownerId: PlayerId): Array<Material[]> {
   const piece = state.board.find(p => p.id === pieceId);
   const owner = state.players[ownerId];
@@ -167,9 +173,10 @@ export function operateSupplies(state: GameState, pieceId: string, ownerId: Play
   const out: Array<Material[]> = [];
   const runs = (supply: Material[]): boolean => runBuilding(state, piece, ownerId, supply).ok;
   if (runs([])) out.push([]);
-  if (!piece.input || piece.input.teleporterOwner !== ownerId) return out;
-  const empty = piece.input.slots.filter(s => s === null).length;
+  const empty = supplySlots(piece, ownerId).length;
   if (empty === 0) return out;
+  // A factory runs only with every input filled: an empty input the owner cannot supply blocks it.
+  if (piece.type !== 'powerPlant' && piece.input && piece.input.slots.filter(s => s === null).length > empty) return out;
   const choose = (k: number, from: number, left: Record<Material, number>, chosen: Material[]): void => {
     if (k === 0) { if (runs(chosen)) out.push(chosen); return; }
     for (let i = from; i < MATERIAL_ORDER.length; i++) {
@@ -193,7 +200,7 @@ function runBuilding(state: GameState, piece: BoardPiece, ownerId: PlayerId, sup
 // Operate a factory building for `ownerId`, with `supply` (possibly empty) going into its empty
 // input slots from their inventory through their input teleporter. Nothing else is taken from
 // the inventory: without a supply the factory runs only from what lies in its input.
-// Output teleporter (output.teleporterOwner set): the product is diverted directly to that
+// Output teleporter (one on the output, teleporterOn(output)): the product is diverted directly to that
 // player's inventory (capped at INVENTORY_CAP); overflow stays in the output buffer and blocks
 // future production normally.
 function operateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerId, supply: ReadonlyArray<Material>): ActionResult {
@@ -209,7 +216,7 @@ function operateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerId, 
   // Output buffer full → can't produce (teleporter would have cleared it on success)
   if (output.slots.some(slot => slot !== null)) return cannot;
 
-  const effectiveSlots = withSupply(input.slots, supply);
+  const effectiveSlots = withSupply(piece, ownerId, supply);
   const preInventory = lessSupply(owner.inventory, supply);
 
   // All input slots must now be filled (buffer + the supply)
@@ -244,7 +251,7 @@ function operateFactory(state: GameState, piece: BoardPiece, ownerId: PlayerId, 
 
   // If an output teleporter is present, divert the produced material to that
   // player's inventory immediately (bypasses meeple-access rule).
-  const outTeleOwner = output.teleporterOwner;
+  const outTeleOwner = teleporterOn(output, 0);
   if (outTeleOwner !== null) {
     const recipient = newPlayers[outTeleOwner];
     if (recipient && recipient.inventory[product] < INVENTORY_CAP) {

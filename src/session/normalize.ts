@@ -32,6 +32,8 @@ const module = (x: unknown): number => int(x, 0, 99);
 const point = (x: unknown): number => int(x, 0, 99);
 const seat = (x: unknown): number => int(x, 0, 3);
 const buffer = (x: unknown): 'input' | 'output' => (x === 'input' || x === 'output' ? x : no());
+/** Which input of a building a teleporter goes on (#55): 0 to 2 (a Tesseract Factory has three). */
+const inputIndex = (x: unknown): number => int(x, 0, 2);
 const material = (x: unknown): Material => (typeof x === 'string' && MATERIALS.has(x) ? x as Material : no());
 const card = (x: unknown): CardType => (typeof x === 'string' && CARDS.has(x) ? x as CardType : no());
 const dice = (x: unknown): number[] =>
@@ -65,7 +67,8 @@ export function normalizeAction(raw: unknown): Action | null {
       case 'PLACE_MEEPLE': return { type: 'PLACE_MEEPLE', pieceId: str(a.pieceId), ...opt(a, { slotIndex: x => int(x, 0, 1) }) };
       case 'PLACE_BELT': return { type: 'PLACE_BELT', pieceId: str(a.pieceId), fromPoint: point(a.fromPoint), toPoint: point(a.toPoint) };
       case 'REMOVE_BELT': return { type: 'REMOVE_BELT', beltId: str(a.beltId) };
-      case 'PLACE_TELEPORTER': return { type: 'PLACE_TELEPORTER', pieceId: str(a.pieceId), bufferType: buffer(a.bufferType) };
+      case 'PLACE_TELEPORTER':
+        return { type: 'PLACE_TELEPORTER', pieceId: str(a.pieceId), bufferType: buffer(a.bufferType), ...opt(a, { inputIndex }) };
       case 'CLAIM_BUILDING':
         return {
           type: 'CLAIM_BUILDING', pieceId: str(a.pieceId), controlModule: module(a.controlModule),
@@ -84,7 +87,7 @@ export function normalizeAction(raw: unknown): Action | null {
           type: 'PLAY_CARD', cardType: card(a.cardType),
           ...opt(a, {
             stackIndex: stack, pieceIndex: x => int(x, 0, 200), coord, rotation, pieceId: str, toPieceId: str,
-            controlModule: module, bufferType: buffer,
+            controlModule: module, bufferType: buffer, inputIndex,
           }),
         } as Action;
       case 'SKIP_FACTORY_ROLL': return { type: 'SKIP_FACTORY_ROLL', pieceId: str(a.pieceId), ...opt(a, { ownerId: seat }) } as Action;

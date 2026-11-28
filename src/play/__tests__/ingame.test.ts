@@ -131,11 +131,15 @@ describe('Teleporter reasons', () => {
     expect(tp(patchPlayer(state, player, { teleportersRemaining: 0 }))).toMatchObject({ enabled: false, reason: W.noTeleporters });
     expect(tp(patchPlayer({ ...state, globalTeleporterCount: 2 }, player, { teleportersRemaining: 2, inventory: INV(1, 0, 0) })))
       .toMatchObject({ enabled: false, reason: W.cantAfford(3, 1) });
-    // Every buffer of every building of mine already has a teleporter.
+    // Every input (#55) and output of every building of mine already has a teleporter.
     const full: GameState = {
       ...patchPlayer(state, player, { teleportersRemaining: 2, inventory: INV(6, 0, 0) }),
       board: state.board.map(b => (b.claims.some(x => x.ownerId === player)
-        ? { ...b, ...(b.input ? { input: { ...b.input, teleporterOwner: player } } : {}), ...(b.output ? { output: { ...b.output, teleporterOwner: player } } : {}) }
+        ? {
+          ...b,
+          ...(b.input ? { input: { ...b.input, teleporters: b.input.slots.map(() => player) } } : {}),
+          ...(b.output ? { output: { ...b.output, teleporters: [player] } } : {}),
+        }
         : b)),
     };
     expect(tp(full)).toMatchObject({ enabled: false, reason: W.noFreeBuffer });

@@ -213,7 +213,15 @@ export function gesturesFor(c: PlayController, a: Action): void {
     case 'BUY_BELT': pick(c, 'bank:buyBelt'); return;
     case 'BUY_CARD': pick(c, 'bank:buyCard'); return;
     case 'EXCHANGE_MATERIALS': pick(c, 'bank:exchange'); pick(c, `exchange:${a.give}`); return;
-    case 'PLACE_TELEPORTER': tapLit(c, { kind: 'piece', pieceId: a.pieceId }); pick(c, `menu:teleporter:${a.bufferType}`); return;
+    case 'PLACE_TELEPORTER': {
+      // From the building's menu: one item per free input (#55) and the output. On a building with
+      // several inputs the item lights that input and asks to confirm.
+      const spot = a.bufferType === 'input' ? `input:${a.inputIndex ?? 0}` : 'output';
+      tapLit(c, { kind: 'piece', pieceId: a.pieceId });
+      pick(c, `menu:teleporter:${spot}`);
+      if (c.view.confirmBar?.confirm) ok(c);
+      return;
+    }
     case 'CLAIM_BUILDING':
       if (a.fromProductionIncrease) spendPI(c);
       tapLit(c, { kind: 'piece', pieceId: a.pieceId });
@@ -249,7 +257,12 @@ export function gesturesFor(c: PlayController, a: Action): void {
       pick(c, `card:${a.cardType}`);
       switch (a.cardType) {
         case 'shortSale': case 'sinkHole': tapLit(c, { kind: 'piece', pieceId: a.pieceId! }); break;
-        case 'rdTaxWriteOff': tapLit(c, { kind: 'buffer', pieceId: a.pieceId!, buffer: a.bufferType! }); break;
+        case 'rdTaxWriteOff':
+          // Each input is its own lit target (#55); the output is the buffer.
+          tapLit(c, a.bufferType === 'input'
+            ? { kind: 'buffer', pieceId: a.pieceId!, buffer: 'input', slot: a.inputIndex ?? 0 }
+            : { kind: 'buffer', pieceId: a.pieceId!, buffer: 'output' });
+          break;
         case 'changingPriorities':
           tapLit(c, { kind: 'piece', pieceId: a.pieceId! });
           tapLit(c, { kind: 'piece', pieceId: a.toPieceId! });

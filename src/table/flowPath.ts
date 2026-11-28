@@ -59,8 +59,8 @@ export function traceFlow(game: Game, toPieceId: string, slot: number, sources: 
   // same player's (the engine's rule, directFlowAllowed; RULES_CHANGES.md #51). A Mine's ore is
   // anyone's, so it is never held back here.
   // A teleporter cuts its buffer off: nothing leaves a teleported output by itself, and a
-  // teleported single input takes nothing by itself (teleporterCutsOff; #53).
-  if (teleporterCutsOff(dest, 'input')) return null;
+  // teleported input takes nothing by itself (teleporterCutsOff, per input; #53, #55).
+  if (teleporterCutsOff(dest, 'input', Math.min(slot, inputs.length - 1))) return null;
   const passes = (from: BoardPiece): boolean =>
     from.type === 'mine' || (directFlowAllowed(from, dest) && !teleporterCutsOff(from, 'output'));
 

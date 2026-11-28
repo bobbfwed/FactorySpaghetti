@@ -7,7 +7,6 @@ import type {
   BoardPiece,
   UnplacedPiece,
   PlayerId,
-  Buffer,
   PieceStack,
 } from '../state';
 import type {
@@ -28,7 +27,7 @@ import {
   PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT,
 } from '../config';
 import { isCoordsOccupied, isAdjacentToBoard, makeBuffers, validRotation, drawnStack, OWN_TURN_STEPS } from './pieces';
-import { payMaterials } from './flow';
+import { payMaterials, teleporterTarget } from './flow';
 import { shuffle } from '../rng';
 
 export type ActionResult =
@@ -739,22 +738,15 @@ function resolveRdTaxWriteOff(
     return err('NOT_OWNER', 'You must own this building to place a teleporter');
   }
 
-  const buffer = bufferType === 'input' ? piece.input : piece.output;
-  if (!buffer) return err('NO_BUFFER', `${pieceId} has no ${bufferType} buffer`);
-  if (buffer.teleporterOwner !== null) {
-    return err('TELEPORTER_EXISTS', `A teleporter is already on the ${bufferType} buffer of ${pieceId}`);
+  // One input (inputIndex, the first when not named) or the output, as PLACE_TELEPORTER (#55).
+  const placed = teleporterTarget(piece, bufferType, action.inputIndex);
+  if (!placed.ok) {
+    return placed.error.code === 'BUFFER_OCCUPIED'
+      ? err('TELEPORTER_EXISTS', `A teleporter is already on that ${bufferType} of ${pieceId}`)
+      : placed;
   }
-
-  const newBuffer: Buffer = { ...buffer, teleporterOwner: activeId };
-  const newBoard = state.board.map(p =>
-    p.id === pieceId
-      ? {
-          ...p,
-          input:  bufferType === 'input'  ? newBuffer : p.input,
-          output: bufferType === 'output' ? newBuffer : p.output,
-        }
-      : p,
-  );
+  const newPiece = placed.piece(activeId);
+  const newBoard = state.board.map(p => (p.id === pieceId ? newPiece : p));
 
   return {
     ok: true,

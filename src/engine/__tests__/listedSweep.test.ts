@@ -71,7 +71,7 @@ function candidates(s: GameState, me: PlayerId): Action[] {
     out.push({ type: 'OPERATE_BUILDING', pieceId: id, ...owner }, { type: 'SKIP_FACTORY_ROLL', pieceId: id, ...owner });
     // What a player may name to supply through an input teleporter: every 1–3 materials, in any
     // order (pieces with a teleporter on their input only, to keep the sweep quick).
-    if (s.board.find(p => p.id === id)?.input?.teleporterOwner != null) {
+    if (s.board.find(p => p.id === id)?.input?.teleporters.some(o => o != null)) {
       for (const supply of supplies()) out.push({ type: 'OPERATE_BUILDING', pieceId: id, ...owner, supply });
     }
     for (const material of MATERIALS) out.push({ type: 'LOAD_BUILDING_INPUT', pieceId: id, material });

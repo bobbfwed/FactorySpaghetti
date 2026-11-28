@@ -9,8 +9,8 @@ function piece(id: string, type: PieceType, q: number, r: number, rotation = 0):
   const factory = type === 'plateFact';
   return {
     id, type, coord: { q, r }, rotation, claims: [],
-    input: factory ? { slots: [null], teleporterOwner: null } : null,
-    output: factory || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: factory ? { slots: [null], teleporters: [] } : null,
+    output: factory || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
 

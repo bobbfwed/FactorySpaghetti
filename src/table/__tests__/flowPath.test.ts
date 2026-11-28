@@ -8,6 +8,7 @@ import type { Belt, BoardPiece, GameState } from '../../engine/state';
 import type { Material } from '../../engine/config';
 import { resolveDirectAdjacency } from '../../engine/rules/flow';
 import { createGame } from '../../engine/rules/setup';
+import { withTeleporter } from '../../engine/rules/teleporters';
 import { traceFlow } from '../flowPath';
 import { bufferSlotWorld } from '../layout';
 
@@ -18,8 +19,8 @@ function piece(id: string, type: BoardPiece['type'], q: number, r: number, claim
   const hasOutput = type === 'plateFact' || type === 'sphereFact' || type === 'tesseractFact';
   return {
     id, type, coord: { q, r }, rotation: 0, claims,
-    input: inputs ? { slots: new Array(inputs).fill(null), teleporterOwner: null } : null,
-    output: hasOutput || type === 'mine' ? { slots: [null], teleporterOwner: null } : null,
+    input: inputs ? { slots: new Array(inputs).fill(null), teleporters: [] } : null,
+    output: hasOutput || type === 'mine' ? { slots: [null], teleporters: [] } : null,
   };
 }
 
@@ -30,7 +31,7 @@ const MINE = piece('mine-1', 'mine', 0, 0);
 const A = piece('A', 'blank', 2, 0);
 const C = piece('C', 'blank', 4, 0);
 const F = (claims: Claims, out: Material | null = null): BoardPiece =>
-  ({ ...piece('F', 'plateFact', 3, 0, claims), output: { slots: [out], teleporterOwner: null } });
+  ({ ...piece('F', 'plateFact', 3, 0, claims), output: { slots: [out], teleporters: [] } });
 const G = (claims: Claims): BoardPiece => piece('G', 'sphereFact', 5, 0, claims);
 const beltA: Belt = { id: 'bA', ownerId: 0, pieceId: 'A', fromPoint: 0, toPoint: 7 };
 const beltC: Belt = { id: 'bC', ownerId: 0, pieceId: 'C', fromPoint: 0, toPoint: 7 };
@@ -95,9 +96,9 @@ describe('flow display: a belt end facing a building it may not serve is a dead 
     expect(direct.belts).toBe(0);
   });
 
-  it('teleporters (#53): nothing is drawn out of a teleported output or into a teleported single input', () => {
-    const teleOut = (p: BoardPiece): BoardPiece => ({ ...p, output: { ...p.output!, teleporterOwner: 0 } });
-    const teleIn = (p: BoardPiece): BoardPiece => ({ ...p, input: { ...p.input!, teleporterOwner: 0 } });
+  it('teleporters (#53, #55): nothing is drawn out of a teleported output or into a teleported input', () => {
+    const teleOut = (p: BoardPiece): BoardPiece => ({ ...p, output: withTeleporter(p.output!, 0, 0) });
+    const teleIn = (p: BoardPiece, slot = 0): BoardPiece => ({ ...p, input: withTeleporter(p.input!, slot, 0) });
     const H0: Claims = [{ ownerId: 0, controlModule: 5 }];
     // Out of F's teleported output: neither direct (Power Plant at (4,0)) nor by belt (G at (5,0)).
     expect(reached(traces([teleOut(F(P0, 'plate')), piece('H', 'powerPlant', 4, 0, H0)], [], 'H', fromF))).toBe(false);
@@ -105,8 +106,20 @@ describe('flow display: a belt end facing a building it may not serve is a dead 
     expect(reached(traces([teleOut(F(P0, 'plate')), C, G(P0)], [beltC], 'G', fromF))).toBe(false);
     // Into F's teleported input (one input) from the Mine along belt A.
     expect(reached(traces([MINE, A, teleIn(F(P0))], [beltA], 'F', fromMine))).toBe(false);
-    // A Sphere Factory's inputs are not cut off (open question OQ-11).
-    expect(reached(traces([F(P0, 'plate'), C, teleIn(G(P0))], [beltC], 'G', fromF))).toBe(true);
+    // A Sphere Factory: only the input with the teleporter is cut off (#55), exactly as the engine
+    // moves the Plate. At rotation 0 belt C ends at input 1; at rotation 5 at input 2.
+    for (const rotation of [0, 5]) {
+      for (const slot of [0, 1]) {
+        const board = [F(P0, 'plate'), C, { ...teleIn(G(P0), slot), rotation }];
+        const drawn = traces(board, [beltC], 'G', fromF);
+        const moved = resolveDirectAdjacency({ ...createGame(1, 2), board, belts: [beltC] }).board.find(p => p.id === 'G')!.input!.slots;
+        const label = `rotation ${rotation}, teleporter on input ${slot + 1}`;
+        moved.forEach((m, i) => expect(drawn[i] !== null, `${label}: input ${i + 1}`).toBe(m !== null));
+        // The input facing the belt receives exactly when it is not the teleported one.
+        const facing = rotation === 0 ? 0 : 1;
+        expect(moved[facing] !== null, label).toBe(facing !== slot);
+      }
+    }
   });
 
   it('the drawn way runs from the source to the input slot, whichever order the belt was stored in', () => {

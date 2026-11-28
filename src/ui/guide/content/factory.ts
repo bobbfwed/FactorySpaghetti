@@ -85,11 +85,11 @@ export const production: Topic = {
     { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you are already at the Power Token limit, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
     { k: 'p', t: `A Tesseract never goes into a Power Plant. You can hold up to ${POWER_TOKEN_CAP} Power Tokens.` },
     { k: 'h', t: 'Factories', id: 'factories' },
-    { k: 'p', t: 'A factory activates only if it could run right now: its input holds a complete recipe (or, with your teleporter on its input, you hold materials that complete one), its output is empty, and you have the Power Tokens. The game then asks you:' },
+    { k: 'p', t: 'A factory activates only if it could run right now: its input holds a complete recipe (or, with your teleporters on its empty inputs, you hold materials that complete one), its output is empty, and you have the Power Tokens. The game then asks you:' },
     {
       k: 'list', items: [
         '**Run it**: pay the Power Tokens, use up everything in its input, and put the product in its output.',
-        'With your teleporter on its input: one button for each set of your materials that can fill its empty slots, such as **Provide a Sphere and a Plate** or **Provide 2 Spheres**, and **Run it with what is in it** when its input is already full. See [[teleporters#supply|Supplying through a teleporter]].',
+        'With your teleporter on an empty input: one button for each set of your materials that can fill the empty inputs with your teleporters, such as **Provide a Sphere and a Plate** or **Provide 2 Spheres**, and **Run it with what is in it** when its input is already full. See [[teleporters#supply|Supplying through a teleporter]].',
         '**Skip**: nothing happens, and you keep your Power Tokens and materials.',
       ],
     },
@@ -132,7 +132,7 @@ export const factories: Topic = {
       k: 'list', items: [
         'From a Mine or another building\'s output, by direct contact or along belts. See [[moving|Moving material]].',
         'From your own materials, with your meeple on the building, in your round-end turn.',
-        'From your own materials, through your teleporter on its input, at the moment the building runs — only the materials you choose.',
+        'From your own materials, through your teleporter on that input, at the moment the building runs — only the materials you choose.',
       ],
     },
     {
@@ -141,7 +141,7 @@ export const factories: Topic = {
         { k: 'note', tone: 'example', t: 'A Tesseract Factory holding Ore + Plate can only take a Sphere next. One holding Ore can take a Plate or a Sphere, but never a second Ore.' },
         { k: 'p', t: 'Material in an input cannot be taken out again. A factory empties its input only by running.' },
         { k: 'p', t: 'Only claimed buildings receive material. An unclaimed building\'s input stays empty.' },
-        { k: 'p', t: 'Through an input teleporter you choose, when the building runs, which of your materials fill its empty slots; nothing is taken unless you choose it. See [[teleporters#supply|Supplying through a teleporter]].' },
+        { k: 'p', t: 'Through your teleporter on an input you choose, when the building runs, which of your materials fills that input if it is empty; nothing is taken unless you choose it. See [[teleporters#supply|Supplying through a teleporter]].' },
       ],
     },
   ],
@@ -274,23 +274,24 @@ export const teleporters: Topic = {
   title: 'Teleporters',
   summary: 'Feed a building from your materials, or send its output straight to you.',
   blocks: [
-    { k: 'p', t: `Each player has ${count(TELEPORTER_COUNT, 'teleporter')}. A teleporter goes on the input or the output of one of your buildings, one per buffer. It connects that buffer with your materials, wherever the building is.` },
+    { k: 'p', t: `Each player has ${count(TELEPORTER_COUNT, 'teleporter')}. A teleporter goes on **one input** or on the **output** of one of your buildings. It connects that input or output with your materials, wherever the building is. A Plate Factory and a Power Plant have one input; a Sphere Factory has two and a Tesseract Factory three, and each input can carry its own teleporter (one per input, and one on the output).` },
     {
       k: 'list', items: [
-        '**On an input**: when the building runs, you may hand over materials of your own to fill its empty input slots — on any player\'s turn. You choose them; nothing is ever taken on its own.',
+        '**On an input**: when the building runs, you may hand over a material of your own for that input if it is empty — on any player\'s turn. You choose it; nothing is ever taken on its own. That input no longer takes anything from belts, touching buildings or Mines; the building\'s other inputs still do.',
         '**On an output**: whatever the building makes goes straight into your materials. Anything sitting in that output is sent to you as soon as you have room.',
       ],
     },
     TELEPORTER_FIGURE,
     { k: 'h', t: 'Placing a teleporter' },
-    { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap the input or output of one of your buildings, and confirm. A building\'s menu also offers **Teleporter on the input** and **Teleporter on the output**.' },
+    { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap an input or the output of one of your buildings, and confirm. On a Sphere or Tesseract Factory each input glows on its own, and the confirmation names it ("input 2"): inputs are counted in the order of the holes, #1, #3 and #12. A building\'s menu also offers **Teleporter on the input** (on a Sphere or Tesseract Factory, **Teleporter on input 1**, **input 2** …, with what each holds) and **Teleporter on the output**.' },
     { k: 'p', t: `**Price: the number of teleporters on the board (all players) + 1.** The first costs ${teleporterCost(0)}, the next ${teleporterCost(1)}, and so on. It is paid with change like any purchase: a lone Sphere can pay for a teleporter costing ${teleporterCost(2)}. See [[bank#paying|Paying with change]].` },
     { k: 'p', t: 'You can never remove a teleporter yourself. It comes back only if you lose your last claim on its building (for example through Changing Priorities): it then returns to your supply and the price drops by one for everyone.' },
     { k: 'h', t: 'Supplying through a teleporter', id: 'supply' },
-    { k: 'p', t: 'When a building with your teleporter on its input runs and a slot of its input is empty, the game shows what the building needs ("The Tesseract Factory needs a Sphere and a Plate to run", or "needs one of these" when several recipes fit), its input slots, and your materials. Below are one button for each way it can run:' },
+    { k: 'p', t: 'Each teleporter supplies only its own input. A Sphere or Tesseract Factory with a teleporter on some inputs runs only once its other inputs hold their material (by belt, from a touching building or a Mine); until then a roll of its number asks nothing. With a teleporter of yours on every input, you can run it entirely from your materials.' },
+    { k: 'p', t: 'When a building runs and an input with your teleporter is empty, the game shows what the building needs ("The Tesseract Factory needs a Sphere and a Plate to run", or "needs one of these" when several recipes fit), its input slots, and your materials. Below are one button for each way it can run:' },
     {
       k: 'list', items: [
-        '**Provide …**: one button for each set of your materials that completes a recipe with what is already in the input, for example **Provide a Sphere and a Plate** or **Provide 2 Spheres**. Each says what running costs and makes.',
+        '**Provide …**: one button for each set of your materials — one for each empty input with your teleporter — that completes a recipe with what is already in the other inputs, for example **Provide a Sphere and a Plate** or **Provide 2 Spheres**. Each says what running costs and makes.',
         '**Run it with what is in it**, when its input already holds a full recipe.',
         '**Skip**, for a factory.',
       ],
@@ -300,12 +301,12 @@ export const teleporters: Topic = {
     { k: 'p', t: 'The same choice appears in your round-end turn for the building your meeple stands on.' },
     {
       k: 'details', blocks: [
-        { k: 'p', t: 'Only whole materials you hold go in, exactly one for each empty slot; nothing is exchanged down for it. What already lies in the input stays and is used.' },
+        { k: 'p', t: 'Only whole materials you hold go in, exactly one for each empty input with your teleporter; nothing is exchanged down for it. What already lies in the inputs stays and is used.' },
         { k: 'p', t: `If an activation on someone else\'s turn is not answered within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the building runs only if it can without your materials, and is skipped otherwise. Nothing is ever taken from your inventory without your choice.` },
-        { k: 'p', t: 'An input teleporter works for its owner only.' },
+        { k: 'p', t: 'An input teleporter works for its owner only. On a building two players share, each supplies only the inputs with their own teleporters.' },
         { k: 'p', t: `An output teleporter respects your limit of ${INVENTORY_CAP}: if you already hold ${INVENTORY_CAP} of that material, the product stays in the output (so the factory cannot run again) until you have room.` },
-        { k: 'p', t: 'A teleporter cuts its buffer off from belts and touching pieces. Material in a teleported output goes only to you, never down a belt or into a touching input, even while it waits because you are at your limit. The input of a Plate Factory or Power Plant with a teleporter takes nothing from a Mine, a belt or a touching output: you supply it. (The inputs of a Sphere or Tesseract Factory with a teleporter still receive material as before, for now.)' },
-        { k: 'p', t: 'R&D Tax Write-Off places a teleporter for free, but it still uses one of yours and raises the price like a bought one.' },
+        { k: 'p', t: 'A teleporter cuts its input or output off from belts and touching pieces. Material in a teleported output goes only to you, never down a belt or into a touching input, even while it waits because you are at your limit. An input with a teleporter takes nothing from a Mine, a belt or a touching output: you supply it. Only that input: the other inputs of a Sphere or Tesseract Factory keep receiving. What already lay in the input when the teleporter came stays and is used.' },
+        { k: 'p', t: 'R&D Tax Write-Off places a teleporter for free — on one input or the output, like any teleporter — but it still uses one of yours and raises the price like a bought one.' },
       ],
     },
   ],

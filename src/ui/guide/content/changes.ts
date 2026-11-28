@@ -56,8 +56,14 @@ export const RELEASES: readonly Release[] = [
       {
         title: 'A teleporter cuts its buffer off from belts',
         before: 'Material waiting in a teleported output (you at your limit) could still go down a belt or into a touching input, and a teleported input still took Ore from a Mine and material from belts and touching outputs.',
-        now: 'A teleported output empties only to you. The input of a Plate Factory or Power Plant with a teleporter takes nothing by itself; you supply it. Belts there stay but carry nothing. Sphere and Tesseract Factories are unchanged for now.',
+        now: 'A teleported output empties only to you. An input with a teleporter takes nothing by itself; you supply it. Belts there stay but carry nothing. On a Sphere or Tesseract Factory this is only the input the teleporter is on (see the next change).',
         see: 'teleporters',
+      },
+      {
+        title: 'A teleporter sits on one input',
+        before: 'A teleporter went on "the input" of a building as a whole: on a Sphere or Tesseract Factory it supplied every empty input slot, and belts and touching pieces still filled those inputs.',
+        now: 'A teleporter goes on one input (or the output). A Sphere Factory\'s two inputs and a Tesseract Factory\'s three can each carry one, each using one of your teleporters at the usual price. It cuts off and supplies only its own input; the other inputs keep their belts, so such a factory runs once those inputs hold their material. A teleporter on every input works as before.',
+        see: 'teleporters#supply',
       },
       {
         title: 'The one-belt-per-turn Mine limit counts only ore exits',
@@ -233,7 +239,7 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
     subject: 'Names and components',
     items: [
       { title: 'Control Modules', printed: 'The numbered tiles are called Number Tiles.', here: 'They are called Control Modules.' },
-      { title: 'Teleporters', printed: 'There are no teleporters.', here: `Each player has ${TELEPORTER_COUNT} teleporters.`, see: 'teleporters' },
+      { title: 'Teleporters', printed: 'There are no teleporters.', here: `Each player has ${TELEPORTER_COUNT} teleporters, each on one input or the output of one of their buildings.`, see: 'teleporters' },
       {
         title: 'Smaller stacks with fewer players',
         printed: 'Three stacks of 32 pieces; smaller stacks for 2 or 3 players are optional.',

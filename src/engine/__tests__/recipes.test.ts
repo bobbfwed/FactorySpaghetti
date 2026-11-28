@@ -5,8 +5,8 @@ import type { BoardPiece, Material } from '../state';
 function piece(type: BoardPiece['type'], slots: (Material | null)[]): BoardPiece {
   return {
     id: 'x', type, coord: { q: 0, r: 0 }, claims: [],
-    input: { slots, teleporterOwner: null },
-    output: { slots: [null], teleporterOwner: null },
+    input: { slots, teleporters: [] },
+    output: { slots: [null], teleporters: [] },
   } as BoardPiece;
 }
 const product = (t: BoardPiece['type'], m: (Material | null)[]) => factoryExpectedProduct(piece(t, m));

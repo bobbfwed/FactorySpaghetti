@@ -137,7 +137,7 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
     case 'BUY_BELT':
       return { group: 'belts', label: `Buy a belt (${BELT_COST} ore value)` };
     case 'PLACE_TELEPORTER':
-      return { group: 'buildings', sub: 'Place a teleporter', label: `On the ${a.bufferType} of the ${piece(a.pieceId)}` };
+      return { group: 'buildings', sub: 'Place a teleporter', label: `On ${spotLabel(game, a.pieceId, a.bufferType, a.inputIndex)} of the ${piece(a.pieceId)}` };
     case 'CLAIM_BUILDING': {
       const how = a.fromFreeClaim ? ' (free claim)' : a.fromProductionIncrease ? ' (Production Increase)' : '';
       return { group: 'buildings', sub: `Claim the ${piece(a.pieceId)}`, label: `With module ${a.controlModule}${how}` };
@@ -168,6 +168,13 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
   }
 }
 
+/** Where a teleporter goes: "the output", "the input", or "input 2" on a building with several inputs (#55). */
+function spotLabel(game: GameState, pieceId: string | undefined, buffer: 'input' | 'output', inputIndex: number | undefined): string {
+  if (buffer === 'output') return 'the output';
+  const inputs = game.board.find(p => p.id === pieceId)?.input?.slots.length ?? 1;
+  return inputs > 1 ? `input ${(inputIndex ?? 0) + 1}` : 'the input';
+}
+
 function cardDetail(game: GameState, a: Extract<Action, { type: 'PLAY_CARD' }>, names: readonly string[], me: number | null): string {
   const piece = (id: string | undefined): string => pieceLabel(game, id, names, me);
   switch (a.cardType) {
@@ -180,7 +187,7 @@ function cardDetail(game: GameState, a: Extract<Action, { type: 'PLAY_CARD' }>, 
     case 'shortSale': return `Claim the ${piece(a.pieceId)} with module ${a.controlModule ?? '?'}`;
     case 'sinkHole': return `Remove the ${piece(a.pieceId)}`;
     case 'embezzlement': return a.pieceId ? `Take the ore from the ${piece(a.pieceId)}` : 'Play it';
-    case 'rdTaxWriteOff': return `Free teleporter on the ${a.bufferType ?? 'input'} of the ${piece(a.pieceId)}`;
+    case 'rdTaxWriteOff': return `Free teleporter on ${spotLabel(game, a.pieceId, a.bufferType ?? 'input', a.inputIndex)} of the ${piece(a.pieceId)}`;
     case 'changingPriorities': return `Move module ${a.controlModule ?? '?'} from the ${piece(a.pieceId)} to the ${piece(a.toPieceId)}`;
     default: return 'Play it';
   }
@@ -384,8 +391,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   NO_INPUT: 'That building has no input.',
   NO_OUTPUT: 'That building has no output.',
   NO_BUFFER: 'That piece has no buffer there.',
-  NO_INPUT_TELEPORTER: 'Materials go into a building from your inventory only through your own teleporter on its input.',
-  INVALID_SUPPLY: 'Supply one material from your inventory for each empty input slot.',
+  NO_INPUT_TELEPORTER: 'Materials go into a building from your inventory only through your own teleporter on one of its inputs.',
+  INVALID_SUPPLY: 'Supply one material from your inventory for each empty input that has your teleporter.',
   MUST_RUN: 'A Power Plant always runs. Choose what to supply to it, or supply nothing.',
   ALREADY_OPERATED: 'At round end you may run the building with your meeple only once.',
   INVALID_TARGET: 'You can only do that with the building your meeple is on.',
@@ -409,7 +416,8 @@ export const REFUSAL_TEXT: Readonly<Record<string, string>> = {
   MINE_BELT_LIMIT: 'Only one belt touching a Mine\'s ore exit may be placed per turn.',
   NO_TELEPORTERS: 'You have no teleporters left.',
   TELEPORTER_EXISTS: 'There is already a teleporter there.',
-  BUFFER_OCCUPIED: 'That buffer already has a teleporter.',
+  BUFFER_OCCUPIED: 'That input or output already has a teleporter.',
+  NO_SUCH_INPUT: 'That building has no such input.',
   NOT_OWNER: 'You must own that building.',
   NOT_YOUR_BUILDING: 'You need a Control Module on that building.',
   // Engine: Leverage cards

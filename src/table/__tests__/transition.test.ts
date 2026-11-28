@@ -47,7 +47,9 @@ function playGame(seed: number, players: 2 | 3 | 4, kind: 'greedy' | 'random', m
 
 let moves: Move[] = [];
 beforeAll(() => {
-  moves = [...playGame(7, 3, 'random'), ...playGame(11, 4, 'greedy'), ...playGame(5, 2, 'random')];
+  // Seed 21 joins the first three since #55 changed the moves listed (a teleporter per input), and
+  // with it these random games: they carried material along belts too rarely to test flows.
+  moves = [...playGame(7, 3, 'random'), ...playGame(11, 4, 'greedy'), ...playGame(5, 2, 'random'), ...playGame(21, 3, 'random')];
 }, 120_000);
 
 const ofKind = <K extends AnimStep['kind']>(p: TransitionPlan, k: K): Extract<AnimStep, { kind: K }>[] =>
