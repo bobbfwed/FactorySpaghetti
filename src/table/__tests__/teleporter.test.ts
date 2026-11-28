@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import type { BoardPiece, PieceType } from '../../engine/state';
 import { parseGlb, type GlbPart } from '../glb';
 import {
-  APOTHEM, BUFFER_INSET, BUFFER_MATERIAL_SCALE, PORTAL, TELEPORTER_EDGE_GAP, TELEPORTER_HALF_LENGTH, TELEPORTER_HALF_WIDTH,
+  APOTHEM, BUFFER_MATERIAL_SCALE, PORTAL, TELEPORTER_EDGE_GAP, TELEPORTER_HALF_LENGTH, TELEPORTER_HALF_WIDTH,
   TELEPORTER_HEIGHT, TELEPORTER_SCALE, TELEPORTER_NUDGE, STUB_LINES, TILE_MODEL,
   axialToWorld, bufferSlotWorld, buildingMeepleWorld, claimLayout, edgeNormal, edgePoint, modelToWorld, piecePlacement,
   pointFrame, pointWorld, positionsWithRole, teleporterPlacement, worldToModel, type XZ,
