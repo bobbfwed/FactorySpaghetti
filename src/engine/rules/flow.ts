@@ -16,9 +16,9 @@ import {
   teleporterCost,
 } from '../config';
 import type { Material, PointRole } from '../config';
-import { hexNeighbours, mineSecondaryCoord } from './pieces';
+import { mineSecondaryCoord } from './pieces';
 import { canLoadMaterial } from './recipes';
-import { teleporterOn, teleportersOf, withTeleporter } from './teleporters';
+import { teleporterOn, withTeleporter } from './teleporters';
 
 // ── Geometry constants ────────────────────────────────────────────────────────
 
@@ -71,8 +71,8 @@ export function adjAt(
   // carried on an effective rotation of ((rot ^ 1) + 3) % 6 — the same value the renderer
   // uses in drawMineHex1Points. The rich hex is symmetric so this only matters for the lean
   // hex, but both are computed consistently here.
-  const normalEdge = (rB: number) => ((veB - rB - 3) % 6 + 6) % 6;
-  const mineEdge = (effRot: number) => ((VE_TO_DIR[veB]! - effRot) % 6 + 6) % 6;
+  const normalEdge = (rB: number): number => ((veB - rB - 3) % 6 + 6) % 6;
+  const mineEdge = (effRot: number): number => ((VE_TO_DIR[veB]! - effRot) % 6 + 6) % 6;
 
   for (const bp of board) {
     const rB = bp.rotation ?? 0;

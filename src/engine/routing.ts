@@ -177,9 +177,9 @@ export function findRoute(
   // Can't feed another player's building (its input points are reserved for its owner).
   if (destPiece.claims.length > 0 && !destPiece.claims.some(c => c.ownerId === me)) return null;
 
-  const isSource = (n: { piece: BoardPiece; pos: number }) =>
+  const isSource = (n: { piece: BoardPiece; pos: number }): boolean =>
     n.piece.id === source.pieceId && n.pos === source.position;
-  const isDest = (n: { piece: BoardPiece; pos: number }) =>
+  const isDest = (n: { piece: BoardPiece; pos: number }): boolean =>
     n.piece.id === dest.pieceId && n.pos === dest.position;
 
   // 0 belts: the source output already directly faces the dest input. Checked from the
@@ -189,7 +189,7 @@ export function findRoute(
 
   if (maxBelts < 1) return null;
 
-  const key = (pieceId: string, pos: number) => `${pieceId}:${pos}`;
+  const key = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
   interface Node { pieceId: string; pos: number; cost: number }
   const visited = new Set<string>();
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null }>();
@@ -292,7 +292,7 @@ export function findBeltPath(
   if (!usableBeltPoint(state, toPiece, to.position, me)) return null;
   if (maxBelts < 1) return null;
 
-  const key = (pieceId: string, pos: number) => `${pieceId}:${pos}`;
+  const key = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
   interface Node { pieceId: string; pos: number; cost: number }
   const visited = new Set<string>([key(from.pieceId, from.position)]);
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null }>();

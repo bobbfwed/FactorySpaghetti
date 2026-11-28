@@ -139,7 +139,7 @@ function adjacentFreeCoords(state: GameState): HexCoord[] {
   const board = state.board;
   const seen = new Map<string, HexCoord>();
 
-  const addNeighbours = (origin: HexCoord) => {
+  const addNeighbours = (origin: HexCoord): void => {
     for (const n of hexNeighbours(origin)) {
       const key = `${n.q},${n.r}`;
       if (!seen.has(key) && !isCoordsOccupied(n, board)) seen.set(key, n);
@@ -260,13 +260,13 @@ function computeActions(state: GameState, playerId: PlayerId): Action[] {
 
 // ── actions phase helpers ─────────────────────────────────────────────────────
 
-function addOverstockPlacements(state: GameState, out: Action[]) {
+function addOverstockPlacements(state: GameState, out: Action[]): void {
   for (const { coord, rotation } of tilePlacements(state)) {
     out.push({ type: 'PLACE_OVERSTOCK_PIECE', coord, rotation });
   }
 }
 
-function addBuyCard(state: GameState, playerId: PlayerId, out: Action[]) {
+function addBuyCard(state: GameState, playerId: PlayerId, out: Action[]): void {
   // An empty deck is refilled from the discard pile; only both empty stop a purchase.
   if (cardsLeftToDraw(state) === 0) return;
   const player = state.players[playerId];
@@ -276,14 +276,14 @@ function addBuyCard(state: GameState, playerId: PlayerId, out: Action[]) {
   }
 }
 
-function addCardPlays(state: GameState, playerId: PlayerId, out: Action[]) {
+function addCardPlays(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player) return;
   const uniqueCards = [...new Set(player.hand)];
   for (const card of uniqueCards) addCardPlay(state, playerId, card, out);
 }
 
-function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: Action[]) {
+function addCardPlay(state: GameState, playerId: PlayerId, card: CardType, out: Action[]): void {
   switch (card) {
     case 'embezzlement':
     case 'netSurplusSellOff':
@@ -382,7 +382,7 @@ function addClaimBuilding(
   out: Action[],
   fromPI: boolean,
   fromFreeClaim = false,
-) {
+): void {
   const player = state.players[playerId];
   if (!player) return;
   const validModules = player.controlModules.filter(m => m >= state.mineCount);
@@ -420,7 +420,7 @@ function addUpgradeBuilding(
   playerId: PlayerId,
   out: Action[],
   fromPI: boolean,
-) {
+): void {
   const player = state.players[playerId];
   if (!player) return;
 
@@ -447,7 +447,7 @@ function addUpgradeBuilding(
 
 // ── roundEnd phase ────────────────────────────────────────────────────────────
 
-function addUpgradeBuildingFromMineCredit(state: GameState, playerId: PlayerId, out: Action[]) {
+function addUpgradeBuildingFromMineCredit(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player || player.freeActionCredits <= 0) return;
 
@@ -513,7 +513,7 @@ function computeRoundEnd(state: GameState, playerId: PlayerId): Action[] {
   return actions;
 }
 
-function addBuyBelt(state: GameState, playerId: PlayerId, out: Action[]) {
+function addBuyBelt(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player) return;
   if (canAfford(player.inventory, BELT_COST)) {
@@ -521,7 +521,7 @@ function addBuyBelt(state: GameState, playerId: PlayerId, out: Action[]) {
   }
 }
 
-function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]) {
+function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]): void {
   if (state.unplacedMines.length === 0 || state.pendingMineIds.length > 0) return;
   const player = state.players[playerId];
   if (!player) return;
@@ -537,7 +537,7 @@ function addBuyMine(state: GameState, playerId: PlayerId, out: Action[]) {
 // Each belt is listed ONCE, lower point first (fromPoint < toPoint). applyPlaceBelt also accepts
 // the reversed order and stores the belt as given (the arrowhead is drawn at fromPoint), with the
 // same effect on the rules; compare with sameMove / canonicalAction (actions.ts), not ===.
-function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
+function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player || player.beltsRemaining <= 0) return;
   // Placing from supply is free — no ore payment required here.
@@ -570,13 +570,13 @@ function addPlaceBelt(state: GameState, playerId: PlayerId, out: Action[]) {
   }
 }
 
-function addRemoveBelt(state: GameState, playerId: PlayerId, out: Action[]) {
+function addRemoveBelt(state: GameState, playerId: PlayerId, out: Action[]): void {
   for (const belt of state.belts) {
     if (belt.ownerId === playerId) out.push({ type: 'REMOVE_BELT', beltId: belt.id });
   }
 }
 
-function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[]) {
+function addPlaceTeleporter(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player || player.teleportersRemaining <= 0) return;
   if (!canAfford(player.inventory, teleporterCost(state.globalTeleporterCount))) return;
@@ -597,7 +597,7 @@ function teleporterSpots(piece: BoardPiece): Array<{ bufferType: 'input'; inputI
   ];
 }
 
-function addExchangeMaterials(state: GameState, playerId: PlayerId, out: Action[]) {
+function addExchangeMaterials(state: GameState, playerId: PlayerId, out: Action[]): void {
   const player = state.players[playerId];
   if (!player) return;
   const breakable: Material[] = ['plate', 'sphere', 'tesseract'];

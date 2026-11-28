@@ -147,8 +147,8 @@ function clockwisePlacementCoords(
   const [px1, py1] = hexToPixel(secondary);
   const cx = (px0 + px1) / 2;
   const cy = (py0 + py1) / 2;
-  const angleOf = (c: HexCoord) => clockwiseAngle(c, cx, cy);
-  const mod2pi = (x: number) => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  const angleOf = (c: HexCoord): number => clockwiseAngle(c, cx, cy);
+  const mod2pi = (x: number): number => ((x % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
 
   // The bottom-most hex of a set (largest screen y), tie-broken toward the mine's
   // horizontal centre — used to pick the "below the connecting edge" seam.
@@ -160,7 +160,7 @@ function clockwisePlacementCoords(
       return Math.abs(hx - cx) < Math.abs(bx - cx) ? h : best;
     });
 
-  const key = (c: HexCoord) => `${c.q},${c.r}`;
+  const key = (c: HexCoord): string => `${c.q},${c.r}`;
   const seen = new Set<string>([key(primary), key(secondary)]);
   const result: HexCoord[] = [];
 

@@ -162,13 +162,13 @@ function tiebreakWinners(state: GameState): ReadonlyArray<PlayerId> {
 
   type Criterion = (pid: PlayerId) => number;
   const criteria: Criterion[] = [
-    pid => resourcePoints(state.players[pid]!),
-    pid => tesseractCount(state, pid),
-    pid => state.players[pid]!.inventory.sphere,
-    pid => state.players[pid]!.inventory.plate,
-    pid => state.players[pid]!.inventory.ore,
+    (pid): number => resourcePoints(state.players[pid]!),
+    (pid): number => tesseractCount(state, pid),
+    (pid): number => state.players[pid]!.inventory.sphere,
+    (pid): number => state.players[pid]!.inventory.plate,
+    (pid): number => state.players[pid]!.inventory.ore,
     // Negate index so that an earlier position (lower index) scores higher.
-    pid => -(state.turnOrder.indexOf(pid)),
+    (pid): number => -(state.turnOrder.indexOf(pid)),
   ];
 
   for (const crit of criteria) {
