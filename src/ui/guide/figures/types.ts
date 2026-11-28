@@ -162,6 +162,10 @@ export interface PlayHoldings {
   /** Mine credits (from a Mine's upgrade point) and free upgrades, as in a round-end turn. */
   readonly credits?: number;
   readonly freeUpgrades?: number;
+  /** Leverage cards in hand, belts and Teleporters still in their supply. */
+  readonly hand?: readonly CardType[];
+  readonly belts?: number;
+  readonly teleporters?: number;
 }
 
 /** Where an example starts: the real starting board for a seed, or a staged board. */
@@ -179,6 +183,8 @@ export interface PlayStart {
   readonly players?: readonly PlayHoldings[];
   /** Staged boards: the pieces left in stack 1, top first (default none; stacks 2 and 3 stay empty). */
   readonly stack?: readonly PieceType[];
+  /** Staged boards: the pieces of stacks 2 and 3, top first (each opens when its Mine comes into play). */
+  readonly stacks23?: readonly [readonly PieceType[], readonly PieceType[]];
   /** At the start (before step 1): light what the player whose turn it is may choose (example starts only). */
   readonly glow?: 'legal';
 }
@@ -199,7 +205,7 @@ export interface PlayStep {
    * Glow once the step has played: 'legal' lights what the player whose turn it is may choose
    * next (from the engine's legal moves: free spaces, buildings to claim, meeple spots), or a list.
    */
-  readonly glow?: 'legal' | readonly GlowAt[];
+  readonly glow?: 'legal' | readonly GlowAt[] | { readonly beltsFrom: { readonly piece: string; readonly point: number } };
 }
 
 /** HTML under the picture: the parts of a player's area the example uses. */
@@ -214,6 +220,16 @@ export interface PlaySide {
   readonly holdings?: readonly number[];
   /** The dice and their total, and what the roll did, in one line. */
   readonly roll?: boolean;
+  /** The bank: its prices now, and what the last purchase or exchange handed in and gave back. */
+  readonly bank?: boolean;
+  /** The Leverage cards in the player's hand (a card played travels to the table). */
+  readonly hand?: boolean;
+  /** The four steps of a turn, the current one marked (whose turn it is, or the round-end turn). */
+  readonly steps?: boolean;
+  /** These players' Tesseracts toward winning (Tesseracts held and bonus cards). */
+  readonly tesseracts?: readonly number[];
+  /** Belts and Teleporters in the supply, in the holdings rows. */
+  readonly supply?: boolean;
 }
 
 export interface PlayExample {
@@ -232,8 +248,8 @@ export interface PlayExample {
   readonly frame?: { readonly pieces: readonly string[]; readonly pad?: number };
   /** Turn the view by 60-degree steps. */
   readonly turn?: number;
-  /** Show stack 1 beside the board (where placed pieces come from). */
-  readonly pile?: boolean;
+  /** Show stack 1 beside the board (where placed pieces come from), or these stacks (0-2). */
+  readonly pile?: boolean | readonly number[];
   /** Show the dice beside the board. */
   readonly dice?: boolean;
   readonly side?: PlaySide;

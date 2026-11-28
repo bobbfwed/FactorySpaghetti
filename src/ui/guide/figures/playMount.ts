@@ -8,15 +8,17 @@
 // are Web Animations held at a time the player sets, and everything stops when the page changes
 // or the guide closes. A picture that cannot be drawn leaves the step list; nothing is thrown or logged.
 
-import { CONTROL_MODULE_MAX } from '../../../engine/config';
-import type { GameState, Material } from '../../../engine/state';
+import { BELT_COST, CONTROL_MODULE_MAX, MATERIAL_VALUES, MINE_COSTS, cardCost, teleporterCost } from '../../../engine/config';
+import type { GameState, Material, PlayerId } from '../../../engine/state';
+import { tesseractCount } from '../../../engine/rules/scoring';
+import { nextMinePrice } from '../../../play/info';
 import type { TrayEntry } from '../../../play';
 import type { TableEvent } from '../../../session/room';
 import { DUR, type AnimStep, type Carried } from '../../../table/transition';
 import { PLAYER_COLOR_HEX, type Ghost, type Target } from '../../../table/types';
 import { h } from '../../dom';
 import { COLORS } from '../../icons';
-import { count, die, moduleTray } from '../../game/pieces';
+import { cardFace, count, die, moduleTray, pips } from '../../game/pieces';
 import { FLIGHT_EASING, flightFrames, flightToken, type Point } from '../../game/fx';
 import { outcomeOf, outcomeText } from '../../game/rollOutcome';
 import { deviceStorage, loadFeel, prefersReducedMotion } from '../../game/feel';
@@ -34,6 +36,13 @@ const MATS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 const MAT_WORD: Record<Material, string> = { ore: 'Ore', plate: 'Plate', sphere: 'Sphere', tesseract: 'Tesseract' };
 const COLOR_WORD: Record<FigColor, string> = { blue: 'Blue', red: 'Red', orange: 'Orange', green: 'Green' };
 const MAT_ICON = { ore: 'ore', plate: 'plate', sphere: 'sphere', tesseract: 'tess' } as const;
+/** The four steps of a turn, as the game's turn bar names them (turnBar.ts). */
+const TURN_STEPS = ['Place a piece', 'Roll', 'Actions', 'Place meeple'] as const;
+/** Moves that pay the bank or exchange with it (the bank row says what went in and came back). */
+const BANK_MOVES: ReadonlySet<string> = new Set(['BUY_BELT', 'BUY_CARD', 'BUY_MINE', 'EXCHANGE_MATERIALS', 'PLACE_TELEPORTER']);
+const amountWord = (n: number, m: Material): string => `${n} ${MAT_WORD[m]}${n === 1 || m === 'ore' ? '' : 's'}`;
+const nodes = (...xs: (Node | null)[]): Node[] => xs.filter((x): x is Node => x !== null);
+const totalValueOf = (inv: Readonly<Record<Material, number>>): number => MATS.reduce((t, m) => t + inv[m] * MATERIAL_VALUES[m], 0);
 
 const coordinator = new Coordinator();
 /** Which example the shared view shows now (another example must switch it back before drawing). */
@@ -261,7 +270,7 @@ class DomStage implements PlayStage {
         if (old !== undefined && from && to) this.flight(side.moduleToken(old), from, to, base + s.at * k, DUR.flight * k, () => side.home(old), () => side.depart(old));
       }
       if (s.kind !== 'toPlayer' && s.kind !== 'fromPlayer') continue;
-      if (s.item === 'card') continue;
+      if (s.item === 'card') { this.cardFlight(v, m, s, base, k); continue; }
       const holder = side.holdPoint(s.player, s.item, this.fxEl);
       const there = this.flightEnd(v, s, m.after);
       if (!holder || !there) continue;
@@ -271,6 +280,20 @@ class DomStage implements PlayStage {
         this.flight(flightToken(s.item), from, to, base + (s.at + j * DUR.flightGap) * k, DUR.flight * k, undefined, undefined, j);
       }
     }
+  }
+
+  /** A Leverage card: bought, from the top of the picture to the hand; played, from the hand to what it acts on (or the table). */
+  private cardFlight(v: PlayView, m: MoveRun, s: Extract<AnimStep, { kind: 'toPlayer' | 'fromPlayer' }>, base: number, k: number): void {
+    const side = this.side;
+    const hand = side?.handPoint(s.player, s.card ?? null, this.fxEl);
+    if (!side || !hand) return;
+    const a = m.action;
+    const target = a.type === 'PLAY_CARD' && a.pieceId ? this.picPoint(v, { kind: 'piece', pieceId: a.pieceId }, m.before) : null;
+    const r = this.pic.getBoundingClientRect(), l = this.fxEl.getBoundingClientRect();
+    const table = target ?? { x: r.left - l.left + r.width * 0.5, y: r.top - l.top + r.height * 0.35 };
+    const deck = { x: r.left - l.left + r.width * 0.88, y: r.top - l.top + r.height * 0.12 };
+    const [from, to] = s.kind === 'toPlayer' ? [deck, hand] : [hand, table];
+    this.flight(flightToken('card', this.colorOf(s.player)), from, to, base + s.at * k, DUR.flight * k);
   }
 
   private flightEnd(v: PlayView, s: Extract<AnimStep, { kind: 'toPlayer' | 'fromPlayer' }>, game: GameState): Point | null {
@@ -371,6 +394,11 @@ class SidePanel {
   private readonly upsEl: HTMLElement | null = null;
   private readonly holdEls = new Map<number, HTMLElement>();
   private readonly rollEl: HTMLElement | null = null;
+  private readonly stepsEl: HTMLElement | null = null;
+  private readonly bankEl: HTMLElement | null = null;
+  private readonly handEl: HTMLElement | null = null;
+  private readonly tessEls = new Map<number, HTMLElement>();
+  private restIndex = -1;
   /** Modules lit (being chosen), travelling (pocket empty before the state says so), or coming home. */
   private lit: number | null = null;
   private away = new Set<number>();
@@ -383,6 +411,7 @@ class SidePanel {
     const s = ex.side!;
     this.hasTray = !!s.tray;
     const colorName = (p: number): string => COLOR_WORD[tl.colors[p] ?? 'blue'];
+    if (s.steps) { this.stepsEl = h('div', { class: 'g-pturn' }); el.append(this.stepsEl); }
     if (s.tray) { this.trayEl = h('div', { class: 'g-ptray' }); el.append(this.trayEl); }
     if (s.upgrades) { this.upsEl = h('div', { class: 'g-pups' }); el.append(this.upsEl); }
     for (const p of s.holdings ?? []) {
@@ -391,6 +420,14 @@ class SidePanel {
       this.holdEls.set(p, row);
       el.append(row);
     }
+    for (const p of s.tesseracts ?? []) {
+      const row = h('div', { class: 'g-ptess', style: `--seat:${PLAYER_COLOR_HEX[tl.colors[p] ?? 'blue']}` });
+      row.dataset.name = colorName(p);
+      this.tessEls.set(p, row);
+      el.append(row);
+    }
+    if (s.hand) { this.handEl = h('div', { class: 'g-phand' }); el.append(this.handEl); }
+    if (s.bank) { this.bankEl = h('div', { class: 'g-pbank' }); el.append(this.bankEl); }
     if (s.roll) { this.rollEl = h('div', { class: 'g-proll' }); el.append(this.rollEl); }
   }
 
@@ -402,7 +439,8 @@ class SidePanel {
     if (roll === null) { this.lit = null; this.away.clear(); this.coming.clear(); }
     const events = roll ?? this.tl.steps.slice(0, restIndex + 1).flatMap(s => s.events);
     this.events = events;
-    const key = JSON.stringify([game.players, game.mineCount, this.lit, [...this.away], [...this.coming], events.length]);
+    if (restIndex !== -2) this.restIndex = restIndex;
+    const key = JSON.stringify([game.players, game.mineCount, game.phase, game.activePlayerIndex, game.globalTeleporterCount, game.unplacedMines.length, this.lit, [...this.away], [...this.coming], events.length, this.restIndex, roll === null]);
     if (key === this.lastKey) return;
     this.lastKey = key;
     const me = game.players[this.ex.side!.player];
@@ -416,13 +454,65 @@ class SidePanel {
       const pl = game.players[p];
       if (!pl) continue;
       const name = row.dataset.name ?? '';
-      row.replaceChildren(
+      row.replaceChildren(...nodes(
         h('span', { class: 'g-pname' }, h('span', { class: 'sw' }), name),
         h('span', { attrs: { 'data-hold': `${p}-power` } }, count('power', pl.powerTokens, 'Power Tokens')),
         ...MATS.filter(m => pl.inventory[m] > 0 || m === 'ore' || m === 'plate').map(m =>
-          h('span', { attrs: { 'data-hold': `${p}-${m}` } }, count(MAT_ICON[m], pl.inventory[m], MAT_WORD[m], undefined, pl.inventory[m] === 0 ? 'zero' : ''))));
+          h('span', { attrs: { 'data-hold': `${p}-${m}` } }, count(MAT_ICON[m], pl.inventory[m], MAT_WORD[m], undefined, pl.inventory[m] === 0 ? 'zero' : ''))),
+        this.ex.side!.bank ? h('span', { class: 'g-ptotal', text: `= ${totalValueOf(pl.inventory)}` }) : null,
+        this.ex.side!.supply ? h('span', { attrs: { 'data-hold': `${p}-belt` } }, count('belt', pl.beltsRemaining, 'Belts')) : null,
+        this.ex.side!.supply ? h('span', { attrs: { 'data-hold': `${p}-teleporter` } }, count('teleporter', pl.teleportersRemaining, 'Teleporters')) : null));
     }
+    for (const [p, row] of this.tessEls) {
+      row.replaceChildren(h('span', { class: 'g-pname' }, h('span', { class: 'sw' }), row.dataset.name ?? ''), pips(tesseractCount(game, p as PlayerId)));
+    }
+    if (this.stepsEl) this.drawSteps(game);
+    if (this.handEl && me) {
+      this.handEl.replaceChildren(h('span', { class: 'g-plabel' }, `${COLOR_WORD[this.color()]}'s Leverage cards`),
+        me.hand.length ? h('div', { class: 'g-pcards' }, me.hand.map(c => { const f = cardFace(c); f.dataset.card = c; return f; })) : h('span', { class: 'g-pnone', text: 'None in hand' }));
+    }
+    if (this.bankEl) this.drawBank(game, roll === null);
     if (this.rollEl) this.drawRoll(events);
+  }
+
+  /** The turn steps as the game's turn bar shows them (turnBar.ts), the current one marked. */
+  private drawSteps(game: GameState): void {
+    const seat = game.turnOrder[game.activePlayerIndex] ?? 0;
+    const color = PLAYER_COLOR_HEX[this.tl.colors[seat] ?? 'blue'];
+    const idx = ({ placePiece: 1, roll: 2, actions: 3, placeMeeple: 4 } as Record<string, number>)[game.phase] ?? 0;
+    const who = `${COLOR_WORD[this.tl.colors[seat] ?? 'blue']}'s ${game.phase === 'roundEnd' ? 'round-end turn' : 'turn'}`;
+    this.stepsEl!.replaceChildren(...nodes(
+      h('span', { class: 'g-pname', style: `--seat:${color}` }, h('span', { class: 'sw' }), who),
+      idx ? h('div', { class: 'tg-steps' }, TURN_STEPS.map((label, i) => {
+        const n = i + 1;
+        return h('span', { class: `tg-step${n < idx ? ' done' : n === idx ? ' now' : ''}`, style: `--seat:${color}`, attrs: n === idx ? { 'aria-current': 'step' } : {} },
+          h('span', { class: 'n', text: String(n) }), label);
+      })) : null));
+  }
+
+  /** The bank's prices now, and (at rest) what the last purchase or exchange handed in and gave back. */
+  private drawBank(game: GameState, atRest: boolean): void {
+    const mine = nextMinePrice(game, MINE_COSTS);
+    const price = (label: string, n: number | null): HTMLElement => h('span', { class: 'g-pprice' }, label, ' ', h('b', { text: n === null ? '—' : String(n) }));
+    const step = this.tl.steps[this.restIndex];
+    const me = this.ex.side!.player;
+    let line: string | null = null;
+    if (atRest && step && step.moves.some(m => BANK_MOVES.has(m.action.type))) {
+      const a = step.from.players[me]!.inventory, b = step.after.players[me]!.inventory;
+      const gave = MATS.filter(m => b[m] < a[m]).map(m => amountWord(a[m] - b[m], m));
+      const got = MATS.filter(m => b[m] > a[m]).map(m => amountWord(b[m] - a[m], m));
+      line = `Handed in: ${gave.length ? gave.join(', ') : 'nothing'}${got.length ? ` · Back: ${got.join(', ')}` : ''}`;
+    }
+    this.bankEl!.replaceChildren(...nodes(
+      h('span', { class: 'g-plabel' }, 'The bank'),
+      h('div', { class: 'g-pprices' }, price('Belt', BELT_COST), price('Leverage card', cardCost(game.mineCount)), price('Mine', mine), price('Teleporter', teleporterCost(game.globalTeleporterCount))),
+      line ? h('div', { class: 'g-ppaid', text: line }) : null));
+  }
+
+  handPoint(player: number, card: string | null, layer: HTMLElement): Point | null {
+    if (player !== this.ex.side!.player || !this.handEl) return null;
+    const el = (card ? this.handEl.querySelector<HTMLElement>(`[data-card="${card}"]`) : null) ?? this.handEl;
+    return centre(el, layer);
   }
 
   private drawTray(game: GameState): void {
