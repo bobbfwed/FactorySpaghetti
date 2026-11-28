@@ -53,5 +53,5 @@ export const SMART_STYLE: SmartConfig = {
   endgamePoints: false,
   closer: true, // attempt 4d (kept)
   lockBonus: 0,
-  weaveBudget: 6000,
+  weaveBudget: 1500, // attempt 5e (kept for speed: no measurable loss, worst decision far lower)
 };
