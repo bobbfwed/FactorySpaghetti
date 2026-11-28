@@ -52,7 +52,7 @@ a { color: var(--gold); }
 }
 .well { background: #0c0c0e; border-radius: 10px; box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8), inset 0 0 0 1px rgba(255, 255, 255, 0.04); }
 .panel { padding: 16px; }
-.label { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
+.label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
 h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
 .muted { color: var(--text-2); }
 .num { font-weight: 900; font-variant-numeric: tabular-nums; }
@@ -218,7 +218,7 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand .mark { width: 36px; height: 36px; flex: none; }
 .brand .wm { font-weight: 900; font-size: 17px; letter-spacing: 0.02em; white-space: nowrap; }
-.brand .wm small { display: block; font-size: 10.5px; letter-spacing: 0.14em; color: var(--text-2); font-weight: 700; text-transform: uppercase; }
+.brand .wm small { display: block; font-size: 11.5px; letter-spacing: 0.14em; color: var(--text-2); font-weight: 700; text-transform: uppercase; }
 .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 13px; min-width: 0; }
 .conn { display: inline-flex; align-items: center; gap: 6px; }
 .conn.ok .ic { color: var(--ok); }
@@ -323,13 +323,19 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .game { max-width: 1280px; padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
 .gb-wrap { position: sticky; top: 0; z-index: 20; margin: 0 -16px 12px; padding: 8px 16px 0; background: linear-gradient(180deg, rgba(14, 11, 9, 0.96) 70%, rgba(14, 11, 9, 0)); }
 .gamebar { display: flex; align-items: center; gap: 12px; padding: 8px 8px 8px 14px; }
-.gamebar .label { display: block; font-size: 10px; }
+.gamebar .label { display: block; font-size: 11px; }
 .gamebar b { font-size: 18px; letter-spacing: 0.02em; }
 .gb-code b { font-family: var(--heavy); }
 .gb-phase { flex: 1; min-width: 0; line-height: 1.3; }
 .gb-phase .muted { font-size: 13px; }
 .gb-turn { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 15px; }
 .gb-turn.mine { color: var(--gold); }
+/* Phones: whose turn and the step get a line of their own under the room code and round. */
+@media (max-width: 480px) {
+  .gamebar { flex-wrap: wrap; row-gap: 6px; }
+  .gamebar > .icon-only { margin-left: auto; }
+  .gb-phase { order: 3; flex-basis: 100%; }
+}
 .game-menu { position: absolute; right: 16px; margin-top: 6px; padding: 6px; display: flex; flex-direction: column; min-width: 250px; z-index: 30; }
 .menu-item { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 10px; font-weight: 650; font-size: 15px; text-align: left; }
 .menu-item:hover { background: #232327; }

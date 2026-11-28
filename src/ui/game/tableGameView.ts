@@ -73,7 +73,8 @@ const ANNOUNCE_MS = 10_000;
 const ROLL_OPEN_MS = 6000;
 /** Floating panels the board is framed clear of (desktop, phone). The notices at the top are not: each closes with one tap on its ✕ ([data-dismiss]). */
 const DESK_PANELS = '.tg-roll.has-line, .tg-bank, .tg-choices, .tg-confirm.docked';
-const PHONE_PANELS = '.tg-roll.has-line, .tg-choices, .tg-confirm.docked';
+// On the phone the column of camera buttons is cut away too, so no lit target ends up under one.
+const PHONE_PANELS = '.tg-roll.has-line, .tg-choices, .tg-confirm.docked, .tg-hud.phone .tg-cam';
 /** Smallest tile size when framing on a phone, so tiles stay comfortable to tap (pinch out for more). */
 const PHONE_MIN_TILE_PX = 64;
 
@@ -302,6 +303,12 @@ export function tableGameView(ctrl: AppController): View {
       const above = at.y - rr.top - hh - 22;
       toast.style.left = `${x}px`;
       toast.style.top = `${above >= 8 ? above : at.y - rr.top + 22}px`;
+    } else if (phone && !isLandscapePhone()) {
+      // Phone: below everything in the top-left corner (top row, turn order, the roll chip, notices),
+      // so the toast never covers the "Rolled" chip.
+      const rr = root.getBoundingClientRect();
+      toast.style.left = '';
+      toast.style.top = `${Math.round(Math.max(122, bottomOf('.tg-toprow, .tg-queue.phone .tg-qbtn, .tg-roll, .tg-notes') - rr.top + 8))}px`;
     } else {
       toast.style.left = '';
       toast.style.top = '';

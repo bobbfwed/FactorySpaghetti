@@ -13,11 +13,12 @@ import { guideRoundButton, openGuide } from '../guide/open';
 
 export function menuButton(ctx: Ctx): HTMLElement {
   return h('button', {
-    class: `round tg-menubtn${ctx.ui.menuOpen ? ' open' : ''}`, title: 'Game menu',
-    attrs: { 'aria-label': 'Game menu', 'aria-expanded': String(ctx.ui.menuOpen), 'data-menu': '1' },
+    class: `round tg-menubtn${ctx.ui.menuOpen ? ' open' : ''}`, title: ctx.ui.menuOpen ? 'Close the game menu' : 'Game menu',
+    attrs: { 'aria-label': ctx.ui.menuOpen ? 'Close the game menu' : 'Game menu', 'aria-expanded': String(ctx.ui.menuOpen), 'data-menu': '1' },
     // Opening the menu puts the phone sheet away (one large panel at a time).
     onclick: () => { ctx.ui.menuOpen = !ctx.ui.menuOpen; ctx.ui.seat = null; if (ctx.ui.menuOpen) ctx.ui.sheetOpen = false; ctx.redraw(); },
-  }, icon('menu'));
+    // While the menu is open the same button closes it, and shows a cross to say so.
+  }, icon(ctx.ui.menuOpen ? 'cross' : 'menu'));
 }
 
 export function gameMenu(ctx: Ctx): HTMLElement | null {

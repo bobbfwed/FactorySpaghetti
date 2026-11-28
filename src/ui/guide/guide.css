@@ -190,11 +190,11 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 /* ---- related, pager ---- */
 .g-see { margin: 26px 0 0; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 .g-see ul { list-style: none; padding: 0; margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 4px 18px; }
-.g-see .g-link { padding: 12px 0; margin: 0; display: inline-block; }
+.g-see .g-link { padding: 12px 0; margin: 0; display: inline-block; min-width: 44px; }
 .g-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
 .g-pager .btn { min-height: 60px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; padding: 8px 14px; text-align: left; }
 .g-pager .g-next { align-items: flex-end; text-align: right; grid-column: 2; }
-.g-dir { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
+.g-dir { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); font-weight: 800; }
 .g-pt { font-size: 14.5px; line-height: 1.25; }
 .g-tocback { margin-top: 12px; display: flex; justify-content: center; }
 .g-tocback .btn { width: 100%; max-width: 360px; }

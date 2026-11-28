@@ -49,7 +49,20 @@ function others(ctx: Ctx): Child {
 /** Cards anchored to the activated buildings (hidden while the same building's menu is open). */
 export function promptCards(ctx: Ctx): HTMLElement[] {
   const menuOn = ctx.view.menu ? JSON.stringify(ctx.view.menu.anchor) : null;
-  return ctx.view.prompts.filter(p => JSON.stringify(p.anchor) !== menuOn).map(p => h('div', {
+  const shown = ctx.view.prompts.filter(p => JSON.stringify(p.anchor) !== menuOn);
+  // Phone: the sheet (or the side panel held sideways) already holds the whole decision with its
+  // buttons and timer, so the table only points at the building, with a short tag. Two full
+  // copies covered most of a small screen, the top row included.
+  if (ctx.phone) {
+    return shown.map(p => h('div', {
+      class: 'tg-prompt tray compact tag',
+      attrs: { 'data-anchor': JSON.stringify(p.anchor), 'data-place': 'side', role: 'note', 'aria-label': p.title },
+    },
+    h('span', { class: 'tg-ptr' }),
+    h('div', { class: 't', text: p.title }),
+    h('div', { class: 'where', text: ctx.landscape ? 'Run it or skip it in the panel on the right.' : 'Run it or skip it in the panel below.' })));
+  }
+  return shown.map(p => h('div', {
     class: `tg-prompt tray${ctx.phone ? ' compact' : ''}${p.supply ? ' has-supply' : ''}`,
     attrs: { 'data-anchor': JSON.stringify(p.anchor), 'data-place': 'side', role: 'alertdialog', 'aria-label': p.title },
   },
