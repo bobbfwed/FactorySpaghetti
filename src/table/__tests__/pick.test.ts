@@ -9,7 +9,9 @@ import type { Target } from '../types';
 
 let game: GameState;
 beforeAll(() => {
-  game = playUntil(createBotGame(31, 4, 'random'), s => s.round >= 10, 8000);
+  // Random bots also pick belts up, and since RULES_CHANGES.md #54 an older belt picked up goes
+  // back to the bank, so belts thin out: play on until enough are on the board.
+  game = playUntil(createBotGame(31, 4, 'random'), s => s.round >= 10 && s.belts.length > 5, 8000);
 }, 60_000);
 
 const heights: SideHeights = { stackTop: () => 30, pile: () => 4 };

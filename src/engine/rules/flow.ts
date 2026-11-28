@@ -593,11 +593,15 @@ export function applyRemoveBelt(state: GameState, action: RemoveBeltAction): Act
     return err('NOT_YOUR_BELT', 'You can only remove your own belts');
   }
 
+  // Printed rule 6 (RULES_CHANGES.md #54): a belt laid on an earlier turn goes back to the bank
+  // (belts in the bank are unlimited, so nothing is counted there); placing one again means
+  // buying one. A belt laid this turn is a move not yet finished: it goes back to the player's
+  // own belts, as with Undo belts (any ore spent buying it is not refunded).
+  const laidThisTurn = beltLaidThisTurn(state, action.beltId);
   const newBelts = state.belts.filter(b => b.id !== action.beltId);
-  const newPlayers = mapPlayer(state.players, activeId, p => ({
-    ...p,
-    beltsRemaining: p.beltsRemaining + 1,
-  }));
+  const newPlayers = laidThisTurn
+    ? mapPlayer(state.players, activeId, p => ({ ...p, beltsRemaining: p.beltsRemaining + 1 }))
+    : state.players;
   const placedThisTurn = state.beltsPlacedThisTurn.filter(id => id !== action.beltId);
 
   return {
@@ -613,6 +617,13 @@ export function applyRemoveBelt(state: GameState, action: RemoveBeltAction): Act
       beltsPlacedThisTurn: placedThisTurn,
     },
   };
+}
+
+// True when belt `beltId` was laid in the current turn, so picking it up returns it to its
+// owner's own belts; a belt laid on an earlier turn goes back to the bank (#54). For the
+// interface, which must say which of the two will happen before the player confirms.
+export function beltLaidThisTurn(state: Pick<GameState, 'beltsPlacedThisTurn'>, beltId: string): boolean {
+  return state.beltsPlacedThisTurn.includes(beltId);
 }
 
 // True when one of the belts with an id in `ids` has an end facing a Mine ore exit (the test

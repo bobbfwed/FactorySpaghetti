@@ -7,7 +7,7 @@ import { applyAction, legalActions } from '../reducer';
 import { directFlowAllowed, payMaterials, resolveDirectAdjacency } from '../rules/flow';
 import { longestBeltChain } from '../rules/beltWeaver';
 import { isListedMove, listedForm } from '../rules/legalActions';
-import { teleporterCost, MAX_CARDS_PLAYED_PER_TURN } from '../config';
+import { teleporterCost, BELT_COST, MAX_CARDS_PLAYED_PER_TURN } from '../config';
 import type { Material } from '../config';
 import type { Action } from '../actions';
 import { sameMove } from '../actions';
@@ -442,6 +442,57 @@ describe('the one-Mine-belt-per-turn limit counts only ends facing an ore exit (
     // And picking up this turn's belt then frees it once more, as Undo belts would.
     t = expectOk(applyAction(t, removeB));
     expect(t.mineBeltPlacedThisTurn).toBe(false);
+  });
+});
+
+// ── Picking up a belt: an older one goes to the bank (#54) ────────────────────
+
+describe('a belt picked up goes to the bank unless it was laid this turn (#54, printed rule 6)', () => {
+  const A = piece('A', 'blank', 2, 0);
+  const B = piece('B', 'blank', -1, 0);
+  const earlier: Belt = { id: 'belt-p0-A-0-7', ownerId: 0, pieceId: 'A', fromPoint: 0, toPoint: 7 };
+  const base = (): GameState => patchPlayer(actionsState([piece('mine-1', 'mine', 0, 0), A, B], [earlier]), 0, { beltsRemaining: 3, inventory: inv(4, 0, 0, 0) });
+  const left = (s: GameState): number => s.players[0]!.beltsRemaining;
+  const removeOld: Action = { type: 'REMOVE_BELT', beltId: earlier.id };
+  const layB: Action = { type: 'PLACE_BELT', pieceId: 'B', fromPoint: 1, toPoint: 7 };
+  const removeNew: Action = { type: 'REMOVE_BELT', beltId: 'belt-p0-B-1-7' };
+
+  it('a belt laid on an earlier turn leaves the board and does not come back to the player', () => {
+    const s = expectOk(applyAction(base(), removeOld));
+    expect(s.belts).toEqual([]);
+    expect(left(s)).toBe(3);
+    expect(s.players[0]!.inventory).toEqual(inv(4, 0, 0, 0));
+  });
+
+  it('a belt laid this turn comes back to the player\'s own belts', () => {
+    const laid = expectOk(applyAction(base(), layB));
+    expect(left(laid)).toBe(2);
+    const s = expectOk(applyAction(laid, removeNew));
+    expect(s.belts).toEqual([earlier]);
+    expect(left(s)).toBe(3);
+  });
+
+  it('placing one again means buying one, at the normal price', () => {
+    let s = patchPlayer(expectOk(applyAction(base(), removeOld)), 0, { beltsRemaining: 0 });
+    expect(code(s, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 })).toBe('NO_BELTS');
+    s = expectOk(applyAction(s, { type: 'BUY_BELT' }));
+    expect(s.players[0]!.inventory).toEqual(inv(4 - BELT_COST, 0, 0, 0));
+    expect(left(s)).toBe(1);
+    s = expectOk(applyAction(s, { type: 'PLACE_BELT', pieceId: 'A', fromPoint: 0, toPoint: 7 }));
+    expect(s.belts.map(b => b.id)).toEqual([earlier.id]);
+  });
+
+  it('Undo belts is unchanged: only this turn\'s belts, back to the player', () => {
+    const laid = expectOk(applyAction(base(), layB));
+    const s = expectOk(applyAction(laid, { type: 'UNDO_BELTS' }));
+    expect(s.belts).toEqual([earlier]);
+    expect(left(s)).toBe(3);
+  });
+
+  it('the move list offers picking up both kinds', () => {
+    const laid = expectOk(applyAction(base(), layB));
+    expect(listed(laid, removeOld, 0)).toBe(true);
+    expect(listed(laid, removeNew, 0)).toBe(true);
   });
 });
 

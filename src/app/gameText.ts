@@ -5,7 +5,7 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
-import { legalActions, piecesExhausted, revealedStack } from '../engine';
+import { beltLaidThisTurn, legalActions, piecesExhausted, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
 import { whereLabel, whereWords } from '../session/where';
@@ -125,7 +125,12 @@ function labelFor(game: GameState, a: Action, names: readonly string[], me: numb
       return { group: 'belts', sub: `Belt on the ${piece(a.pieceId)}`, label: `Holes ${a.fromPoint + 1} → ${a.toPoint + 1}` };
     case 'REMOVE_BELT': {
       const b = game.belts.find(x => x.id === a.beltId);
-      return { group: 'belts', sub: 'Pick up a belt', label: b ? `On the ${piece(b.pieceId)}, holes ${b.fromPoint + 1}–${b.toPoint + 1}` : 'A belt' };
+      // Which way it goes (RULES_CHANGES.md #54): laid this turn, back to the player's belts;
+      // laid earlier, back to the bank, to be bought again.
+      const where = beltLaidThisTurn(game, a.beltId)
+        ? ' (laid this turn: it comes back to your belts)'
+        : ' (it goes back to the bank; placing a belt there again means buying one)';
+      return { group: 'belts', sub: 'Pick up a belt', label: `${b ? `On the ${piece(b.pieceId)}, holes ${b.fromPoint + 1}–${b.toPoint + 1}` : 'A belt'}${where}` };
     }
     case 'UNDO_BELTS':
       return { group: 'belts', label: "Take back this turn's belts" };

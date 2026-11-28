@@ -641,7 +641,7 @@ describe('PLACE_BELT action', () => {
 });
 
 describe('REMOVE_BELT action', () => {
-  it('removes an owned belt and returns it to supply', () => {
+  it('removes an owned belt laid on an earlier turn: it goes to the bank, not back to the supply (#54)', () => {
     const base = freshGame();
     const piece = makePiece({ id: 'blank-r', type: 'blank', coord: { q: 1, r: 0 } });
 
@@ -668,7 +668,11 @@ describe('REMOVE_BELT action', () => {
     if (!res.ok) return;
 
     expect(res.state.belts).toHaveLength(0);
-    expect(res.state.players[0]?.beltsRemaining).toBe(5); // returned to supply
+    expect(res.state.players[0]?.beltsRemaining).toBe(4); // back to the bank (printed rule 6)
+
+    // Laid this turn: it returns to the player's own belts.
+    const sameTurn = applyAction({ ...state, beltsPlacedThisTurn: [existingBelt.id] }, { type: 'REMOVE_BELT', beltId: existingBelt.id });
+    expect(sameTurn.ok && sameTurn.state.players[0]?.beltsRemaining).toBe(5);
   });
 
   it('rejects removing another player\'s belt', () => {

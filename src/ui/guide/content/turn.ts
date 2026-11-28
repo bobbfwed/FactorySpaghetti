@@ -121,7 +121,7 @@ export const stepActions: Topic = {
       k: 'table', head: ['What', 'How', 'Price'], rows: [
         ['Lay belts', 'Press **Lay a belt**, tap where the belts start, then where they end. [[belts|Belts]]', 'Free, from your supply'],
         ['Buy a belt', 'Bank: **Belt**', String(BELT_COST)],
-        ['Remove a belt', 'Press **Remove**, then tap one of your belts', 'Free; it goes back to your supply'],
+        ['Remove a belt', 'Press **Remove**, then tap one of your belts', 'Free. Laid this turn: it comes back to your belts; laid earlier: it goes back to the bank'],
         ['Buy a Leverage card', 'Bank: **Leverage card**', `Number of Mines + 1 (${cardPriceWords()})`],
         ['Play a Leverage card', 'Tap it in your hand, then **Play** (also in the other steps of your turn). [[cards|Leverage cards]]', `Free; at most ${MAX_CARDS_PLAYED_PER_TURN} per turn${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? ', cards played as soon as they are drawn included' : ''}`],
         ['Buy a Mine', 'Bank: **Mine**, then place it like a piece; either half may touch the board. [[mines|Mines]]', minePriceWords()],

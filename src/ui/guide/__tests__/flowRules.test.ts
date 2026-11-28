@@ -33,6 +33,17 @@ describe('a teleporter cuts its buffer off from belts and direct contact (#53)',
   });
 });
 
+describe('a removed belt goes back to the bank unless laid this turn (#54)', () => {
+  it('Belts says both cases, and the change is listed', () => {
+    const belts = text('belts');
+    expect(belts).toContain('A belt you laid this turn comes back to your own belts');
+    expect(belts).toContain('A belt laid on an earlier turn goes back to the bank');
+    expect(everywhere()).not.toContain('ready to be laid again for free. **Undo');
+    expect(everywhere()).not.toContain('Free; it goes back to your supply');
+    expect(titles()).toContain('A removed belt goes back to the bank');
+  });
+});
+
 describe('removing this turn\'s Mine belt frees the limit (#52)', () => {
   it('Belts says so, and the change is listed', () => {
     expect(text('belts')).toContain('Removing just the belt you laid at a Mine this turn does the same');

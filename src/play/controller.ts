@@ -16,6 +16,7 @@ import { applyAction } from '../engine/reducer';
 import { cappedAmount, mineSlotReward } from '../engine/rules/mineRewards';
 import { piecesExhausted, revealedStack as revealedStackOf } from '../engine/rules/pieces';
 import { cardsLeftToDraw } from '../engine/rules/cards';
+import { beltLaidThisTurn } from '../engine/rules/flow';
 import type { RoutePoint } from '../engine/routing';
 import { refusalText } from '../app/gameText';
 import { placement, planningState as planningStateOf, planRoute, reachableEnds, remaining, routeEnds, stillPossible, tiers, type Seg } from './route';
@@ -1350,9 +1351,12 @@ export class PlayController {
     for (const a of rms) {
       b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId }));
     }
-    v.instruction = sel ? W.removeConfirm : W.removePick;
+    // Say before the confirm which way the belt goes (RULES_CHANGES.md #54): laid this turn, back
+    // to the player's own belts; laid earlier, back to the bank, to be bought again.
+    const ownBack = !!sel && !!this.game && beltLaidThisTurn(this.game, sel.beltId);
+    v.instruction = sel ? (ownBack ? W.removeConfirm : W.removeConfirmBank) : W.removePick;
     v.selection = { kind: 'belt', label: W.removeSelection };
-    v.confirmBar = { confirm: !!sel, rotate: false, cancel: true, ...(sel ? { label: W.removeBelt } : {}) };
+    v.confirmBar = { confirm: !!sel, rotate: false, cancel: true, ...(sel ? { label: ownBack ? W.removeBelt : W.removeBeltToBank } : {}) };
     if (sel) b.onConfirm = (): void => this.send(sel, { k: 'removeBelt', beltId: null });
     return true;
   }

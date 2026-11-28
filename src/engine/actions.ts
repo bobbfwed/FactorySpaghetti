@@ -70,7 +70,8 @@ export interface PlaceBeltAction {
   readonly toPoint: number;
 }
 
-// Remove an owned belt, returning it to the player's supply (beltsRemaining++).
+// Remove an owned belt. One laid this turn returns to the player's own belts (beltsRemaining++);
+// one laid on an earlier turn goes back to the bank and must be bought again (RULES_CHANGES.md #54).
 export interface RemoveBeltAction {
   readonly type: 'REMOVE_BELT';
   readonly beltId: string;

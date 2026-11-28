@@ -72,6 +72,12 @@ export const RELEASES: readonly Release[] = [
         see: 'belts#buying',
       },
       {
+        title: 'A removed belt goes back to the bank',
+        before: 'Every belt you removed came back to your own belts, free to lay again.',
+        now: 'As in the printed rulebook, a belt laid on an earlier turn goes back to the bank: placing a belt there again means buying one. A belt you laid this turn still comes back to your own belts, and **Take back this turn\'s belts** is unchanged.',
+        see: 'belts#buying',
+      },
+      {
         title: 'Your own factory decision comes first',
         before: 'The interface already made you decide Run it or Skip for your own activated factory before anything else, but the rules engine did not insist.',
         now: 'The rules require it, and online the host accepts only moves the game offers.',
@@ -297,7 +303,7 @@ export const PRINTED_GROUPS: readonly PrintedGroup[] = [
         here: `Every hole on the printed building pieces takes a belt: ${beltHoles('plateFact')} on a Plate Factory or Power Plant, ${beltHoles('sphereFact')} on a Sphere Factory, ${beltHoles('tesseractFact')} on a Tesseract Factory.`,
         see: 'belts#points',
       },
-      { title: 'Removing belts', printed: 'Removed belts go back to the bank and must be bought again.', here: 'Removed belts go back to your own supply, free to lay again.', see: 'belts#buying' },
+      { title: 'Removing belts', printed: 'Removed belts go back to the bank and must be bought again.', here: 'The same, except that a belt you laid this turn comes back to your own belts, free to lay again.', see: 'belts#buying' },
       { title: 'Reserved points', printed: 'Belts cannot be placed next to the input or output of another player\'s claimed building.', here: 'The same, but a player who shares the building may use those points.', see: 'belts#rules' },
       { title: 'One Mine belt per turn', printed: 'Only one belt can be connected to a Mine per turn.', here: 'Only belt ends facing a Mine\'s ore exit count.', see: 'belts#rules' },
       {
