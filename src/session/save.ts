@@ -476,7 +476,7 @@ function checkRoom(room: unknown): Room {
   } else {
     check(isObj(room.game), 'game');
     check(!seats.some(s => (s as Obj).kind === 'open'), 'open seat in a game');
-    checkGame(room.game, pc);
+    checkGame(room.game, pc, room.v === 1);
     const game = settled(withUsableDraw(withTeleporterSlots(room.game)));
     if (game !== room.game) return { ...current, game } as unknown as Room;
   }
@@ -635,12 +635,19 @@ export function asGameState(x: unknown): GameState | null {
     if (!isObj(x)) return null;
     const pc = x.playerCount;
     if (pc !== 2 && pc !== 3 && pc !== 4) return null;
-    checkGame(x, pc);
+    checkGame(x, pc, hasOldBuffers(x));
     return settled(withTeleporterSlots(x)) as unknown as GameState;
   } catch {
     return null;
   }
 }
+
+/**
+ * A state saved before #55 (room format 1): its buffers have one `teleporterOwner` each. Such a
+ * state may also be from before #37 (see checkBuffersAndTeleporters).
+ */
+const hasOldBuffers = (x: Obj): boolean => Array.isArray(x.board)
+  && x.board.some(p => isObj(p) && [p.input, p.output].some(b => isObj(b) && 'teleporterOwner' in b));
 
 /** A board piece (of any shape) whose claims belong to more than one player (#57). */
 const isSharedBuilding = (p: unknown): boolean => {
@@ -702,7 +709,8 @@ function withUsableDraw(g: Obj): Obj {
   return usable ? g : { ...g, drawnStackIndex: null };
 }
 
-function checkGame(g: Obj, pc: 2 | 3 | 4): void {
+/** `old`: a game saved in room format 1 (before #55), which may also be from before #37. */
+function checkGame(g: Obj, pc: 2 | 3 | 4, old = false): void {
   const pid = isPlayerId(pc);
   check(g.playerCount === pc, 'game player count does not match the seats');
   check(PHASES.has(g.phase as string) && isInt(g.round) && g.round >= 1 && isNum(g.rng) && isNum(g.seed), 'game phase');
@@ -768,7 +776,7 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
     (n, c) => n + c.plateFact + c.sphereFact + c.tesseractFact + c.powerPlant + c.blank, 0);
   check(otherPieces <= pool, 'more pieces than the game has');
 
-  checkBuffersAndTeleporters(withTeleporterSlots(g), pc);
+  checkBuffersAndTeleporters(withTeleporterSlots(g), pc, old);
 }
 
 /**
@@ -781,8 +789,14 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
  *   - each player's Teleporters on the board plus those still in hand make TELEPORTER_COUNT;
  *   - globalTeleporterCount, which sets the price, is the number on the board.
  * `g` is in the shape of #55 (withTeleporterSlots) and has passed the shape checks.
+ *
+ * `old` (room format 1, app 0.1.1 and earlier): rules from before #37 did not give a Teleporter
+ * back when Changing Priorities moved its player's last Control Module off the building, so such
+ * a save may hold a Teleporter on a building its player holds no claim on. It is not damage there:
+ * settled() gives it back on loading. Every other check (still never on a Mine or a blank tile,
+ * the totals, the price count, the slot counts) holds for every format.
  */
-function checkBuffersAndTeleporters(g: Obj, pc: 2 | 3 | 4): void {
+function checkBuffersAndTeleporters(g: Obj, pc: 2 | 3 | 4, old = false): void {
   const onBoard = new Array<number>(pc).fill(0);
   for (const p of g.board as Obj[]) {
     const want = makeBuffers(p.type as PieceType);
@@ -793,7 +807,7 @@ function checkBuffersAndTeleporters(g: Obj, pc: 2 | 3 | 4): void {
       check((buf === null ? null : buf.slots.length) === slots, `${p.id as string}: ${side} slots`);
       for (const owner of buf?.teleporters ?? []) {
         if (owner === null) continue;
-        check(p.type !== 'mine' && p.type !== 'blank' && claims.some(c => c.ownerId === owner), `${p.id as string}: teleporter without a claim`);
+        check(p.type !== 'mine' && p.type !== 'blank' && (old || claims.some(c => c.ownerId === owner)), `${p.id as string}: teleporter without a claim`);
         onBoard[owner] = onBoard[owner]! + 1;
       }
     }
