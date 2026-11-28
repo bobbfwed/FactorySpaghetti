@@ -120,8 +120,14 @@ describe('README.md', () => {
     expect(minor).toContain('a large "0.2" followed by a small ".00" for version 0.2.0');
   });
 
-  it('refuses when the README does not name the current version', () => {
-    expect(() => setReadmeVersion(readme, '0.1.2', '0.1.3')).toThrow(/package\.json says 0\.1\.2/);
+  it('brings a README that fell behind package.json up to the new version', () => {
+    const behind = readme.replace('**0.1.3**', '**0.1.1**').replace('".03" for version 0.1.3', '".01" for version 0.1.1');
+    const out = setReadmeVersion(behind, '0.1.3', '0.1.4');
+    expect(out).toContain('The version there to play is **0.1.4**');
+    expect(out).toContain('a small ".04" for version 0.1.4');
+  });
+
+  it('refuses a README without the sentence that names the version', () => {
     expect(() => setReadmeVersion('# No version here\n', '0.1.3', '0.1.4')).toThrow();
   });
 });

@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // npm run release: publish main with its own version number.
 //
 // Checks that main is ready to push (on main, nothing uncommitted, nothing to pull, something to
@@ -107,26 +106,15 @@ export function setLockVersion(text, next) {
  * "0.1" followed by a small ".01" for version 0.1.1' (when present). Other version numbers in the
  * text, such as notes about earlier versions, are left alone.
  */
-export function setReadmeVersion(text, current, next) {
-  const playRe = /(The version there to play is \*\*)([^*]+)(\*\*)/g;
+export function setReadmeVersion(text, _current, next) {
+  // Both places are set to `next` whatever they said before, so a README that fell behind
+  // package.json (a hand edit) is brought up to date rather than blocking the release.
+  const playRe = /(The version there to play is \*\*)(\d+\.\d+\.\d+)(\*\*)/g;
   const found = [...text.matchAll(playRe)];
   if (found.length !== 1) throw new Error(`README.md: expected one sentence "The version there to play is **X.Y.Z**", found ${found.length}.`);
-  if (found[0][2] !== current) {
-    throw new Error(`README.md names version ${found[0][2]} to play, but package.json says ${current}; make them agree first.`);
-  }
-  let out = text.replace(playRe, `$1${next}$3`);
-  const cur = menuParts(current);
-  const nxt = menuParts(next);
-  const menuRe = new RegExp(
-    `(a large ")${escapeRe(cur.big)}(" followed by a small ")${escapeRe(cur.small)}(" for version )${escapeRe(current)}(?![\\d.]*\\d)`,
-    'g',
-  );
-  out = out.replace(menuRe, `$1${nxt.big}$2${nxt.small}$3${next}`);
-  return out;
-}
-
-function escapeRe(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const { big, small } = menuParts(next);
+  const menuRe = /(a large ")\d+\.\d+(" followed by a small ")\.\d+(" for version )\d+\.\d+\.\d+/g;
+  return text.replace(playRe, `$1${next}$3`).replace(menuRe, `$1${big}$2${small}$3${next}`);
 }
 
 /** The site and the Actions page of a GitHub remote URL, or null when the remote is not on GitHub. */
