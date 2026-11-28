@@ -40,7 +40,8 @@ export const SMART_STYLE: SmartConfig = {
   // upgrade point preferred, and long chains for Belt Weaver.
   // Attempt 5a (kept): stronger still — The Investor 2.0 and Factory Empire 1.7 Tesseracts, one
   // more claimed building worth 5.
-  bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.7 },
+  // Attempt 11e (kept, weight sweep): Factory Empire back down to 1.4.
+  bonusWeight: { investor: 2, beltWeaver: 1.2, factoryEmpire: 1.4 },
   breadth: 5,
   // Attempt 8f (kept, weight sweep): a smaller bias for the Mine upgrade point (3 -> 1).
   meepleUpgrade: 1,
