@@ -21,7 +21,7 @@ export function resumeView(ctrl: AppController): View {
       h('header', { class: 'resume-head' }, mark('mark'), h('div', null, h('div', { class: 'label', text: from }), h('h1', { text: 'Resume a game' }))),
       h('section', { class: 'tray panel' },
         h('div', { class: 'summary' },
-          h('div', { class: 'big' }, `Room ${sum.code} · `, sum.phase === 'finished' ? 'finished' : `round ${sum.round}`),
+          h('div', { class: 'big' }, `Room ${sum.code} · `, sum.phase === 'finished' ? 'finished' : `${sum.roundEnd ? 'end of round' : 'round'} ${sum.round}`),
           h('div', { class: 'muted', text: `${players} · ${savedWhen(sum.savedAt, Date.now())}` })),
         r.sameRules ? null : h('div', { class: 'warn', attrs: { role: 'note' } },
           h('b', { text: 'Saved with different rule settings. ' }),

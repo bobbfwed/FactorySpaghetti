@@ -192,7 +192,7 @@ export function menuView(ctrl: AppController, version: string): View {
         const what = ended ? 'finished game' : 'saved game';
         return h('div', { class: `save tray${ended ? ' finished' : ''}` },
           h('div', { class: 'info' },
-            h('div', { class: 't' }, `Room ${sv.code} · ${ended ? 'finished' : `Round ${sv.round}`}`),
+            h('div', { class: 't' }, `Room ${sv.code} · ${ended ? 'finished' : `${sv.roundEnd ? 'End of round' : 'Round'} ${sv.round}`}`),
             h('div', { class: 'muted names', text: `${sv.names.filter(Boolean).join(', ')} · ${savedWhen(sv.savedAt, now)}` })),
           ended
             ? (sv.hasMoves ? h('button', { class: 'btn btn-dark', attrs: { 'data-watch': sv.code }, onclick: () => { void ctrl.watchSaved(sv.key); } }, 'Watch replay') : null)

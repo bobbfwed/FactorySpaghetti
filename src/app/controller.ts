@@ -31,6 +31,7 @@ import { journalFrom, journalMatches, partialJournal } from '../session/journal'
 import type { RefusedMove } from '../session/clientSession';
 import type { ReplayCursor, ReplayFile } from '../session/replay';
 import { ReplayError, makeReplay, replayFileName, serializeReplay, verifyReplay } from '../session/replay';
+import { roundFileTag, roundLabel } from '../session/rounds';
 import type { ReportFile } from '../session/report';
 import type { Preview } from '../session/preview';
 import { makeReport, openPlaytestText, reportFileName, serializeReport } from '../session/report';
@@ -805,8 +806,8 @@ export class AppController {
   saveFile(): { name: string; text: string } | null {
     const save = this.currentSave(false);
     if (!save) return null;
-    const round = save.room.game?.round ?? 0;
-    return { name: `factory-spaghetti-${save.room.code}-round-${round}.fsgame`, text: serializeSaveFile(save) };
+    const round = save.room.game ? roundFileTag(save.room.game) : 'round-0';
+    return { name: `factory-spaghetti-${save.room.code}-${round}.fsgame`, text: serializeSaveFile(save) };
   }
 
   downloadSave(): void {
@@ -825,7 +826,7 @@ export class AppController {
     const file = this.saveFile();
     if (!link || !file) return;
     const room = this.room!;
-    const text = `Factory Spaghetti, room ${room.code}, round ${room.game?.round ?? 0}`;
+    const text = `Factory Spaghetti, room ${room.code}, ${room.game ? roundLabel(room.game).toLowerCase() : 'round 0'}`;
     if (!this.deps.share) {
       this.set({ linkBox: { title: 'Save link', text: link, hint: 'Sharing is not available here. Select the link and copy it by hand.' } });
       return;

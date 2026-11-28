@@ -6,6 +6,7 @@ import { botSpeedOf } from '../session/pacing';
 import type { AppController } from '../app/controller';
 import { GRACE_STEPS, OPERATE_STEPS, ROUND_END_STEPS, botChoices, botKindOf, canRemovePlayer, colorChoices, durationWords, lobbyInfo, stepValue } from '../app/lobby';
 import type { Room, RoomSettings, Seat } from '../session/room';
+import { roundLabel } from '../session/rounds';
 import type { Child } from './dom';
 import { actionButton, append, h, morph } from './dom';
 import { COLORS, COLOR_NAME, icon } from './icons';
@@ -57,7 +58,7 @@ function render(ctrl: AppController, room: Room): Child[] {
   const resuming = info.resuming;
   const solo = ctrl.state.solo;
   if (solo && !resuming) return soloSetup(ctrl, room, info);
-  const title = resuming ? `Saved game · round ${room.game?.round ?? 0}` : solo ? 'Solo game' : 'Room lobby';
+  const title = resuming ? `Saved game · ${room.game ? roundLabel(room.game).toLowerCase() : 'round 0'}` : solo ? 'Solo game' : 'Room lobby';
   return [
     topBar(ctrl, title),
     connectionBanner(ctrl),

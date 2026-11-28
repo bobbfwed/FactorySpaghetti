@@ -103,7 +103,7 @@ describe('a replay file', () => {
     expect(cursor.seqAt(0)).toBe(at);
     expect(cursor.seqAt(cursor.length)).toBe(finished.journal.moves.length);
     expect(cursor.stateAt(cursor.length)).toEqual(finished.state);
-    expect(cursor.lineAt(0)).toMatch(/^The replay starts at move 150, in round \d+\.$/);
+    expect(cursor.lineAt(0)).toMatch(/^The replay starts at move 150, in (the round-end turns of )?round \d+\.$/);
   });
 
   it('stops at a refused move, with its move number and the engine\'s error', async () => {

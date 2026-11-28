@@ -10,6 +10,17 @@ import { activePlayer, seatHex, seatName } from './context';
 import { countdownText } from './pieces';
 import { piecesExhausted } from '../../engine';
 import { W } from '../../play/words';
+import { shownRound } from '../../session/rounds';
+import type { GameState } from '../../engine/state';
+
+/**
+ * The round badge: "Round 6", or "End of round 6" while the round-end turns of round 6 run
+ * (the engine already counts round 7 then; see session/rounds.ts).
+ */
+export function roundBadge(g: Pick<GameState, 'round' | 'phase' | 'gameOver' | 'gameOverReason'>): { prefix: string; num: string } {
+  const s = shownRound(g);
+  return { prefix: s.roundEnd ? 'End of round ' : 'Round ', num: String(s.round) };
+}
 
 /** Once no piece is left to draw, until the game ends: the round being played is the last. */
 export function finalRoundNote(ctx: Ctx, cls = 'tg-final'): HTMLElement | null {
@@ -78,7 +89,7 @@ export function turnBar(ctx: Ctx): HTMLElement {
     finalRoundNote(ctx),
     h('span', { class: 'tg-instr', text: ctx.view.instruction, title: ctx.view.instruction }),
     roundEndClock(ctx),
-    h('span', { class: 'tg-round' }, 'Round ', h('span', { class: 'num', text: String(ctx.game.round) })));
+    h('span', { class: 'tg-round' }, roundBadge(ctx.game).prefix, h('span', { class: 'num', text: roundBadge(ctx.game).num })));
 }
 
 /** Phone: the step chip, progress dots and round number, then the instruction. */
@@ -88,7 +99,7 @@ export function stepLine(ctx: Ctx): Child[] {
     [1, 2, 3, 4].map(n => h('i', { class: n === idx ? 'on' : n < idx ? 'done' : '' })));
   return [
     h('div', { class: 'tg-stepline' }, steps(ctx, true), dots,
-      h('span', { class: 'tg-round' }, 'Round ', h('b', { text: String(ctx.game.round) }))),
+      h('span', { class: 'tg-round' }, roundBadge(ctx.game).prefix, h('b', { text: roundBadge(ctx.game).num }))),
     finalRoundNote(ctx, 'tg-final phone'),
     h('div', { class: 'tg-instr2', attrs: { role: 'status', 'aria-live': 'polite' } },
       whose(ctx), h('span', { text: ctx.view.instruction }), roundEndClock(ctx)),

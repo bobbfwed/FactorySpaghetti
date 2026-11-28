@@ -7,6 +7,7 @@ import { PLAY_ON_DRAW_CARDS } from '../engine/config';
 import { nextCardDrawn } from '../engine/rules/cards';
 import { applyAction } from '../engine';
 import { whereWords } from './where';
+import { roundLabel } from './rounds';
 
 export const BUILDING_NAME: Record<PieceType, string> = {
   mine: 'Mine',
@@ -122,10 +123,10 @@ export function describeAction(before: GameState, action: Action, name: string, 
 export function roundLines(before: GameState, after: GameState): string[] {
   if (after.gameOver) return [];
   if (before.phase !== 'roundEnd' && after.phase === 'roundEnd') {
-    return [`End of round ${before.round}: the round-end turns begin.`];
+    return [`${roundLabel(after)}: the round-end turns begin.`];
   }
   const between = (p: GameState['phase']): boolean => p === 'roundEnd' || p === 'setupClaimPF' || p === 'setupClaimPP';
-  if (between(before.phase) && !between(after.phase)) return [`Round ${after.round} begins.`];
+  if (between(before.phase) && !between(after.phase)) return [`${roundLabel(after)} begins.`];
   return [];
 }
 

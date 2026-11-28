@@ -13,6 +13,7 @@ import type { JournalData, ReplayStart } from './journal';
 import { MAX_JOURNAL_MOVES, isActionLike, parseStart, startSeq, startState } from './journal';
 import { rulesFingerprint } from './save';
 import { describeAction } from './describe';
+import { roundFileTag, shownRound } from './rounds';
 import { diceRngFromSeed, rollDice } from './dice';
 
 export const REPLAY_KIND = 'factory-spaghetti-replay';
@@ -85,7 +86,7 @@ export function serializeReplay(r: ReplayFile): string {
 }
 
 export function replayFileName(r: ReplayFile, final: GameState | null): string {
-  const what = final?.gameOver ? 'final' : `round-${final?.round ?? 0}`;
+  const what = final?.gameOver ? 'final' : final ? roundFileTag(final) : 'round-0';
   return `factory-spaghetti-${r.code}-${what}${REPLAY_EXT}`;
 }
 
@@ -245,7 +246,9 @@ export class ReplayCursor {
   lineAt(pos: number): string {
     const p = this.clamp(pos);
     if (p === 0) {
-      return this.partial ? `The replay starts at move ${this.firstSeq}, in round ${this.stateAt(0).round}.` : 'The game begins.';
+      if (!this.partial) return 'The game begins.';
+      const r = shownRound(this.stateAt(0));
+      return `The replay starts at move ${this.firstSeq}, in ${r.roundEnd ? 'the round-end turns of ' : ''}round ${r.round}.`;
     }
     const before = this.stateAt(p - 1);
     const actor = this.actors[p - 1]!;
