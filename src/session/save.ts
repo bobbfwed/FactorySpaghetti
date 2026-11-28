@@ -10,7 +10,7 @@ import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import { shownRound } from './rounds';
 import type { JournalData } from './journal';
 import { parseJournal } from './journal';
-import { versionDisplay } from '../ui/version';
+import { versionDisplay } from './versionText';
 
 export const SAVE_FORMAT = 'factory-spaghetti-save';
 

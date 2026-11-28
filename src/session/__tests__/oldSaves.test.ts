@@ -70,7 +70,7 @@ describe('a save made by 0.1.0 or older is refused before anything else', () => 
     expect(messageOf(() => openPlaytestText(serializeReplay(replay)))).toBe(R);
     const report = makeReport({ room: room(), journal: null, seat: 0, note: '', lastRefused: null, now: 1, app: '0.1.0' });
     expect(messageOf(() => openPlaytestText(serializeReport(report)))).toBe(R);
-    const err = ((): SaveError | null => { try { openPlaytestText(serializeSaveFile(saveBy('0.1.0'))); } catch (e) { return e as ReplayError; } return null; })();
+    const err = ((): ReplayError | null => { try { openPlaytestText(serializeSaveFile(saveBy('0.1.0'))); } catch (e) { return e as ReplayError; } return null; })();
     expect(err?.message).toBe(SENTENCE);
     expect(messageOf(() => openPlaytestText(serializeReplay(makeReplay(room(), partialJournal(game, 40), { savedAt: 1, app: '0.1.1' }))))).toBeNull();
   });

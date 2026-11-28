@@ -4,29 +4,11 @@
 
 import { RULES_VERSION } from '../engine/config';
 import { h } from './dom';
+import { versionDisplay } from '../session/versionText';
 
-export interface VersionDisplay {
-  /** The large part: "0.1", or the whole label when it is not a version number ("dev"). */
-  big: string;
-  /** The small part: ".01", ".12", or "" when there is none. */
-  small: string;
-  /** The whole label as one line of text: "0.1.01". */
-  text: string;
-}
+export { versionDisplay };
+export type { VersionDisplay } from '../session/versionText';
 
-export function versionDisplay(full: string): VersionDisplay {
-  const label = full.trim();
-  const plus = label.indexOf('+');
-  const bare = plus >= 0 ? label.slice(0, plus) : label;
-  const m = /^(\d+)\.(\d+)\.(\d+)(.*)$/.exec(bare);
-  if (!m) {
-    const big = bare || 'dev';
-    return { big, small: '', text: big };
-  }
-  const big = `${Number(m[1])}.${Number(m[2])}`;
-  const small = `.${String(Number(m[3])).padStart(2, '0')}${m[4]}`;
-  return { big, small, text: big + small };
-}
 
 /**
  * The version as shown: "Version" and a large "0.1" with a small ".01" after it, then "· Rules v0.70" (the rules version, from config). The start
