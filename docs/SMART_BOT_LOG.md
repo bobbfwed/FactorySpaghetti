@@ -38,10 +38,10 @@ The unchanged bot (attempt 1's version, which plays like the Planner) in the gau
 | 200000–200099 | 48.5% | 28.7% | 26.0% | 0.964 ± 0.097 |
 | 201000–201099 | 51.5% | 32.7% | 26.8% | 1.031 ± 0.099 |
 | 202000–202099 | 53.5% | 36.0% | 25.3% | 1.047 ± 0.098 |
-| 203000–203099 | (pending) | | | |
+| 203000–203099 | 54.0% | 35.0% | 27.5% | 1.079 ± 0.100 |
 | 300000–300099 (attempt 2 run) | 51.5% | 32.3% | 23.8% | 0.974 ± 0.096 |
 
-The same bot moves by 5 points at 2 players, 7 points at 3 players and 3 points at 4 players between seed blocks of this size, purely on the seeds. One block of 100 seeds cannot tell apart changes smaller than about 0.1 x share.
+The same bot moves by 5.5 points at 2 players, 7.3 points at 3 players and 3.7 points at 4 players between seed blocks of this size (pooled 0.964 to 1.079), purely on the seeds. One block of 100 seeds cannot tell apart changes smaller than about 0.1 x share.
 
 The paired test removes part of that: in attempt 2 (900 pairs) the 95% interval of the paired pooled difference was about ± 0.12 x share; the unpaired intervals of the two bots were each ± 0.10, so an unpaired comparison would have had about ± 0.14. The gain from pairing is modest because a changed decision soon makes the two games different; most of the noise is in the play itself, not in the seed.
 

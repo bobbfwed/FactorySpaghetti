@@ -19,6 +19,8 @@ export interface SmartConfig extends Style {
   readonly planCredits: boolean;
   /** Weight of keeping a drawn building away from where it would fit another player (0 = off). */
   readonly placeDeny: number;
+  /** In the last round, value materials at their points only (no premium for the next recipe). */
+  readonly endgamePoints: boolean;
   /** Measurement only: turn one feature off to see what it is worth (never set in play). */
   readonly ablate?: { readonly dice?: boolean; readonly supply?: boolean; readonly power?: boolean };
 }
@@ -33,4 +35,5 @@ export const SMART_STYLE: SmartConfig = {
   hurryWhenAhead: false,
   planCredits: false,
   placeDeny: 0,
+  endgamePoints: false,
 };

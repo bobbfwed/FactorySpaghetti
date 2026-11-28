@@ -96,6 +96,8 @@ function makeCtx(state: GameState, me: PlayerId, style: Style): Ctx {
     if (inv.sphere < 1) need.sphere += 2;
   }
   if (ownsSphere && inv.plate < 2) need.plate += 1;
+  // In the last round or so a material is worth its points and nothing more: no later recipe needs it.
+  if (style.endgamePoints && roundsLeft <= 1.2 && state.pendingMineIds.length === 0) for (const m of MATS) need[m] = 0;
   // Materials beyond the 6-per-material limit are worth nothing more.
   for (const m of MATS) if (inv[m] >= INVENTORY_CAP) need[m] = -MATERIAL_VALUES[m];
 
