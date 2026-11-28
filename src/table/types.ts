@@ -70,7 +70,8 @@ export interface Table {
   onAnimationEnd(fn: () => void): () => void;
   // ── ──
   setPlayerColors(colors: readonly PlayerColor[]): void;   // index = engine player id
-  setTargets(targets: readonly Target[], color: PlayerColor): void;  // soft glow on everything the player may touch
+  /** Soft glow on everything the player may touch. `quiet`: things that answer a tap without glowing (a tap nearer one of them picks it). */
+  setTargets(targets: readonly Target[], color: PlayerColor, quiet?: readonly Target[]): void;
   setGhost(ghost: Ghost | null): void;              // translucent preview of a tile about to be placed
   /** A planned belt route in the player's colour. 'own' = solid (belts the player has); 'buy' = translucent (belts the player could buy now); 'cant' = translucent and slowly fading in and out (cannot afford yet). null clears it. */
   setRoute(segments: readonly RouteSegment[] | null, color: PlayerColor): void;

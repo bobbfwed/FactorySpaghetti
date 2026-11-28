@@ -78,6 +78,11 @@ export interface PlayView {
   primary: { label: string; enabled: boolean; hint?: string } | null;
   /** Everything that should glow on the table. */
   targets: Target[];
+  /**
+   * Things that answer a tap without glowing (another belt beside the chosen one): where a tap is
+   * nearer one of these than a glowing target, the table picks it.
+   */
+  quietTargets?: Target[];
   /** Preview tile or mine awaiting confirm. */
   ghost: Ghost | null;
   /** `label`: what confirming does, when the generic wording would not say it ("Remove this belt"). */

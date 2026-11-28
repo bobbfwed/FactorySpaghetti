@@ -89,6 +89,8 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let targets: readonly Target[] = [];
   let targetColor: PlayerColor = 'blue';
   let targetKeys = new Set<string>();
+  /** Things that answer a tap without glowing (setTargets `quiet`). */
+  let quietKeys = new Set<string>();
   let ghost: Ghost | null = null;
   let framedOnce = false;
   /** The game shown last (framing.ts freshView). */
@@ -342,7 +344,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     if (!g) return null;
     const b = rig.groundAt(px, py, BELT_PICK_Y) ?? g;
     const t = rig.groundAt(px, py, TELEPORTER_PICK_Y) ?? g;
-    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }, { x: t.x, z: t.z }), targetKeys);
+    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }, { x: t.x, z: t.z }), targetKeys, quietKeys);
   }
 
   // ── Public interface ─────────────────────────────────────────────────────────────────────────
@@ -467,10 +469,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       table.rebuild(performance.now(), rig.azimuth);
       invalidate();
     },
-    setTargets(next, color) {
+    setTargets(next, color, quiet) {
       targets = [...next];
       targetColor = color;
       targetKeys = new Set(targets.map(targetKey));
+      quietKeys = new Set((quiet ?? []).map(targetKey));
       refreshTargets();
       invalidate();
     },

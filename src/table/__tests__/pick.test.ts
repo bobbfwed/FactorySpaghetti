@@ -21,6 +21,22 @@ const tap = (t: Target, targets: ReadonlySet<string> = new Set()): Target | null
   return choose(boardCandidates(game, a.x, a.z), targets);
 };
 
+describe('choosing between a glowing target and one that answers a tap without glowing', () => {
+  // Remove-belt mode once a belt is chosen: only it glows (A), my other belt on the tile still answers a tap (B).
+  const A: Target = { kind: 'belt', beltId: 'A' }, B: Target = { kind: 'belt', beltId: 'B' }, P: Target = { kind: 'piece', pieceId: 'p' };
+  const cands = [{ target: B, score: 0.3 }, { target: A, score: 0.6 }, { target: P, score: 1 }];
+  it('a tap nearer the quiet one picks it', () => {
+    expect(choose(cands, new Set([targetKey(A)]), new Set([targetKey(B)]))).toEqual(B);
+  });
+  it('a tap nearer the glowing one picks that one', () => {
+    expect(choose([cands[1]!, cands[0]!, cands[2]!], new Set([targetKey(A)]), new Set([targetKey(B)]))).toEqual(A);
+  });
+  it('a candidate that neither glows nor answers is passed over for the glowing one, as before', () => {
+    expect(choose(cands, new Set([targetKey(A)]))).toEqual(A);
+    expect(choose(cands, new Set([targetKey(A)]), new Set())).toEqual(A);
+  });
+});
+
 describe('picking', () => {
   it('the board has belts, claims and buffers to test against', () => {
     expect(game.belts.length).toBeGreaterThan(5);

@@ -176,11 +176,14 @@ class Builder {
 
   /** A tap that does something without the target glowing (another choice beside the selected one). */
   quiet(t: Target, fn: () => void): void {
-    this.taps.set(targetKey(t), fn);
+    const k = targetKey(t);
+    if (!this.taps.has(k)) (this.view.quietTargets ??= []).push(t);
+    this.taps.set(k, fn);
   }
 
   clearTargets(): void {
     this.view.targets = [];
+    delete this.view.quietTargets;
     this.taps.clear();
   }
 
