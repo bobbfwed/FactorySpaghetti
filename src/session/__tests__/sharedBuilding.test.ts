@@ -1,6 +1,6 @@
 // One owner per building (RULES_CHANGES.md #57): a save, link, room from a host, replay, report
 // or journal holding a building shared by two players (possible only in games from before #46) is
-// refused, with a plain message the menu and the replay screen show. Games without one load as
+// refused, with the old-saves statement the menu and the replay screen show. Games without one load as
 // before, old room formats included.
 
 import { describe, it, expect } from 'vitest';
@@ -14,7 +14,7 @@ import type { Room } from '../room';
 import { findState, playingRoom } from './helpers';
 
 const META = { savedAt: 1, app: 'test' };
-const MESSAGE = 'This saved game has a building shared by two players. The rules no longer allow that, so it cannot be opened.';
+const MESSAGE = 'Saves from 0.1.00 or older will not load in this version of the game.';
 
 const game = findState(2, s => s.phase === 'actions' && s.pendingFactoryOps.length === 0 && s.round >= 2);
 const owned = game.board.find(p => p.type !== 'mine' && p.claims.length > 0)!;
@@ -33,10 +33,10 @@ const kindOf = (f: () => unknown): string | null => {
 };
 
 describe('a building shared by two players is refused everywhere a game is loaded (#57)', () => {
-  it('a save (from this device or a file): refused with its own kind and message', () => {
+  it('a save (from this device or a file): refused with its own kind and the old-saves statement', () => {
     expect(kindOf(() => validateSave(toSave(room(game), META)))).toBeNull();
     expect(kindOf(() => validateSave(toSave(room(shared), META)))).toBe('shared-building');
-    try { validateSave(toSave(room(shared), META)); } catch (e) { expect((e as Error).message).toContain(MESSAGE); }
+    try { validateSave(toSave(room(shared), META)); } catch (e) { expect((e as Error).message).toBe(MESSAGE); }
     // (The menu's words for it: app/__tests__/saveMessages.test.ts.)
   });
 
@@ -59,7 +59,7 @@ describe('a building shared by two players is refused everywhere a game is loade
     expect(kindOf(() => openPlaytestText(serializeSaveFile(toSave(room(shared), META))))).toBe('shared-building');
     const report = makeReport({ room: room(shared), journal: null, seat: 0, note: '', lastRefused: null, now: 1, app: 'test' });
     expect(kindOf(() => openPlaytestText(serializeReport(report)))).toBe('shared-building');
-    try { openPlaytestText(serializeReplay(replay)); } catch (e) { expect((e as Error).message).toContain('building shared by two players'); }
+    try { openPlaytestText(serializeReplay(replay)); } catch (e) { expect((e as Error).message).toBe('Replays from 0.1.00 or older will not load in this version of the game.'); }
     // The same position without the shared building opens.
     expect(kindOf(() => openPlaytestText(serializeReplay(makeReplay(room(game), partialJournal(game, 40), META))))).toBeNull();
   });

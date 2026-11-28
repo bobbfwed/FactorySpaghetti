@@ -11,7 +11,7 @@ import type { Room, SeatColor } from './room';
 import { SEAT_COLORS, activeSeat, cleanName, NAME_MAX } from './room';
 import type { JournalData, ReplayStart } from './journal';
 import { MAX_JOURNAL_MOVES, isActionLike, parseStart, startSeq, startState } from './journal';
-import { rulesFingerprint, sharedBuildingIn } from './save';
+import { isRefusedAppVersion, oldSavesText, rulesFingerprint, sharedBuildingIn } from './save';
 import { describeAction } from './describe';
 import { roundFileTag, shownRound } from './rounds';
 import { diceRngFromSeed, rollDice } from './dice';
@@ -44,7 +44,7 @@ export interface ReplayFile {
 /** Largest replay or report text accepted (pasted or from a file). */
 export const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
 
-export type ReplayErrorKind = 'empty' | 'too-large' | 'not-replay' | 'unsupported-version' | 'damaged' | 'shared-building';
+export type ReplayErrorKind = 'empty' | 'too-large' | 'not-replay' | 'unsupported-version' | 'damaged' | 'shared-building' | 'old-version';
 
 export class ReplayError extends Error {
   constructor(public readonly kind: ReplayErrorKind, message: string) {
@@ -59,8 +59,9 @@ const REPLAY_ERROR_TEXT: Record<ReplayErrorKind, string> = {
   'not-replay': 'This is not a Factory Spaghetti replay, report or save file.',
   'unsupported-version': 'This file was made by a newer version of the game. Reload the page to update, then try again.',
   damaged: 'This replay is damaged and cannot be opened.',
-  // A game from before RULES_CHANGES.md #46 could hold one; one owner per building since #57.
-  'shared-building': 'This game has a building shared by two players. The rules no longer allow that, so it cannot be opened.',
+  // The old-saves statement (see SAVES_BROKEN_THROUGH). A shared building (#57) is a safety check and says the same.
+  'shared-building': oldSavesText('Replays'),
+  'old-version': oldSavesText('Replays'),
 };
 
 export function replayFail(kind: ReplayErrorKind, detail?: string): never {
@@ -119,6 +120,7 @@ export function parsePlayers(x: unknown, playerCount: number): ReplayPlayer[] {
 /** Check the shape of a replay object (not the moves' legality: verifyReplay does that). */
 export function validateReplay(x: unknown): ReplayFile {
   if (!isObj(x) || x.kind !== REPLAY_KIND) replayFail('not-replay');
+  if (isRefusedAppVersion(x.app)) replayFail('old-version'); // before any other check
   if (isInt(x.v) && x.v > 1) replayFail('unsupported-version', `replay format ${x.v}`);
   check(x.v === 1, 'replay format');
   check(typeof x.rules === 'string' && x.rules.length <= 100, 'rules');

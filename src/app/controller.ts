@@ -19,7 +19,7 @@ import { chooseSuccessor } from '../session/seating';
 import type { Room, RoomSettings, SeatColor } from '../session/room';
 import { NAME_MAX, cleanName } from '../session/room';
 import type { SaveEnvelope, SaveErrorKind } from '../session/save';
-import { SaveError, packLink, parseSaveFile, sameRules, saveFromHash, saveSummary, serializeSaveFile, toSave, unpackLink } from '../session/save';
+import { SaveError, oldSavesText, packLink, parseSaveFile, sameRules, saveFromHash, saveSummary, serializeSaveFile, toSave, unpackLink } from '../session/save';
 import type { SaveListing, SaveStore } from '../session/store';
 import { findJournals, journalKey, listSaves, readJournal, saveKey } from '../session/store';
 import type { Scheduler } from '../session/scheduler';
@@ -200,8 +200,9 @@ const SAVE_TEXT: Record<SaveErrorKind, string> = {
   corrupt: 'This is not a Factory Spaghetti save.',
   'unsupported-version': 'This save was made by a newer version of the game. Reload the page to update, then try again.',
   invalid: 'This save is damaged and cannot be resumed.',
-  // A save from before RULES_CHANGES.md #46 could hold one; one owner per building since #57.
-  'shared-building': 'This saved game has a building shared by two players. The rules no longer allow that, so it cannot be opened.',
+  // The old-saves statement (see SAVES_BROKEN_THROUGH). A shared building (#57) is a safety check and says the same.
+  'shared-building': oldSavesText(),
+  'old-version': oldSavesText(),
 };
 
 export function saveErrorMessage(e: unknown, source: 'device' | 'link' | 'file'): string {

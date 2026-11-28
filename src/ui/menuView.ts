@@ -4,6 +4,7 @@
 import type { AppController } from '../app/controller';
 import { savedWhen } from '../app/controller';
 import { MAX_REPLAY_BYTES } from '../session/replay';
+import { oldSavesText } from '../session/save';
 import { h } from './dom';
 import { icon, mark } from './icons';
 import { askConfirm } from './confirmDialog';
@@ -150,6 +151,7 @@ export function menuView(ctrl: AppController, version: string): View {
       soloBtn,
       guideBtn,
       savesBox,
+      h('p', { class: 'old-saves-note', text: oldSavesText(), attrs: { 'data-old-saves': '1' } }),
       loadBtn,
       loadPanel,
       replayBtn,

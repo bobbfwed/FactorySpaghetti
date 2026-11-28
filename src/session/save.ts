@@ -10,6 +10,7 @@ import { LOG_TEXT_MAX, NAME_MAX, SEAT_COLORS, cleanName } from './room';
 import { shownRound } from './rounds';
 import type { JournalData } from './journal';
 import { parseJournal } from './journal';
+import { versionDisplay } from '../ui/version';
 
 export const SAVE_FORMAT = 'factory-spaghetti-save';
 
@@ -27,7 +28,40 @@ export interface SaveEnvelope {
   journal?: JournalData;
 }
 
-export type SaveErrorKind = 'truncated' | 'corrupt' | 'unsupported-version' | 'invalid' | 'shared-building';
+/**
+ * The newest app version whose saves no longer load. Saves, links, files, replays and reports
+ * recorded by this app version or an older one are refused, with one sentence and no other
+ * explanation. Raise it whenever a change makes older saves unusable (and update CLAUDE.md,
+ * "Old saves"). 0.1.0 and older can hold a building shared by two players (RULES_CHANGES.md #57).
+ */
+export const SAVES_BROKEN_THROUGH = '0.1.0';
+
+/** major, minor, patch of an app version such as "0.1.1+abc1234", or null when it is not one ("dev", "test", ""). */
+export function parseAppVersion(app: unknown): [number, number, number] | null {
+  if (typeof app !== 'string') return null;
+  const m = /^\s*v?(\d+)\.(\d+)\.(\d+)(?:[+\-.\s].*)?$/.exec(app);
+  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+}
+
+/**
+ * Whether something recorded by this app version is refused: it is `SAVES_BROKEN_THROUGH` or
+ * older (compared on major.minor.patch; the "+sha" suffix is ignored). A missing version, or one
+ * that is not a version ("dev", "test"), counts as current.
+ */
+export function isRefusedAppVersion(app: unknown): boolean {
+  const v = parseAppVersion(app);
+  const cut = parseAppVersion(SAVES_BROKEN_THROUGH)!;
+  if (!v) return false;
+  for (let i = 0; i < 3; i++) if (v[i]! !== cut[i]!) return v[i]! < cut[i]!;
+  return true;
+}
+
+/** The one statement about refused saves: "Saves from 0.1.00 or older will not load in this version of the game." */
+export function oldSavesText(noun: 'Saves' | 'Replays' = 'Saves'): string {
+  return `${noun} from ${versionDisplay(SAVES_BROKEN_THROUGH).text} or older will not load in this version of the game.`;
+}
+
+export type SaveErrorKind = 'truncated' | 'corrupt' | 'unsupported-version' | 'invalid' | 'shared-building' | 'old-version';
 
 export class SaveError extends Error {
   constructor(public readonly kind: SaveErrorKind, message: string) {
@@ -41,11 +75,13 @@ const SAVE_ERROR_TEXT: Record<SaveErrorKind, string> = {
   corrupt: 'This is not a Factory Spaghetti save.',
   'unsupported-version': 'This save was made by a newer version of the game.',
   invalid: 'This save is damaged and cannot be resumed.',
-  'shared-building': 'This saved game has a building shared by two players. The rules no longer allow that, so it cannot be opened.',
+  'shared-building': oldSavesText(), // a safety check; players see the same statement
+  'old-version': oldSavesText(),
 };
 
 function fail(kind: SaveErrorKind, detail?: string): never {
-  throw new SaveError(kind, detail ? `${SAVE_ERROR_TEXT[kind]} (${detail})` : SAVE_ERROR_TEXT[kind]);
+  // The old-saves statement is said alone, with no detail.
+  throw new SaveError(kind, detail && kind !== 'shared-building' && kind !== 'old-version' ? `${SAVE_ERROR_TEXT[kind]} (${detail})` : SAVE_ERROR_TEXT[kind]);
 }
 
 /** Longest save link text accepted (characters after any '#save=' part). */
@@ -380,6 +416,7 @@ export function validateSave(x: unknown): SaveEnvelope {
 
 function validateUnsafe(x: unknown): SaveEnvelope {
   if (!isObj(x) || x.format !== SAVE_FORMAT) fail('corrupt', 'not a save');
+  if (isRefusedAppVersion(x.app)) fail('old-version'); // before any other check
   if (isInt(x.v) && x.v > 1) fail('unsupported-version', `save format ${x.v}`);
   check(x.v === 1, 'save format');
   check(isNum(x.savedAt) && isStr(x.app, 100) && isStr(x.rules, 100), 'envelope');

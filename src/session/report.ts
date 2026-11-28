@@ -14,9 +14,9 @@ import type { Room } from './room';
 import type { JournalData } from './journal';
 import { MAX_JOURNAL_MOVES, isActionLike, journalEnd, partialJournal } from './journal';
 import type { SaveEnvelope } from './save';
-import { SAVE_FORMAT, SaveError, rulesFingerprint, toSave, validateSave } from './save';
+import { SAVE_FORMAT, SaveError, isRefusedAppVersion, rulesFingerprint, toSave, validateSave } from './save';
 import type { ReplayFile } from './replay';
-import { REPLAY_KIND, makeReplay, parseJsonText, parsePlayers, replayFail, replayPlayers, validateReplay } from './replay';
+import { REPLAY_KIND, ReplayError, makeReplay, parseJsonText, parsePlayers, replayFail, replayPlayers, validateReplay } from './replay';
 import type { RefusedMove } from './clientSession';
 
 export const REPORT_KIND = 'factory-spaghetti-report';
@@ -92,6 +92,7 @@ function check(cond: boolean, what: string): asserts cond {
 }
 
 function validateReport(x: Obj): ReportFile {
+  if (isRefusedAppVersion(x.app)) replayFail('old-version'); // before any other check
   if (typeof x.v === 'number' && Number.isInteger(x.v) && x.v > 1) replayFail('unsupported-version', `report format ${x.v}`);
   check(x.v === 1, 'report format');
   check(typeof x.app === 'string' && x.app.length <= 100 && typeof x.rules === 'string' && x.rules.length <= 100, 'version');
@@ -103,7 +104,7 @@ function validateReport(x: Obj): ReportFile {
   try {
     room = validateSave(x.room);
   } catch (e) {
-    if (e instanceof SaveError && e.kind === 'shared-building') replayFail('shared-building');
+    if (e instanceof SaveError && (e.kind === 'shared-building' || e.kind === 'old-version')) replayFail(e.kind);
     replayFail('damaged', 'room');
   }
   const replay = validateReplay(x.replay);
@@ -147,7 +148,7 @@ export function openPlaytestText(text: string): OpenedFile {
     try {
       save = validateSave(x);
     } catch (e) {
-      if (e instanceof SaveError && e.kind === 'shared-building') replayFail('shared-building'); // #57
+      if (e instanceof SaveError && (e.kind === 'shared-building' || e.kind === 'old-version')) throw new ReplayError(e.kind, e.message); // saves keep the word "Saves"
       replayFail(e instanceof SaveError && e.kind === 'unsupported-version' ? 'unsupported-version' : 'damaged', 'save file');
     }
     const room = save.room;

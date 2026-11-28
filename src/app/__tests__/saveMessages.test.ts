@@ -1,5 +1,5 @@
 // The menu's words when a saved game cannot be opened because it holds a building shared by two
-// players (RULES_CHANGES.md #57): the same message from this device's list, a link and a file.
+// players (RULES_CHANGES.md #57): the old-saves statement from this device's list, a link and a file.
 
 import { describe, it, expect } from 'vitest';
 import type { GameState, PlayerId } from '../../engine/state';
@@ -7,7 +7,7 @@ import { packLink, parseSaveFile, serializeSaveFile, toSave, unpackLink } from '
 import { saveErrorMessage } from '../controller';
 import { findState, playingRoom } from '../../session/__tests__/helpers';
 
-const MESSAGE = 'This saved game has a building shared by two players. The rules no longer allow that, so it cannot be opened.';
+const MESSAGE = 'Saves from 0.1.00 or older will not load in this version of the game.';
 
 describe('a saved game with a building shared by two players (#57)', () => {
   const game = findState(2, s => s.phase === 'actions' && s.round >= 2);

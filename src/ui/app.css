@@ -188,6 +188,7 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .join-btn { flex: none; width: 118px; min-height: 54px; border-radius: 14px; font-size: 15.5px; padding: 0 10px; }
 .saves { display: flex; flex-direction: column; gap: 8px; }
 .saves:empty { display: none; }
+.old-saves-note { margin: 0 2px; font-size: 12px; line-height: 1.35; color: var(--text-2); overflow-wrap: anywhere; }
 .saves > .label { margin: 6px 2px 0; }
 .save { display: flex; align-items: center; gap: 8px; padding: 10px 8px 10px 14px; }
 .save .info { min-width: 0; flex: 1; }
