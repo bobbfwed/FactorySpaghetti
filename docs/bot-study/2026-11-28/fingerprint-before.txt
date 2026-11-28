@@ -1,0 +1,7 @@
+11 2 greedy,bonusHunter tesseracts 23 400 7b6aa93cf78054ee
+12 3 planner,greedy,teleporter tesseracts 19 498 4fe3b29690dd22e3
+13 4 cardShark,hoarder,mineRusher,greedy boardExhausted 21 774 d85ac6d20aee6e85
+14 4 greedy,greedy,greedy,greedy boardExhausted 22 785 5974f3093178229f
+15 3 greedy-classic,greedy,bonusHunter tesseracts 24 571 f56ebae468257450
+16 2 teleporter,cardShark tesseracts 21 357 364f5706e21f2b57
+all 5c9098484e9122231e3cc1e1b88fa8715d34e4ee49885cc6a4f18b820cab8f07

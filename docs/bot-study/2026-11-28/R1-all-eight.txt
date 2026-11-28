@@ -1,0 +1,6 @@
+# npm run sim -- --mode all --bots greedy,planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter,greedy-classic --seeds 6 --start 1100000 --jobs 8 --out <scratch>/R1-all-eight.json
+Sat Nov 28 03:47:37 PST 2026
+
+> factory-spaghetti@0.1.5 sim
+> vite-node src/sim/cli.ts -- --mode all --bots greedy,planner,mineRusher,cardShark,bonusHunter,hoarder,teleporter,greedy-classic --seeds 6 --start 1100000 --jobs 8 --out C:/Users/BNIMO~1.BNI/AppData/Local/Temp/claude/bce9939815b905b6/***/scratchpad/runs/R1-all-eight.json
+
