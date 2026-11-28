@@ -8,7 +8,7 @@
 import * as THREE from 'three';
 import type { BoardPiece, GameState, Material } from '../engine/state';
 import {
-  DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT, TILE_TOP, axialToWorld, bufferSlotWorld,
+  BUFFER_MATERIAL_SCALE, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT, TILE_TOP, axialToWorld, bufferSlotWorld,
   buildingMeepleWorld, minePileAt, mineSlotWorld, piecePlacement, revealedPose, revealedStack,
   stackHeight, type SideLayout, type XZ,
 } from './layout';
@@ -117,6 +117,14 @@ export class Animator implements SceneFx {
           const k = p <= 0 ? 1 : 1 - easeInOut(p);
           this.extraList.push({ material: s.material, x: at.x, y: TILE_TOP + 0.05 + 4 * Math.sin(Math.PI * clamp01(p)), z: at.z, yaw: piecePlacement(piece).yaw, s: 0.8 * k });
         }
+      } else if (s.kind === 'slide' && p < 1) {
+        // Moving aside on its stub (a teleporter landing there): drawn here until it arrives.
+        const piece = this.next?.board.find(b => b.id === s.pieceId);
+        const e = easeInOut(clamp01(p));
+        this.extraList.push({
+          material: s.material, x: s.from.x + (s.to.x - s.from.x) * e, y: TILE_TOP + 0.05 + 3 * Math.sin(Math.PI * e),
+          z: s.from.z + (s.to.z - s.from.z) * e, yaw: piece ? piecePlacement(piece).yaw : 0, s: BUFFER_MATERIAL_SCALE,
+        });
       } else if (s.kind === 'flow' && p > 0 && p < 1) {
         const e = easeInOut(p);
         const at = pointAlong(s.path, e);
@@ -255,6 +263,8 @@ export class Animator implements SceneFx {
   slot(pieceId: string, buffer: Buf, index: number): number | null {
     if (this.placing(pieceId)) return 0;
     for (const s of this.steps) {
+      // Sliding aside: drawn as an extra (update) until it arrives.
+      if (s.kind === 'slide' && s.pieceId === pieceId && s.buffer === buffer && s.slot === index && this.progress(s) < 1) return 0;
       if ((s.kind === 'flow' && s.toPieceId === pieceId && buffer === 'input' && s.slot === index)
         || (s.kind === 'appear' && s.pieceId === pieceId && s.buffer === buffer && s.slot === index)) {
         const p = this.progress(s);

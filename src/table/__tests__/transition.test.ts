@@ -11,7 +11,10 @@ import { moveEvents } from '../../session/events';
 import type { TableEvent } from '../../session/room';
 import { DUR, isTableStep, planTransition, type AnimStep, type TransitionPlan } from '../transition';
 import { traceFlow, pointAlong, pathLength } from '../flowPath';
-import { bufferSlotWorld, positionsWithRole } from '../layout';
+import * as THREE from 'three';
+import { bufferSlotWorld, boardBounds, positionsWithRole, sideLayout } from '../layout';
+import { Animator } from '../animator';
+import { withTeleporter } from '../../engine/rules/teleporters';
 import { findRoute, routeDests, routeSources } from '../../engine/routing';
 
 interface Move { action: Action; prev: GameState; next: GameState; events: TableEvent[]; plan: TransitionPlan }
@@ -236,5 +239,69 @@ describe('flow paths', () => {
     const lonely = m.next.board.find(p => p.type === 'plateFact' && p.claims.length === 0)!;
     const t = traceFlow({ board: m.next.board, belts: [] }, lonely.id, 0, []);
     expect(t).toBeNull();
+  });
+});
+
+describe('material moving aside for a teleporter (slide)', () => {
+  // A Plate Factory from a real setup, with Ore in its input, owned by player 0.
+  const base = createGame(7, 2);
+  const factory = base.board.find(p => p.type === 'plateFact')!;
+  const owned = { ...factory, claims: [{ ownerId: 0 as PlayerId, controlModule: 3 }] };
+  const withPiece = (piece: GameState['board'][number]): GameState => ({ ...base, board: base.board.map(p => (p.id === piece.id ? piece : p)) });
+  const plain = { ...owned, input: { slots: ['ore' as const], teleporters: [] as Array<PlayerId | null> } };
+  const teleported = { ...plain, input: withTeleporter(plain.input, 0, 0) };
+
+  it('a teleporter placed on a stub that holds material: the material slides aside first, then the teleporter lands', () => {
+    const plan = planTransition(withPiece(plain), withPiece(teleported), []);
+    const slides = ofKind(plan, 'slide');
+    expect(slides).toHaveLength(1);
+    const s = slides[0]!;
+    expect(s).toMatchObject({ pieceId: factory.id, buffer: 'input', slot: 0, material: 'ore', dur: DUR.slide });
+    expect(s.from).toEqual(bufferSlotWorld(plain, 'input', 0));
+    expect(s.to).toEqual(bufferSlotWorld(teleported, 'input', 0));
+    expect(Math.hypot(s.to.x - s.from.x, s.to.z - s.from.z)).toBeGreaterThan(5);
+    const t = ofKind(plan, 'teleporter')[0]!;
+    expect(s.at).toBeLessThan(t.at);
+    // The phases overlap a little: the teleporter starts as the material arrives.
+    expect(s.at + s.dur).toBeLessThanOrEqual(t.at + DUR.overlap);
+    // Nothing else happens to that material (no shrinking away and popping up).
+    expect(ofKind(plan, 'consume')).toHaveLength(0);
+    expect(ofKind(plan, 'appear')).toHaveLength(0);
+  });
+
+  it('no slide when the stub is empty, and none when the material does not move', () => {
+    const emptyPlain = { ...plain, input: { slots: [null], teleporters: [] as Array<PlayerId | null> } };
+    expect(ofKind(planTransition(withPiece(emptyPlain), withPiece({ ...emptyPlain, input: withTeleporter(emptyPlain.input, 0, 0) }), []), 'slide')).toHaveLength(0);
+    expect(ofKind(planTransition(withPiece(teleported), withPiece(teleported), []), 'slide')).toHaveLength(0);
+  });
+
+  it('a building that loses its owner (#58): its material is used up where it lay, beside the teleporter, with no slide', () => {
+    const lost = { ...teleported, claims: [], input: { slots: [null], teleporters: [] as Array<PlayerId | null> } };
+    const plan = planTransition(withPiece(teleported), withPiece(lost), []);
+    expect(ofKind(plan, 'slide')).toHaveLength(0);
+    expect(ofKind(plan, 'consume').map(c => [c.pieceId, c.buffer, c.slot])).toEqual([[factory.id, 'input', 0]]);
+  });
+
+  it('a teleporter that leaves while the material stays: the material slides back', () => {
+    const plan = planTransition(withPiece(teleported), withPiece(plain), []);
+    const s = ofKind(plan, 'slide')[0]!;
+    expect(s.from).toEqual(bufferSlotWorld(teleported, 'input', 0));
+    expect(s.to).toEqual(bufferSlotWorld(plain, 'input', 0));
+  });
+
+  it('the animator draws the sliding material between the two spots and hides it in its slot until it arrives', () => {
+    const prev = withPiece(plain), next = withPiece(teleported);
+    const plan = planTransition(prev, next, []);
+    const a = new Animator(new THREE.Group(), () => new THREE.Color());
+    const s = ofKind(plan, 'slide')[0]!;
+    a.start(prev, next, plan.steps, 1, 0, sideLayout(boardBounds(next.board), next.mineCount));
+    a.update(s.at + s.dur / 2);
+    expect(a.slot(factory.id, 'input', 0)).toBe(0);
+    const ore = a.extras().find(e => e.material === 'ore')!;
+    const mid = { x: (s.from.x + s.to.x) / 2, z: (s.from.z + s.to.z) / 2 };
+    expect(Math.hypot(ore.x - mid.x, ore.z - mid.z)).toBeLessThan(0.5);
+    a.update(s.at + s.dur + 1);
+    expect(a.slot(factory.id, 'input', 0)).not.toBe(0);
+    a.dispose();
   });
 });

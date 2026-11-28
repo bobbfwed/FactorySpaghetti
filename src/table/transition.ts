@@ -34,6 +34,12 @@ export type StepBody =
   | { kind: 'module'; pieceId: string; index: number; owner: number; upgrade: boolean }
   /** A teleporter appears on one input (`slot`, #55) or on the output (slot 0) of a building. */
   | { kind: 'teleporter'; pieceId: string; buffer: Buf; slot: number; owner: number }
+  /**
+   * A material slides from `from` to `to` (world mm) within its own buffer slot: it moves aside
+   * on its stub as a teleporter lands there (layout.ts teleportedMaterialWorld), or back when one
+   * leaves while the material stays.
+   */
+  | { kind: 'slide'; pieceId: string; buffer: Buf; slot: number; material: Material; from: XZ; to: XZ }
   /** A meeple walks (or drops) onto its piece. */
   | { kind: 'meeple'; player: number; fromPieceId: string | null; fromSlot: number | null }
   /** A material travels along `path` (world mm) into input `slot` of `toPieceId`. */
@@ -71,6 +77,7 @@ export const DUR = {
   beltGap: 150,
   module: 420,
   teleporter: 380,
+  slide: 380,
   meeple: 450,
   consume: 300,
   appear: 320,
@@ -128,9 +135,27 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
     phases[P_PLACE]!.push({ kind: 'place', pieceId: p.id, stack });
   }
 
+  // Buildings that used their inputs: those may be refilled with the same material at once
+  // (ore from a mine), which the state difference alone would hide.
+  const used = new Set<string>();
+  for (const e of events) {
+    if (e.kind === 'operated' || (e.kind === 'activated' && e.outcome === 'power')) used.add(e.pieceId);
+  }
+
   // ── Modules, teleporters, meeples, belts ──
   for (const p of next.board) {
     const old = before.get(p.id);
+    // Material that stays in its slot but moves aside (a teleporter lands on its stub, or leaves):
+    // it slides there instead of jumping, in the phase before, so the teleporter lands on a clear stub.
+    if (old) {
+      for (const b of ['input', 'output'] as const) {
+        (p[b]?.slots ?? []).forEach((m, i) => {
+          if (!m || old[b]?.slots[i] !== m || (b === 'input' && used.has(p.id))) return;
+          const from = bufferSlotWorld(old, b, i), to = bufferSlotWorld(p, b, i);
+          if (Math.hypot(to.x - from.x, to.z - from.z) > 0.5) phases[P_PLACE]!.push({ kind: 'slide', pieceId: p.id, buffer: b, slot: i, material: m, from, to });
+        });
+      }
+    }
     p.claims.forEach((c, i) => {
       const o = old?.claims[i];
       if (o && o.ownerId === c.ownerId && o.controlModule === c.controlModule) return;
@@ -154,12 +179,6 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   // ── Materials in buffers, inventories, power ──
   const filled: Slot[] = [];
   const emptied: Slot[] = [];
-  // Buildings that used their inputs: those may be refilled with the same material at once
-  // (ore from a mine), which the state difference alone would hide.
-  const used = new Set<string>();
-  for (const e of events) {
-    if (e.kind === 'operated' || (e.kind === 'activated' && e.outcome === 'power')) used.add(e.pieceId);
-  }
   for (const p of next.board) {
     const old = before.get(p.id);
     for (const b of ['input', 'output'] as const) {
@@ -332,6 +351,7 @@ function durationOf(s: StepBody): number {
     case 'belt': return DUR.belt;
     case 'module': return DUR.module;
     case 'teleporter': return DUR.teleporter;
+    case 'slide': return DUR.slide;
     case 'meeple': return DUR.meeple;
     case 'consume': return DUR.consume;
     case 'appear': return DUR.appear;

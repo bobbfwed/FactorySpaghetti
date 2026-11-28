@@ -382,6 +382,18 @@ window.__harness = {
   table, get game() { return game; }, refresh, step, legalTargets, zoomOn, playUntil: (f: (s: GameState) => boolean) => { playUntil(game, f); refresh(); },
   beltChain: (n: number, skip = 0) => beltChain(game.state, n, skip), showChain, showRoute, previewPiece, previewMeeple, revealedStack,
   planTransition, legalActions, setTeleporters: (on: boolean) => { demoTeleporters = on; refresh(); },
+  /** Show the board without teleporters, then animate a teleporter onto every input and output (material slides aside). */
+  slideDemo: (scale = 1): void => {
+    const was = demoTeleporters;
+    demoTeleporters = false;
+    const prev = withTeleporters(game.state);
+    demoTeleporters = true;
+    const next = withTeleporters(game.state);
+    demoTeleporters = was;
+    table.setGame(prev);
+    table.animateTo(next, planTransition(prev, next, []).steps, scale);
+  },
+  setPortalMotion: (on: boolean | null) => table.setPortalMotion(on),
 };
 // Let the camera animations finish, apply any zoom, then report ready.
 setTimeout(() => {

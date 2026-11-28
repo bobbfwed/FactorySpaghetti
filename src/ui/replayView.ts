@@ -28,6 +28,7 @@ import { COLORS, icon } from './icons';
 import { messageStrip } from './common';
 import type { View } from './menuView';
 import { preferredView, tableFailed, tableFailure } from './viewPref';
+import { movingPortals, onPortalMotionChange } from './portalPref';
 
 /** Moves per second for each speed choice. */
 const SPEEDS: readonly { label: string; perSecond: number }[] = [
@@ -140,6 +141,8 @@ export function replayView(ctrl: AppController): View {
       t.setPlayerColors(players.map(p => p.color as PlayerColor));
       shownKey = '';
       insetsKey = '';
+      t.setPortalMotion(movingPortals());
+      offs.push(onPortalMotionChange(() => t.setPortalMotion(movingPortals())));
       offs.push(t.onPick(() => undefined));
       schedule();
     } catch (err) {
