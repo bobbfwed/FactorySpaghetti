@@ -165,6 +165,37 @@ describe('a belt route refused at its first belt', () => {
   });
 });
 
+describe('Escape (or the ✕) while a route\'s steps are being sent one by one', () => {
+  // The second route lays two belts, then the Mine rule stops it: two steps to send each way.
+  const f = fixture(2);
+
+  it('laying: the rest of the route is still laid and the plan stays (Take back is offered)', () => {
+    const t = twoRoutes(f);
+    t.c.primary();
+    expect(t.sent.slice(1).map(a => a.type)).toEqual(['PLACE_BELT']); // the first step is on its way
+    t.c.cancel();
+    const s = play(t.s, f.p, t.c, t.sent, 1);
+    expect(t.sent.slice(1).map(a => a.type)).toEqual(['PLACE_BELT', 'PLACE_BELT']);
+    expect(s.beltsPlacedThisTurn).toHaveLength(3);
+    expect(ids(t.c)).toContain('route:takeBack');
+  });
+
+  it('taking back: every belt of the route is still picked up', () => {
+    const t = twoRoutes(f);
+    t.c.primary();
+    const s = play(t.s, f.p, t.c, t.sent, 1);
+    const laid = s.beltsPlacedThisTurn.slice(1);
+    expect(laid).toHaveLength(2);
+    const before = t.sent.length;
+    t.c.choose('route:takeBack');
+    expect(t.sent.slice(before)).toHaveLength(1);
+    t.c.cancel();
+    const after = play(s, f.p, t.c, t.sent, before);
+    expect(t.sent.slice(before)).toEqual(laid.slice().reverse().map(beltId => ({ type: 'REMOVE_BELT', beltId })));
+    for (const id of laid) expect(after.belts.some(b => b.id === id)).toBe(false);
+  });
+});
+
 describe('a belt route stopped part-way by the Mine rule', () => {
   const f = fixture(1);
 

@@ -329,6 +329,16 @@ export class PlayController {
   }
 
   cancel(): void {
+    // While queued steps (a route being laid, a route being taken back) are being sent one by one,
+    // Escape and the ✕ close panels only: stopping half-way would leave belts half laid or half
+    // taken back with the plan already gone. The steps finish, or stop for their own reasons as
+    // before (a refused move, a step no longer legal, a seat change).
+    if (this.queue.length > 0 || this.queueSent !== null) {
+      if (this.mode.k !== 'route' && this.mode.k !== 'pi') this.mode = IDLE;
+      this.hintText = null;
+      this.render(false);
+      return;
+    }
     if (this.mode.k === 'pi') this.piActive = false;
     // The ✕ of a planned route (and Escape) drops its unlaid part, like its "Cancel" button; belts
     // already laid stay. "Keep the plan for a later turn" is the way to put a plan aside.
