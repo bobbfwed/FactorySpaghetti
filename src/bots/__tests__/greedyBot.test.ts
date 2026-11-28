@@ -1,19 +1,13 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { runGame } from '../../sim/runGames';
 import { createGame } from '../../engine/rules/setup';
 import { chooseAction as greedyBot } from '../greedyBot';
 import { chooseAction as randomBot } from '../randomBot';
 import type { GameState, PieceType, Material, Buffer, BoardPiece } from '../../engine/state';
 
-// B3: the greedy one-ply bot must reliably beat the random fuzzer. Bots use
-// Math.random only for dice rolls; we seed it so the head-to-head is reproducible.
-describe('greedyBot (B3 one-ply lookahead vs randomBot)', () => {
-  const realRandom = Math.random;
-  beforeAll(() => {
-    let s = 123456789 >>> 0;
-    Math.random = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
-  });
-  afterAll(() => { Math.random = realRandom; });
+// B3: the Smart Bot must reliably beat the random fuzzer. The runner rolls seeded dice and both
+// bots are deterministic, so the head-to-head is reproducible.
+describe('Smart Bot vs randomBot', () => {
 
   it('wins a clear majority of a 2-player head-to-head', () => {
     const N = 30;

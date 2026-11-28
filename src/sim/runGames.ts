@@ -1,11 +1,15 @@
 // Headless N-game runner.
-// Drives a full game loop using bot functions; throws on any illegal action.
+// Drives a full game loop using bot functions; throws on any illegal action. The dice are rolled
+// here from a stream seeded by the game seed (as the online host and the tournament do; a bot's
+// own dice are ignored), so a seed always gives the same game.
 // Emits per-game and aggregate statistics for balance analysis.
 
 import { createGame } from '../engine/rules/setup';
 import { applyAction } from '../engine/reducer';
 import type { GameState, PlayerId } from '../engine/state';
 import type { BotFn } from '../bots/botInterface';
+import { nextIntBelow } from '../engine/rng';
+import { diceStream } from './tournament';
 
 export interface GameResult {
   readonly winner: PlayerId | null;
@@ -38,13 +42,19 @@ export function runGame(
   let totalActions = 0;
   let totalRounds = 0;
   let prevRound = state.round;
+  let dice = diceStream(seed);
 
   while (!state.gameOver && totalActions < maxActions) {
     const playerId = state.turnOrder[state.activePlayerIndex];
     if (playerId === undefined) break;
 
     const bot = bots[playerId % bots.length]!;
-    const action = bot(state, playerId);
+    let action = bot(state, playerId);
+    if (action.type === 'ROLL_DICE') {
+      const rolls: number[] = [];
+      for (let i = 0; i < state.mineCount; i++) { const [v, n] = nextIntBelow(dice, 6); rolls.push(v + 1); dice = n; }
+      action = { type: 'ROLL_DICE', rolls };
+    }
 
     const result = applyAction(state, action);
     if (!result.ok) {

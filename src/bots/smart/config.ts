@@ -21,6 +21,8 @@ export interface SmartConfig extends Style {
   readonly placeDeny: number;
   /** In the last round, value materials at their points only (no premium for the next recipe). */
   readonly endgamePoints: boolean;
+  /** One Tesseract from the win: value the power and inputs of the last run much more. */
+  readonly closer: boolean;
   /** Measurement only: turn one feature off to see what it is worth (never set in play). */
   readonly ablate?: { readonly dice?: boolean; readonly supply?: boolean; readonly power?: boolean };
 }
@@ -36,4 +38,5 @@ export const SMART_STYLE: SmartConfig = {
   planCredits: false,
   placeDeny: 0,
   endgamePoints: false,
+  closer: false,
 };

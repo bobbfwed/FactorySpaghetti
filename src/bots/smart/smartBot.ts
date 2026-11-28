@@ -96,6 +96,13 @@ function makeCtx(state: GameState, me: PlayerId, style: Style): Ctx {
     if (inv.sphere < 1) need.sphere += 2;
   }
   if (ownsSphere && inv.plate < 2) need.plate += 1;
+  // One Tesseract from the win: what the last Tesseract Factory run needs (three Power Tokens and
+  // its inputs) is worth much more than usual.
+  if (style.closer && held >= 3 && ownsTess) {
+    if (p.powerTokens < 3) pv *= 2;
+    if (inv.sphere < 1) need.sphere += 6;
+    if (inv.plate < 1) need.plate += 3;
+  }
   // In the last round or so a material is worth its points and nothing more: no later recipe needs it.
   if (style.endgamePoints && roundsLeft <= 1.2 && state.pendingMineIds.length === 0) for (const m of MATS) need[m] = 0;
   // Materials beyond the 6-per-material limit are worth nothing more.

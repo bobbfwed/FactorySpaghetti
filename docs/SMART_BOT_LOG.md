@@ -45,6 +45,24 @@ The same bot moves by 5.5 points at 2 players, 7.3 points at 3 players and 3.7 p
 
 The paired test removes part of that: in attempt 2 (900 pairs) the 95% interval of the paired pooled difference was about ± 0.12 x share; the unpaired intervals of the two bots were each ± 0.10, so an unpaired comparison would have had about ± 0.14. The gain from pairing is modest because a changed decision soon makes the two games different; most of the noise is in the play itself, not in the seed.
 
+## Randomness in the bots (checked 2026-11-28, on a note from the conductor)
+
+What I found, by searching `src/` for `Math.random`:
+- **The classic Smart Bot** (`greedyBot.ts` before this work) put `Math.random` dice into its roll request. Fixed at the start of this work (commit 99d27e8): its dice now come from the state (`styles/dice.ts` `stateDice`), as the style bots' already did.
+- **Random Bot** (`randomBot.ts`) used `Math.random` both for its roll request and to pick its move. Now the move is picked by a generator seeded with a hash of the state, and the dice come from `stateDice`. Because the choice is a function of the state, taking back a belt laid this turn (which restores the state exactly) would make it lay the same belt again forever, so this-turn take-backs (`REMOVE_BELT` of a belt laid this turn, `UNDO_BELTS`) are left out of its choices when anything else is listed.
+- `styles/dice.ts` and `styles/styleBot.ts` only *mention* `Math.random` in comments (saying it is not used). `src/table/botGame.ts` (the dev harness, left alone) already rolls seeded dice. `src/ui/game/sound.ts` uses it for a sound offset, which is not game state.
+
+Where a bot's dice really come from:
+- **Live game**: the host fills in the dice from the seeded stream in the room; a bot's roll request carries dice that are ignored (`hostSession.botStep` even sends `rolls: []` as its fallback).
+- **Tournament runner** (`sim/tournament.ts` `playGame`): rolls from `diceStream(seed)` itself and never asks the bot.
+- **Headless runner** (`sim/runGames.ts`, used by older engine tests): used the bot's own dice, so games of the classic Smart Bot and of Random Bot differed from run to run. Now it rolls from `diceStream(seed)` like the tournament.
+
+Guards: `src/bots/__tests__/determinism.test.ts` plays the same seed twice for every bot kind (lobby and simulator-only) and checks the two games are identical, checks the same for `runGames`, and scans every source file in `src/bots` and `src/sim` (comments removed) for a call to `Math.random`.
+
+**Does anything have to be re-measured?** No. Every measurement in this log was made with the tournament runner, which rolls the dice itself from the seed, and none of the bots measured (the play styles, the new Smart Bot, the classic Smart Bot) used `Math.random` for anything but the ignored roll request; Random Bot was never measured. The paired runs are reproducible: the determinism test confirms it for each bot.
+
+Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its `bestUnlockableClaimValue`) counts an unclaimed Tesseract Factory as one it could claim. That is what the function means ("a Tesseract Factory I may claim": unclaimed or already mine), so it is intended; the classic bot is kept frozen for comparison either way.
+
 ## Attempts
 
 | # | What was tried | Command (seeds) | Before → after | Kept? |

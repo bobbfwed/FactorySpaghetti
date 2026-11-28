@@ -2,8 +2,10 @@
 // input"; a player thinks "where is the nearest ore (or Plate) I can bring to this input?",
 // so this searches from every usable source at once with the same model as findRoute
 // (a belt joins two points of one piece more than two apart; material crosses a shared edge
-// for free; points facing a building reserved for its owners, or another player's belt, are
-// off limits). It also finds deliberately long routes for the Belt Weaver bonus.
+// for free; points facing a building reserved for its owner (one owner per building, #57), or
+// another player's belt, are off limits; an output carrying a teleporter is no source and a
+// teleported input no destination, #53/#55). It also finds deliberately long routes for the Belt
+// Weaver bonus.
 // Plans only: every belt is still placed through applyAction, which has the last word.
 
 import type { BoardPiece, GameState, Material, PlayerId } from '../../engine/state';
