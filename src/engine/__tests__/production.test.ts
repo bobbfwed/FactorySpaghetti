@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createGame } from '../rules/setup';
-import { applyAction } from '../reducer';
-import type { GameState, BoardPiece, Player, PlayerId } from '../state';
+import { applyAction, type ApplyResult } from '../reducer';
+import type { GameState, BoardPiece, Player } from '../state';
 
 // ── Test-state helpers ────────────────────────────────────────────────────────
 
@@ -46,11 +46,11 @@ function rollState(base: GameState, piece: BoardPiece, ownerTokens = 10): GameSt
   };
 }
 
-function roll(state: GameState, ...values: number[]) {
+function roll(state: GameState, ...values: number[]): ApplyResult {
   return applyAction(state, { type: 'ROLL_DICE', rolls: values });
 }
 
-function operate(state: GameState, pieceId: string) {
+function operate(state: GameState, pieceId: string): ApplyResult {
   return applyAction(state, { type: 'OPERATE_BUILDING', pieceId });
 }
 
@@ -400,7 +400,7 @@ describe('activation on any roll (every owner is prompted, then operates)', () =
     });
 
     // Give both players enough tokens (plate factory costs 0 anyway, but keep it realistic)
-    const newPlayers = base.players.map((p, i): Player => ({ ...p, powerTokens: 5 }));
+    const newPlayers = base.players.map((p): Player => ({ ...p, powerTokens: 5 }));
     const state: GameState = {
       ...base,
       board: [...base.board, piece0, piece1],
@@ -479,7 +479,7 @@ describe('ROLL_DICE validation', () => {
 describe('tesseract factory input validation', () => {
   const base = createGame(1, 2);
 
-  const testCase = (id: string, inputs: ('ore' | 'plate' | 'sphere' | 'tesseract')[], shouldProduce: boolean) => {
+  const testCase = (id: string, inputs: ('ore' | 'plate' | 'sphere' | 'tesseract')[], shouldProduce: boolean): void => {
     it(`${inputs.join('+')} → ${shouldProduce ? 'produces tesseract' : 'no production'}`, () => {
       const piece = makePiece({
         id, type: 'tesseractFact',

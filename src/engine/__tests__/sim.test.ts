@@ -3,7 +3,7 @@ import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
 import { chooseAction as randomBotFn } from '../../bots/randomBot';
 import { chooseAction as greedyBotFn } from '../../bots/greedyBot';
-import { runGame, runGames } from '../../sim/runGames';
+import { runGame, runGames, type GameResult } from '../../sim/runGames';
 import { createRng, nextIntBelow } from '../rng';
 import type { Action } from '../actions';
 import { canonicalAction, sameMove } from '../actions';
@@ -12,7 +12,7 @@ import { sameUpToBeltOrder } from './beltOrderHelpers';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function playFullGame(seed: number, playerCount: 2 | 3 | 4 = 2) {
+function playFullGame(seed: number, playerCount: 2 | 3 | 4 = 2): GameResult {
   return runGame(seed, playerCount, [randomBotFn, randomBotFn, randomBotFn, randomBotFn]);
 }
 
