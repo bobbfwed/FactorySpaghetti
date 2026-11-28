@@ -196,11 +196,21 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   for (const p of prev.board) {
     const now = after.get(p.id);
     if (!now) continue;
-    for (const g of claimsChange(p, now).gone) {
+    const change = claimsChange(p, now);
+    for (const g of change.gone) {
       const to = arrivals.find(a => a.owner === g.owner && a.module === g.module && a.pieceId !== p.id && !moved.has(`${a.pieceId}:${a.index}`));
       if (to) moved.add(`${to.pieceId}:${to.index}`);
       phases[P_BUILD]!.push({ kind: 'unmodule', pieceId: p.id, index: g.index, owner: g.owner, module: g.module, toPieceId: to?.pieceId ?? null, toIndex: to?.index ?? 0 });
       if (!to) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: g.owner, item: 'module', count: 1, from: { kind: 'piece', pieceId: p.id } });
+    }
+    // The modules that stay on a building one left: their spots depend on how many there are, so
+    // each that changes spot travels there (on the same building) right after the one leaving,
+    // instead of jumping there while the other is still lifting off.
+    if (change.gone.length > 0) {
+      for (const k of change.kept) {
+        if (k.from === k.to && p.claims.length === now.claims.length) continue;
+        phases[P_BUILD]!.push({ kind: 'unmodule', pieceId: p.id, index: k.from, owner: k.owner, module: k.module, toPieceId: p.id, toIndex: k.to });
+      }
     }
   }
 
@@ -431,15 +441,18 @@ interface ClaimsChange {
   readonly added: readonly { index: number; owner: number; module: number; upgrade: boolean; replaced?: number }[];
   /** Claims that left the building (index in the claims before), not counting a module replaced by an upgrade. */
   readonly gone: readonly { index: number; owner: number; module: number }[];
+  /** Claims on the building in both states: their index before (`from`) and now (`to`). */
+  readonly kept: readonly { from: number; to: number; owner: number; module: number }[];
 }
 
 /** How a building's Control Modules changed between two states (compared as owner and number, not by position). */
 function claimsChange(old: BoardPiece | undefined, now: BoardPiece): ClaimsChange {
   const was = (old?.claims ?? []).map((c, i) => ({ owner: c.ownerId as number, module: c.controlModule, index: i, used: false }));
   const fresh: { index: number; owner: number; module: number }[] = [];
+  const kept: { from: number; to: number; owner: number; module: number }[] = [];
   now.claims.forEach((c, i) => {
     const same = was.find(w => !w.used && w.owner === c.ownerId && w.module === c.controlModule);
-    if (same) same.used = true;
+    if (same) { same.used = true; kept.push({ from: same.index, to: i, owner: c.ownerId, module: c.controlModule }); }
     else fresh.push({ index: i, owner: c.ownerId, module: c.controlModule });
   });
   const added = fresh.map(f => {
@@ -449,7 +462,7 @@ function claimsChange(old: BoardPiece | undefined, now: BoardPiece): ClaimsChang
     if (lower) lower.used = true;
     return lower ? { ...f, upgrade: true, replaced: lower.module } : { ...f, upgrade: false };
   });
-  return { added, gone: was.filter(w => !w.used).map(({ index, owner, module }) => ({ index, owner, module })) };
+  return { added, gone: was.filter(w => !w.used).map(({ index, owner, module }) => ({ index, owner, module })), kept };
 }
 
 function nearest(game: GameState, sources: readonly FlowSource[], s: Slot): number {

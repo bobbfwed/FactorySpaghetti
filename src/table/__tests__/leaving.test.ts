@@ -222,6 +222,42 @@ describe('leaving the table', () => {
     a.dispose();
   });
 
+  it('Changing Priorities with a module staying behind: it moves to its new spot with the leaving one, not at once', () => {
+    const from = piece('a', 'tesseractFact', -1, 0, 0, 4, 3);
+    const two = { ...from, claims: [{ ownerId: 0 as PlayerId, controlModule: 4 }, { ownerId: 0 as PlayerId, controlModule: 6 }] };
+    const to = piece('c', 'sphereFact', 0, 1, null);
+    const s = withHand(staged([two, to]), 'changingPriorities');
+    const { prev, next, plan } = move(s, { type: 'PLAY_CARD', cardType: 'changingPriorities', pieceId: 'a', toPieceId: 'c', controlModule: 4 });
+    expect(next.board.find(p => p.id === 'a')!.claims).toEqual([{ ownerId: 0, controlModule: 6 }]);
+    const um = ofKind(plan, 'unmodule');
+    const leaving = um.find(x => x.module === 4)!;
+    expect(leaving).toMatchObject({ pieceId: 'a', index: 0, toPieceId: 'c' });
+    // Module 6 was the second of two on the building; now it is the only one, in the middle.
+    const stays = um.find(x => x.module === 6)!;
+    expect(stays).toMatchObject({ pieceId: 'a', index: 1, owner: 0, toPieceId: 'a', toIndex: 0 });
+    // Together with (or after) the leaving one, never before it.
+    expect(stays.at).toBeGreaterThanOrEqual(leaving.at);
+    expect(stays.at).toBeLessThan(leaving.at + leaving.dur);
+    // Nothing comes back to the tray or drops from above for it.
+    expect(ofKind(plan, 'toPlayer').filter(x => x.item === 'module')).toHaveLength(0);
+    expect(ofKind(plan, 'module').filter(x => x.pieceId === 'a')).toHaveLength(0);
+    // Drawn: at its old spot until its step starts, travelling meanwhile, then in its new spot.
+    const a = animator();
+    a.start(prev, next, plan.steps, 1, 0, sideLayout(boardBounds(next.board), next.mineCount));
+    a.update(0);
+    expect(a.claim('a', 0)).toBe('hide');
+    expect(a.leaving().modules.find(x => x.module === 6)).toMatchObject({ index: 1, of: 2, to: { index: 0, of: 1, t: 0 } });
+    a.update(mid(stays));
+    const m = a.leaving().modules.find(x => x.module === 6)!;
+    expect(m.to!.piece.id).toBe('a');
+    expect(m.to!.t).toBeGreaterThan(0);
+    expect(m.to!.t).toBeLessThan(1);
+    a.update(stays.at + stays.dur + 1);
+    expect(a.claim('a', 0)).not.toBe('hide');
+    expect(a.leaving().modules.find(x => x.module === 6)).toBeUndefined();
+    a.dispose();
+  });
+
   it('Asset Forfeiture: Plates lift out of every output and fly to the player', () => {
     const mine = piece('p', 'plateFact', -1, 0, 0, 5, 3), theirs = piece('q', 'plateFact', 0, 1, 1, 4);
     const s = withHand(staged([{ ...mine, output: { ...mine.output!, slots: ['plate'] } }, { ...theirs, output: { ...theirs.output!, slots: ['plate'] } }]), 'assetForfeiture');
