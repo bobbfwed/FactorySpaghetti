@@ -49,7 +49,7 @@ jobs:
           fi
           read_version='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).version||"")}catch(e){console.log("")}})'
           new=$(node -e "$read_version" < package.json)
-          old=$(git show "$BEFORE:package.json" 2>/dev/null | node -e "$read_version")
+          old=$(git show "$BEFORE:package.json" 2>/dev/null | node -e "$read_version") || old=""
           if [ -z "$old" ]; then
             echo "::warning::No version in package.json at $BEFORE; version check skipped."
             exit 0
