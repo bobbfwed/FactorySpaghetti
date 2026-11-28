@@ -2,9 +2,11 @@
 // view of the shared renderer: its flying tokens when two examples take turns with the one view.
 
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ROLL_PLAY } from '../content/plays';
+import type { GameState, PlayerId } from '../../../engine/state';
+import { planTransition } from '../../../table/transition';
+import { CLAIM_PLAY, ROLL_PLAY } from '../content/plays';
 import { FigureCache, type FigureRenderer, type PlayView } from '../figures/jobs';
-import { buildTimeline, stepTiming } from '../figures/play';
+import { buildTimeline, stepTiming, type Timeline } from '../figures/play';
 import type { PlayExample } from '../figures/types';
 import { FakeEl, installFakeDom } from './fakeDom';
 
@@ -57,5 +59,30 @@ describe('the example stage', () => {
     expect(flightsOf(a)).toBe(n);
     a.dispose();
     b.dispose();
+  });
+
+  it('an upgrade sends home the module it replaced, matched by owner and number', async () => {
+    // The guide's upgrade (Power Plant 4 -> 5), restaged with two of Blue's modules on the Power
+    // Plant in an order that changes: 4 and 6 before, 6 and 7 after. Module 4 must fly home, not 6.
+    const tl0 = buildTimeline(CLAIM_PLAY);
+    const i = tl0.steps.findIndex(s => s.moves.some(m => m.action.type === 'UPGRADE_BUILDING'));
+    const step = tl0.steps[i]!;
+    const m0 = step.moves[0]!;
+    const withClaims = (g: GameState, mods: number[]): GameState => ({
+      ...g, board: g.board.map(p => (p.id === 'pp' ? { ...p, claims: mods.map(n => ({ ownerId: 0 as PlayerId, controlModule: n })) } : p)),
+    });
+    const before = withClaims(m0.before, [4, 6]), after = withClaims(m0.after, [6, 7]);
+    const move = { ...m0, before, after, plan: planTransition(before, after, []) };
+    const tl: Timeline = { ...tl0, steps: tl0.steps.map((s, j) => (j === i ? { ...s, from: before, after, moves: [move] } : s)) };
+    const fig = new FakeEl('figure'), pic = new FakeEl('div'), side = new FakeEl('div');
+    fig.append(pic, side);
+    const stage = new DomStage(CLAIM_PLAY, tl, pic as unknown as HTMLElement, side as unknown as HTMLElement, sharedCache());
+    expect(await stage.prepare()).toBe(true);
+    const seg = stepTiming(tl.steps[i]!, 1, true).segments[0]!;
+    stage.begin(i, 1);
+    stage.tick(i, seg.at + seg.lead + 1);
+    const flying = fig.querySelectorAll('.g-flymod').map(e => e.querySelector('.n')?.textContent);
+    expect(flying).toEqual(['4']);
+    stage.dispose();
   });
 });

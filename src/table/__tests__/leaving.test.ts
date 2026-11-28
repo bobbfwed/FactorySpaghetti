@@ -237,7 +237,17 @@ describe('leaving the table', () => {
     const b = piece('u', 'plateFact', -1, 0, 0, 4, 3);
     const s = staged([b], x => ({ ...x, phase: 'roundEnd', players: x.players.map(p => (p.id === 0 ? { ...p, freeUpgradesRemaining: 1 } : p)) }));
     const { plan } = move(s, { type: 'UPGRADE_BUILDING', pieceId: 'u', oldModule: 4, newModule: 5, freeCredits: 1 });
-    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', upgrade: true })]);
+    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', upgrade: true, replaced: 4 })]);
     expect(ofKind(plan, 'unmodule')).toHaveLength(0);
+  });
+
+  it('an upgrade names the module it replaced by owner and number, not by its place among the claims', () => {
+    // Two of player 0's modules on one building, the order changed between the states: 4 and 6
+    // before, 6 and 7 after. The 7 replaced the 4 (the 6 stayed), though the 7 sits where the 6 was.
+    const b = piece('u', 'tesseractFact', -1, 0, 0, 4, 3);
+    const prev = staged([{ ...b, claims: [{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 6 }] }]);
+    const next = { ...prev, board: prev.board.map(p => (p.id === 'u' ? { ...p, claims: [{ ownerId: 0 as PlayerId, controlModule: 6 }, { ownerId: 0 as PlayerId, controlModule: 7 }] } : p)) };
+    const plan = planTransition(prev, next, []);
+    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', index: 1, upgrade: true, replaced: 4 })]);
   });
 });

@@ -267,7 +267,8 @@ export class DomStage implements PlayStage {
     if (!side) return;
     for (const s of m.plan.steps) {
       if (s.kind === 'module' && s.upgrade && side.hasTray) {
-        const old = m.before.board.find(p => p.id === s.pieceId)?.claims[s.index]?.controlModule;
+        // The module the upgrade replaced, as the plan matched it (owner and number, not its place).
+        const old = s.replaced;
         const from = this.picPoint(v, { kind: 'piece', pieceId: s.pieceId }, m.after);
         const to = old !== undefined ? side.cellPoint(old, this.fxEl) : null;
         if (old !== undefined && from && to) this.flight(side.moduleToken(old), from, to, base + s.at * k, DUR.flight * k, () => side.home(old), () => side.depart(old));
