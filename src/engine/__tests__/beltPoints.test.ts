@@ -1,5 +1,5 @@
 // Belt connection points follow the printed pieces (RULES_CHANGES.md #30), points facing a
-// claimed building's input or output are reserved for its owners (#31), and mines 2 and 3 have
+// claimed building's input or output are reserved for its owner (#31), and mines 2 and 3 have
 // no ore exits on their lean hex (#32).
 
 import { describe, it, expect } from 'vitest';
