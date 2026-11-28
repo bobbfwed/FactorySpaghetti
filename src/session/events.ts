@@ -7,6 +7,7 @@ import type { Material } from '../engine/config';
 import { PLAY_ON_DRAW_CARDS } from '../engine/config';
 import { factoryOperatePowerCost } from '../engine/rules/production';
 import { nextCardDrawn } from '../engine/rules/cards';
+import { buildingOwner } from '../engine/rules/ownership';
 import type { TableEvent } from './room';
 
 const MATS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
@@ -85,34 +86,33 @@ function rollEvents(before: GameState, after: GameState, rolls: readonly number[
   for (const beforePiece of before.board) {
     const afterPiece = after.board.find(p => p.id === beforePiece.id);
     if (!afterPiece) continue;
-    const owners = new Set<PlayerId>();
-    for (const c of beforePiece.claims) if (c.controlModule === total) owners.add(c.ownerId);
+    // A building has one owner (#57): it activates for them when any of its claims matches.
+    const owner = buildingOwner(beforePiece);
+    if (owner === null || !beforePiece.claims.some(c => c.controlModule === total)) continue;
 
-    for (const owner of owners) {
-      const base = { kind: 'activated' as const, seat: owner, pieceId: beforePiece.id, building: beforePiece.type };
-      const awaiting = after.pendingFactoryOps.some(e => e.pieceId === beforePiece.id && e.ownerId === owner);
-      if (beforePiece.type === 'powerPlant' && awaiting) {
-        // A Power Plant with its owner's teleporter on an empty input: they choose what to supply.
-        out.push({ ...base, outcome: 'awaiting-choice', amount: 0 });
-        continue;
-      }
-      if (beforePiece.type === 'powerPlant') {
-        const gained = (after.players[owner]?.powerTokens ?? 0) - (before.players[owner]?.powerTokens ?? 0);
-        out.push(gained > 0
-          ? { ...base, outcome: 'power', amount: gained }
-          : { ...base, outcome: 'power-capped', amount: 0 });
-        continue;
-      }
-      if (!beforePiece.output) continue;
-      if (awaiting) {
-        out.push({ ...base, outcome: 'awaiting-choice', amount: factoryOperatePowerCost(afterPiece) });
-      } else if (beforePiece.output.slots.some(s => s !== null)) {
-        out.push({ ...base, outcome: 'output-full', amount: 0 });
-      } else if (!afterPiece.input || afterPiece.input.slots.some(s => s === null)) {
-        out.push({ ...base, outcome: 'input-missing', amount: 0 });
-      } else {
-        out.push({ ...base, outcome: 'no-power', amount: factoryOperatePowerCost(afterPiece) });
-      }
+    const base = { kind: 'activated' as const, seat: owner, pieceId: beforePiece.id, building: beforePiece.type };
+    const awaiting = after.pendingFactoryOps.some(e => e.pieceId === beforePiece.id && e.ownerId === owner);
+    if (beforePiece.type === 'powerPlant' && awaiting) {
+      // A Power Plant with its owner's teleporter on an empty input: they choose what to supply.
+      out.push({ ...base, outcome: 'awaiting-choice', amount: 0 });
+      continue;
+    }
+    if (beforePiece.type === 'powerPlant') {
+      const gained = (after.players[owner]?.powerTokens ?? 0) - (before.players[owner]?.powerTokens ?? 0);
+      out.push(gained > 0
+        ? { ...base, outcome: 'power', amount: gained }
+        : { ...base, outcome: 'power-capped', amount: 0 });
+      continue;
+    }
+    if (!beforePiece.output) continue;
+    if (awaiting) {
+      out.push({ ...base, outcome: 'awaiting-choice', amount: factoryOperatePowerCost(afterPiece) });
+    } else if (beforePiece.output.slots.some(s => s !== null)) {
+      out.push({ ...base, outcome: 'output-full', amount: 0 });
+    } else if (!afterPiece.input || afterPiece.input.slots.some(s => s === null)) {
+      out.push({ ...base, outcome: 'input-missing', amount: 0 });
+    } else {
+      out.push({ ...base, outcome: 'no-power', amount: factoryOperatePowerCost(afterPiece) });
     }
   }
   return out;
