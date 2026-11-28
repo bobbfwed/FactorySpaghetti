@@ -445,8 +445,7 @@ function resolveShortSale(
   if (!mayAddClaim(piece, activeId)) {
     return err('ALREADY_CLAIMED', "Short Sale cannot claim another player's building");
   }
-  const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
-  if (myClaimsOnPiece.length >= MAX_CLAIMS_PER_BUILDING) {
+  if (piece.claims.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on this building');
   }
 
@@ -598,7 +597,7 @@ function resolveChangingPriorities(
   if (!mayAddClaim(toPiece, activeId)) {
     return err('ALREADY_CLAIMED', "Changing Priorities cannot move a Control Module onto another player's building");
   }
-  if (toPiece.claims.filter(c => c.ownerId === activeId).length >= MAX_CLAIMS_PER_BUILDING) {
+  if (toPiece.claims.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on the target building');
   }
   // Once the meeple stands on a building this turn, its last Control Module there stays: the

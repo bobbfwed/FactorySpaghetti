@@ -20,7 +20,12 @@ export function isBuilding(piece: Pick<BoardPiece, 'type'>): boolean {
   return BUILDING_TYPES.has(piece.type);
 }
 
-/** The owner of `piece` (the player whose claims it holds), or null when it is unclaimed. */
+/**
+ * The owner of `piece` (the player whose claims it holds), or null when it is unclaimed. Every
+ * claim on a building belongs to this one player (#57), so code that looks at "the owner" needs
+ * no loop over owners. Only for a checked game state: save checking, which reads unvalidated
+ * input, looks at every claim itself.
+ */
 export function buildingOwner(piece: Pick<BoardPiece, 'claims'>): PlayerId | null {
   return piece.claims[0]?.ownerId ?? null;
 }
@@ -54,8 +59,7 @@ export function materialsIn(piece: Pick<BoardPiece, 'input' | 'output'>): number
  * interface's warning, the log line and the bots.
  */
 export function lossIfModuleLeaves(piece: BoardPiece, playerId: PlayerId): { materials: number; teleporters: number } {
-  const mine = piece.claims.filter(c => c.ownerId === playerId).length;
-  if (mine !== 1 || piece.claims.length !== 1) return { materials: 0, teleporters: 0 };
+  if (piece.claims.length !== 1 || buildingOwner(piece) !== playerId) return { materials: 0, teleporters: 0 };
   const teleporters = [...teleportersOf(piece.input), ...teleportersOf(piece.output)].filter(t => t.owner === playerId).length;
   return { materials: materialsIn(piece), teleporters };
 }

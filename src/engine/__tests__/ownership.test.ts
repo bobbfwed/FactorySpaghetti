@@ -8,7 +8,7 @@ import { createGame } from '../rules/setup';
 import { applyAction, legalActions } from '../reducer';
 import { resolveDirectAdjacency } from '../rules/flow';
 import { applySkipFactoryRoll, operateSupplies } from '../rules/production';
-import { hasTwoOwners, lossIfModuleLeaves, mayAddClaim, settleLostClaims } from '../rules/ownership';
+import { buildingOwner, hasTwoOwners, lossIfModuleLeaves, mayAddClaim, settleLostClaims } from '../rules/ownership';
 import { teleporterCost } from '../config';
 import type { Material } from '../config';
 import type { Action } from '../actions';
@@ -103,6 +103,33 @@ describe('one owner per building: every claiming route refuses another player\'s
     expect(mayAddClaim({ claims: shared }, 1)).toBe(false);
     expect(mayAddClaim({ claims: of(0, 4, 6) }, 0)).toBe(true);
     expect(mayAddClaim({ claims: [] }, 1)).toBe(true);
+  });
+
+  it('buildingOwner names the one player whose claims a building holds, or null', () => {
+    expect(buildingOwner({ claims: [] })).toBeNull();
+    expect(buildingOwner({ claims: of(1, 5) })).toBe(1);
+    expect(buildingOwner({ claims: of(0, 2, 4, 6) })).toBe(0);
+    // Player 0 is a real owner, not a missing one.
+    expect(buildingOwner({ claims: of(0, 3) })).not.toBeNull();
+  });
+
+  it('buildingOwner agrees with the claims in every state of seeded bot games', () => {
+    for (const seed of [3, 11, 29]) {
+      let s = createGame(seed, 3);
+      for (let step = 0; step < 400 && !s.gameOver; step++) {
+        for (const b of s.board) {
+          const owner = buildingOwner(b);
+          expect(owner === null ? b.claims.length === 0 : b.claims.every(c => c.ownerId === owner)).toBe(true);
+          for (const p of [0, 1, 2] as const) expect(mayAddClaim(b, p)).toBe(owner === null || owner === p);
+        }
+        const who = s.pendingFactoryOps[0]?.ownerId ?? s.turnOrder[s.activePlayerIndex]!;
+        const moves = legalActions(s, who);
+        const a: Action = moves.length > 0
+          ? moves[(seed * 7 + step * 13) % moves.length]!
+          : { type: 'ROLL_DICE', rolls: Array.from({ length: s.mineCount }, (_, i) => 1 + ((seed + step + i * 5) % 6)) };
+        s = expectOk(applyAction(s, a));
+      }
+    }
   });
 });
 

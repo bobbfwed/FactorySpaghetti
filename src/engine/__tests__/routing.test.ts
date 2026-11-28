@@ -242,7 +242,7 @@ describe('router never reuses a connection point (self-loop guard)', () => {
   // A dense blank cluster (centre + all six neighbours) is full of cycles, so shortest paths
   // routinely wrap back onto a piece. Before the fix, 58 of ~7000 belt paths here reused a
   // point (illegal — the engine rejects the 2nd belt as POINT_OCCUPIED).
-  const cluster = () => fixture([
+  const cluster = (): GameState => fixture([
     mk('bk0', 'blank', { q: 0, r: 0 }),
     mk('bk1', 'blank', { q: 1, r: 0 }),
     mk('bk2', 'blank', { q: -1, r: 0 }),

@@ -16,6 +16,7 @@ import { resolveDirectAdjacency, fillInputsFromAdjacentMines } from './flow';
 import { factoryProduct, canLoadMaterial } from './recipes';
 import { mineSlotReward } from './mineRewards';
 import { hasInputTeleporterOf, supplySlots, teleporterOn } from './teleporters';
+import { buildingOwner } from './ownership';
 
 export type ActionResult =
   | { ok: true; state: GameState }
@@ -361,8 +362,8 @@ export function factoryExpectedProduct(piece: BoardPiece): Material | null {
 // (from its input, or with a supply through the owner's input teleporter, and enough power)
 // becomes a pending decision for its owner to OPERATE_BUILDING or SKIP_FACTORY_ROLL. This means
 // a roll on anyone's turn never spends your power/materials without your consent
-// (RULES_CHANGES.md #25: everyone activates, but the owner always chooses). For multiple
-// matching claims on one building, each distinct owner gets a pending entry.
+// (RULES_CHANGES.md #25: everyone activates, but the owner always chooses). A building has one
+// owner (#57), so several matching claims on it still make one activation.
 function resolveProduction(state: GameState, diceSum: number): { state: GameState; pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> } {
   let current = state;
   const pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> = [];
@@ -370,28 +371,23 @@ function resolveProduction(state: GameState, diceSum: number): { state: GameStat
   for (const piece of current.board) {
     if (piece.type === 'mine' || piece.type === 'blank') continue;
 
-    // Every distinct owner with a matching claim on this piece activates.
-    const owners = new Set<PlayerId>();
-    for (const claim of piece.claims) {
-      if (claim.controlModule === diceSum) owners.add(claim.ownerId);
+    // The building activates for its owner when any of its claims matches the roll.
+    const ownerId = buildingOwner(piece);
+    if (ownerId === null || !piece.claims.some(c => c.controlModule === diceSum)) continue;
+
+    const currentPiece = current.board.find(p => p.id === piece.id);
+    if (!currentPiece) continue;
+
+    if (currentPiece.type === 'powerPlant' && !isPowerPlantDecision(currentPiece, ownerId)) {
+      const next = operatePowerPlant(current, currentPiece, ownerId, []);
+      if (next.ok) current = next.state;
+      continue;
     }
-    if (owners.size === 0) continue;
 
-    for (const ownerId of owners) {
-      const currentPiece = current.board.find(p => p.id === piece.id);
-      if (!currentPiece) continue;
-
-      if (currentPiece.type === 'powerPlant' && !isPowerPlantDecision(currentPiece, ownerId)) {
-        const next = operatePowerPlant(current, currentPiece, ownerId, []);
-        if (next.ok) current = next.state;
-        continue;
-      }
-
-      // A factory, or a Power Plant whose supply is the owner's choice: defer to the owner's
-      // decision if it could actually operate now (from its input or with some supply).
-      if (operateSupplies(current, currentPiece.id, ownerId).length > 0) {
-        pendingOps.push({ pieceId: piece.id, ownerId });
-      }
+    // A factory, or a Power Plant whose supply is the owner's choice: defer to the owner's
+    // decision if it could actually operate now (from its input or with some supply).
+    if (operateSupplies(current, currentPiece.id, ownerId).length > 0) {
+      pendingOps.push({ pieceId: piece.id, ownerId });
     }
   }
 

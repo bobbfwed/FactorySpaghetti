@@ -137,9 +137,8 @@ export function applyClaimBuilding(
     return err('ALREADY_CLAIMED', 'This building is already claimed by another player');
   }
 
-  // At most 3 claims per player per building
-  const myClaimsOnPiece = piece.claims.filter(c => c.ownerId === activeId);
-  if (myClaimsOnPiece.length >= MAX_CLAIMS_PER_BUILDING) {
+  // At most 3 claims per building (all of them the player's, checked just above)
+  if (piece.claims.length >= MAX_CLAIMS_PER_BUILDING) {
     return err('TOO_MANY_CLAIMS', 'You already have 3 claims on this building');
   }
 

@@ -21,13 +21,4 @@ export default [
       "no-console": "warn",
     },
   },
-  {
-    // The rules engine carries a few unused helpers and test variables from the prototype era.
-    // The engine is frozen for the online port, so report these as warnings rather than failing
-    // the build; tidy them in a dedicated engine change.
-    files: ["src/engine/**/*.ts"],
-    rules: {
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
-    },
-  },
 ];

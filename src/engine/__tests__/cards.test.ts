@@ -239,7 +239,6 @@ describe('embezzlement', () => {
 describe('scoutingDrone', () => {
   it('picks a piece from a stack and places it on the board', () => {
     let s = actionsState();
-    const pid = s.turnOrder[s.activePlayerIndex]!;
     s = giveCard(s, 'scoutingDrone');
 
     // Stack 0 is available and has pieces; place the piece from index 0.

@@ -23,11 +23,11 @@ export function longestBeltChain(state: GameState, playerId: PlayerId): number {
   if (belts.length === 0) return 0;
 
   const pieceById = new Map(state.board.map(p => [p.id, p]));
-  const key = (pieceId: string, pos: number) => `${pieceId}:${pos}`;
+  const key = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
 
   // ── Union-find over ports (piece:pos) ──
   const parent = new Map<string, string>();
-  const ensure = (k: string) => { if (!parent.has(k)) parent.set(k, k); };
+  const ensure = (k: string): void => { if (!parent.has(k)) parent.set(k, k); };
   const find = (k: string): string => {
     ensure(k);
     let root = k;
@@ -36,7 +36,7 @@ export function longestBeltChain(state: GameState, playerId: PlayerId): number {
     while (parent.get(cur) !== root) { const nxt = parent.get(cur)!; parent.set(cur, root); cur = nxt; }
     return root;
   };
-  const union = (a: string, b: string) => { ensure(a); ensure(b); parent.set(find(a), find(b)); };
+  const union = (a: string, b: string): void => { ensure(a); ensure(b); parent.set(find(a), find(b)); };
 
   for (const b of belts) { ensure(key(b.pieceId, b.fromPoint)); ensure(key(b.pieceId, b.toPoint)); }
 
@@ -89,7 +89,7 @@ export function longestBeltChain(state: GameState, playerId: PlayerId): number {
   }
 
   const adjList = new Map<string, Array<{ to: string; id: string }>>();
-  const addEdge = (a: string, to: string, id: string) => {
+  const addEdge = (a: string, to: string, id: string): void => {
     if (!adjList.has(a)) adjList.set(a, []);
     adjList.get(a)!.push({ to, id });
   };

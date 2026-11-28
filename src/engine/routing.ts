@@ -73,7 +73,7 @@ export function routeDests(state: GameState, me: PlayerId): RoutePoint[] {
 
 // Every belt connection point `me` could currently place a belt on (the route picker
 // highlights all of these): an enabled belt point that isn't already used by a belt and
-// isn't blocked (joining an opponent's belt / a point reserved for a building's owners). The player picks any
+// isn't blocked (joining an opponent's belt / a point reserved for a building's owner). The player picks any
 // two of these and findBeltPath fills in the belts between them.
 export function usableBeltPoints(state: GameState, me: PlayerId): RoutePoint[] {
   const out: RoutePoint[] = [];
@@ -121,7 +121,7 @@ function pointOccupied(state: GameState, pieceId: string, pos: number): boolean 
 // A belt point we may attach a belt to right now. Uses the same placement-legality
 // predicate as the engine (beltEndpointBlocked) so every route the router returns can
 // actually be placed: enabled belt point, not already used, and not joining an opponent's
-// belt or using a point reserved for the owners of the building it faces.
+// belt or using a point reserved for the owner of the building it faces.
 function usableBeltPoint(state: GameState, piece: BoardPiece, pos: number, me: PlayerId): boolean {
   const def = pieceTemplate(piece).points.find(p => p.position === pos);
   if (!def || def.role !== 'belt' || !def.enabled) return false;
@@ -177,9 +177,9 @@ export function findRoute(
   // Can't feed another player's building (its input points are reserved for its owner).
   if (destPiece.claims.length > 0 && !destPiece.claims.some(c => c.ownerId === me)) return null;
 
-  const isSource = (n: { piece: BoardPiece; pos: number }) =>
+  const isSource = (n: { piece: BoardPiece; pos: number }): boolean =>
     n.piece.id === source.pieceId && n.pos === source.position;
-  const isDest = (n: { piece: BoardPiece; pos: number }) =>
+  const isDest = (n: { piece: BoardPiece; pos: number }): boolean =>
     n.piece.id === dest.pieceId && n.pos === dest.position;
 
   // 0 belts: the source output already directly faces the dest input. Checked from the
@@ -189,7 +189,7 @@ export function findRoute(
 
   if (maxBelts < 1) return null;
 
-  const key = (pieceId: string, pos: number) => `${pieceId}:${pos}`;
+  const key = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
   interface Node { pieceId: string; pos: number; cost: number }
   const visited = new Set<string>();
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null }>();
@@ -292,7 +292,7 @@ export function findBeltPath(
   if (!usableBeltPoint(state, toPiece, to.position, me)) return null;
   if (maxBelts < 1) return null;
 
-  const key = (pieceId: string, pos: number) => `${pieceId}:${pos}`;
+  const key = (pieceId: string, pos: number): string => `${pieceId}:${pos}`;
   interface Node { pieceId: string; pos: number; cost: number }
   const visited = new Set<string>([key(from.pieceId, from.position)]);
   const parent = new Map<string, { belt?: BeltPlacement; parentKey: string | null }>();

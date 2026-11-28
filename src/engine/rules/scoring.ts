@@ -9,6 +9,7 @@ import {
 } from '../config';
 import { longestBeltChain } from './beltWeaver';
 import { piecesExhausted } from './pieces';
+import { buildingOwner } from './ownership';
 
 // ── Per-player resource points ────────────────────────────────────────────────
 
@@ -97,18 +98,13 @@ function findBeltWeaverHolder(state: GameState): PlayerId | null {
 }
 
 // Factory Empire: player with the most distinct buildings claimed (≥ threshold).
-// Multi-claims on one building count as one claimed building.
+// Multi-claims on one building count as one claimed building (and a building has one owner, #57).
 function findFactoryEmpireHolder(state: GameState): PlayerId | null {
   const countByPlayer = new Map<PlayerId, number>();
   for (const piece of state.board) {
     if (piece.type === 'mine' || piece.type === 'blank') continue;
-    const seen = new Set<PlayerId>();
-    for (const claim of piece.claims) {
-      if (!seen.has(claim.ownerId)) {
-        seen.add(claim.ownerId);
-        countByPlayer.set(claim.ownerId, (countByPlayer.get(claim.ownerId) ?? 0) + 1);
-      }
-    }
+    const owner = buildingOwner(piece);
+    if (owner !== null) countByPlayer.set(owner, (countByPlayer.get(owner) ?? 0) + 1);
   }
 
   let best = 0;
@@ -162,13 +158,13 @@ function tiebreakWinners(state: GameState): ReadonlyArray<PlayerId> {
 
   type Criterion = (pid: PlayerId) => number;
   const criteria: Criterion[] = [
-    pid => resourcePoints(state.players[pid]!),
-    pid => tesseractCount(state, pid),
-    pid => state.players[pid]!.inventory.sphere,
-    pid => state.players[pid]!.inventory.plate,
-    pid => state.players[pid]!.inventory.ore,
+    (pid): number => resourcePoints(state.players[pid]!),
+    (pid): number => tesseractCount(state, pid),
+    (pid): number => state.players[pid]!.inventory.sphere,
+    (pid): number => state.players[pid]!.inventory.plate,
+    (pid): number => state.players[pid]!.inventory.ore,
     // Negate index so that an earlier position (lower index) scores higher.
-    pid => -(state.turnOrder.indexOf(pid)),
+    (pid): number => -(state.turnOrder.indexOf(pid)),
   ];
 
   for (const crit of criteria) {

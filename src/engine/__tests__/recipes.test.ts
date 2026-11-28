@@ -9,7 +9,7 @@ function piece(type: BoardPiece['type'], slots: (Material | null)[]): BoardPiece
     output: { slots: [null], teleporters: [] },
   } as BoardPiece;
 }
-const product = (t: BoardPiece['type'], m: (Material | null)[]) => factoryExpectedProduct(piece(t, m));
+const product = (t: BoardPiece['type'], m: (Material | null)[]): Material | null => factoryExpectedProduct(piece(t, m));
 
 describe('factory recipes — operate (exact match)', () => {
   it('Plate Factory: only ore', () => {

@@ -39,7 +39,7 @@ export function playerStats(state: GameState): PlayerStatsRow[] {
       if (piece.type === 'mine' || piece.type === 'blank') continue;
       if (piece.claims.some(c => c.ownerId === id)) buildingsClaimed++;
     }
-    const mat = (m: Material) => p.inventory[m];
+    const mat = (m: Material): number => p.inventory[m];
     return {
       playerId: id,
       tesseracts: p.inventory.tesseract,
