@@ -217,8 +217,8 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .topbar { display: flex; align-items: center; gap: 10px; margin: 0 auto 16px; max-width: 1180px; }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand .mark { width: 36px; height: 36px; flex: none; }
-.brand .wm { font-weight: 900; font-size: 17px; letter-spacing: 0.02em; white-space: nowrap; }
-.brand .wm small { display: block; font-size: 11.5px; letter-spacing: 0.14em; color: var(--text-2); font-weight: 700; text-transform: uppercase; }
+.brand .wm { font-weight: 900; font-size: 17px; letter-spacing: 0.02em; white-space: nowrap; min-width: 0; overflow: hidden; }
+.brand .wm small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; letter-spacing: 0.14em; color: var(--text-2); font-weight: 700; text-transform: uppercase; }
 .topbar .right { margin-left: auto; display: flex; gap: 8px; align-items: center; color: var(--text-2); font-size: 13px; min-width: 0; }
 .conn { display: inline-flex; align-items: center; gap: 6px; }
 .conn.ok .ic { color: var(--ok); }
@@ -299,6 +299,15 @@ h2 { margin: 0 0 10px; font-size: 13px; letter-spacing: 0.12em; text-transform: 
 .footer .status b { color: var(--text); }
 .footer-btns { display: flex; gap: 10px; flex-wrap: wrap; flex: 1 1 260px; justify-content: flex-end; }
 .footer-btns .btn { flex: 1 1 140px; max-width: 280px; }
+/* Phones: Start / Ready / Continue game stay in reach at the bottom of the screen while the
+   seats and settings scroll under them. */
+@media (max-width: 760px) {
+  .footer, .solo-setup .row.end {
+    position: sticky; bottom: 0; z-index: 5; margin-left: -8px; margin-right: -8px;
+    padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+    background: rgba(17, 13, 10, 0.98); box-shadow: 0 -12px 18px rgba(17, 13, 10, 0.92); border-radius: 14px 14px 0 0;
+  }
+}
 .waiting { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .wait-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 12px; }
 .assign { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }

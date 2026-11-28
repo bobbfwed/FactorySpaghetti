@@ -91,9 +91,10 @@ function roomPanel(ctrl: AppController, room: Room, resuming: boolean, solo: boo
   const open = room.seats.filter(s => s.kind === 'open').length;
   if (open > 0) members.push(h('div', { class: 'row' }, h('span', { class: 'dot' }), open === 1 ? '1 seat open' : `${open} seats open`));
 
+  // A solo game has no room code anyone could use: it is not shown (it took the top of a phone screen).
   return h('section', { class: 'tray panel room-panel' },
-    h('h2', { text: 'Room code' }),
-    h('div', { class: 'codes', attrs: { 'aria-label': `Room code ${code.split('').join(' ')}` } }, code.split('').map(c => h('span', { class: 'ch', text: c }))),
+    solo ? null : h('h2', { text: 'Room code' }),
+    solo ? null : h('div', { class: 'codes', attrs: { 'aria-label': `Room code ${code.split('').join(' ')}` } }, code.split('').map(c => h('span', { class: 'ch', text: c }))),
     solo ? h('p', { class: 'hint', text: 'This game runs only on this device, against bots. Nobody else can join it.' })
       : h('div', { class: 'btns' },
         actionButton([icon('link'), 'Copy invite link'], 'btn btn-gold btn-lg', () => ctrl.copyInvite()),
