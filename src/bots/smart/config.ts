@@ -46,6 +46,8 @@ export const SMART_STYLE: SmartConfig = {
   meepleUpgrade: 1,
   // Attempt 6d (kept, weight sweep): buy teleporters more reluctantly (appetite 0.5 -> 0.2).
   teleporterAppetite: 0.2,
+  // Attempt 9c (kept, weight sweep): a Power Token is worth 1.6 in material value, not 1.2.
+  powerValue: 1.6,
   // Attempt 7b (kept, weight sweep): buy a Leverage card only when the cards left are worth well
   // over the price on average (appetite 0.35 -> 0).
   cardAppetite: 0,
