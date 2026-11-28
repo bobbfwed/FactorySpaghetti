@@ -29,6 +29,43 @@ jobs:
           node-version: 22
           cache: npm
 
+      # A push to main must raise the version in package.json (npm run release does it), so a build
+      # never goes live under the number of the one before. Skipped for a manual run, for the first
+      # push of the branch, and when the commit before the push can no longer be fetched.
+      - name: Check that the version went up
+        if: github.event_name == 'push'
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "No earlier commit for this branch; version check skipped."
+            exit 0
+          fi
+          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            if ! git fetch --no-tags --depth=1 origin "$BEFORE"; then
+              echo "::warning::The commit before this push ($BEFORE) could not be fetched; version check skipped."
+              exit 0
+            fi
+          fi
+          read_version='let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).version||"")}catch(e){console.log("")}})'
+          new=$(node -e "$read_version" < package.json)
+          old=$(git show "$BEFORE:package.json" 2>/dev/null | node -e "$read_version")
+          if [ -z "$old" ]; then
+            echo "::warning::No version in package.json at $BEFORE; version check skipped."
+            exit 0
+          fi
+          echo "Version before this push: $old. Version now: $new."
+          if ! node -e '
+            const p = (v) => (/^(\d+)\.(\d+)\.(\d+)/.exec(v) || []).slice(1).map(Number);
+            const [a, b] = [p(process.argv[1]), p(process.argv[2])];
+            if (a.length !== 3 || b.length !== 3) process.exit(1);
+            for (let i = 0; i < 3; i++) if (a[i] !== b[i]) process.exit(a[i] > b[i] ? 0 : 1);
+            process.exit(1);
+          ' "$new" "$old"; then
+            echo "::error::The version in package.json did not go up with this push, so the site was not updated. Publish with: npm run release"
+            exit 1
+          fi
+
       - name: Install dependencies
         run: npm ci
 

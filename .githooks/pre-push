@@ -1,0 +1,77 @@
+#!/bin/sh
+# Refuses a push of new commits to main on origin unless it carries its own version bump:
+#   (a) the version in package.json at the pushed commit is higher than at origin's current main, and
+#   (b) the pushed tip commit is the version commit itself (it changes "version" in package.json).
+# Publish with `npm run release`, which makes that commit and pushes. Other branches, other remotes,
+# deleting a branch and the first push of a branch are not checked. `git push --no-verify` skips it.
+# Active through `git config core.hooksPath .githooks` (set by `npm install` / `npm ci`).
+
+remote="$1"
+[ "$remote" = "origin" ] || exit 0
+
+zero=0000000000000000000000000000000000000000
+
+refuse() {
+  echo "" >&2
+  echo "This push to main has no version bump. Publish with: npm run release" >&2
+  [ -n "$1" ] && echo "($1)" >&2
+  echo "" >&2
+  exit 1
+}
+
+# The "version" in package.json at a commit, or nothing when there is none.
+version_at() {
+  if command -v node >/dev/null 2>&1; then
+    git show "$1:package.json" 2>/dev/null |
+      node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const v=JSON.parse(s).version;if(v)console.log(v)}catch(e){}})" 2>/dev/null
+  else
+    git show "$1:package.json" 2>/dev/null | tr -d '\r' |
+      sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1
+  fi
+}
+
+# Succeeds when version $1 is higher than version $2 (X.Y.Z; a "-pre" or "+build" suffix is ignored).
+version_gt() {
+  a=${1%%[-+]*}
+  b=${2%%[-+]*}
+  case "$a.$b" in
+    *[!0-9.]*) return 1 ;;
+  esac
+  a1=${a%%.*}; a=${a#*.}; a2=${a%%.*}; a3=${a#*.}
+  b1=${b%%.*}; b=${b#*.}; b2=${b%%.*}; b3=${b#*.}
+  [ "$a1" -gt "$b1" ] && return 0; [ "$a1" -lt "$b1" ] && return 1
+  [ "$a2" -gt "$b2" ] && return 0; [ "$a2" -lt "$b2" ] && return 1
+  [ "$a3" -gt "$b3" ]
+}
+
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/main" ] || continue
+  [ "$local_sha" = "$zero" ] && continue   # deleting main
+  [ "$remote_sha" = "$zero" ] && continue  # main does not exist on origin yet
+  [ "$local_sha" = "$remote_sha" ] && continue
+
+  if ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    echo "" >&2
+    echo "origin's main has commits this checkout has not seen. Run: git fetch origin  (then publish with: npm run release)" >&2
+    echo "" >&2
+    exit 1
+  fi
+  # No new commits (for example moving main back): nothing to check.
+  [ -n "$(git rev-list -n 1 "$remote_sha..$local_sha")" ] || continue
+
+  new=$(version_at "$local_sha")
+  old=$(version_at "$remote_sha")
+  if [ -z "$new" ] || [ -z "$old" ]; then
+    refuse "the version in package.json could not be read"
+  fi
+  if ! version_gt "$new" "$old"; then
+    refuse "origin has $old and this push still has $new"
+  fi
+  parent=$(version_at "$local_sha^1")
+  if [ "$parent" = "$new" ]; then
+    refuse "version $new is raised, but newer commits come after the version commit"
+  fi
+done
+
+exit $status
