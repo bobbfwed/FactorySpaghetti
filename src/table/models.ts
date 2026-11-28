@@ -1,9 +1,11 @@
 // Loads the converted print models (public/models/*.glb) into plain geometry + material parts,
 // ready to be drawn as InstancedMeshes. Each .glb holds one mesh primitive per colour, with a named
-// material (body, inlay-black, icon-green, player, ...).
+// material (body, inlay-black, icon-green-light, player, ore, ...).
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import type { Material } from '../engine/config';
+import { MATERIAL_COLOR, MATERIAL_SURFACE } from './materialColors';
 
 export interface ModelPart {
   readonly material: string;
@@ -17,6 +19,21 @@ export const MODEL_NAMES = [
   'tile-blank', 'tile-plate-factory', 'tile-sphere-factory', 'tile-tesseract-factory', 'tile-power-plant',
   'mine-1', 'mine-2', 'mine-3', 'belt', 'meeple', 'control-module', 'ore', 'plate', 'sphere', 'tesseract', 'teleporter',
 ] as const;
+
+const isMaterial = (name: string): name is Material => Object.prototype.hasOwnProperty.call(MATERIAL_COLOR, name);
+
+/**
+ * The four materials (and the material symbols on the Mines, which use the same material names)
+ * take their colour and surface from materialColors.ts, so the table always matches the 2D icons
+ * even if a .glb was baked with other values.
+ */
+export function materialLook(mat: THREE.MeshStandardMaterial, m: Material): void {
+  const s = MATERIAL_SURFACE[m];
+  mat.color.set(MATERIAL_COLOR[m]);
+  mat.roughness = s.roughness;
+  mat.metalness = 0;
+  mat.emissive.set(MATERIAL_COLOR[m]).multiplyScalar(s.emissive);
+}
 
 export async function loadModels(base: string, names: readonly string[] = MODEL_NAMES): Promise<ModelLib> {
   const loader = new GLTFLoader();
@@ -34,6 +51,7 @@ export async function loadModels(base: string, names: readonly string[] = MODEL_
       const src = mesh.material as THREE.MeshStandardMaterial;
       const mat = src.clone();
       if (mat.name === 'player') mat.color.set(0xffffff); // tinted per instance with the owner's colour
+      if (isMaterial(mat.name)) materialLook(mat, mat.name);
       parts.push({ material: src.name, geometry, mat });
     });
     return [name, parts];

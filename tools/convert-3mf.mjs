@@ -5,7 +5,8 @@
 //   node tools/convert-3mf.mjs <srcDir>  # explicit source folder
 //   node tools/convert-3mf.mjs <srcDir> --only mine-1,belt-link
 //
-// Reads tools/pieces.config.json (what to export) and tools/piece-theme.json (colours), writes
+// Reads tools/pieces.config.json (what to export) and tools/piece-theme.json (colours; the four
+// materials' colours come from src/table/materialColors.ts), writes
 // public/models/<name>.glb and public/models/manifest.json. Output is deterministic: the same
 // sources give byte-identical files.
 //
@@ -16,7 +17,7 @@
 //   * One primitive per colour part, each with a named material (body, inlay-black, player, ...).
 import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Document, NodeIO } from '@gltf-transform/core';
 import { open3mf, flattenObject, applyTransform, determinant } from './lib/threemf.mjs';
 import { dominantState } from './lib/paint.mjs';
@@ -36,6 +37,28 @@ const outDir = join(repo, 'public', 'models');
 const readJson = (p) => JSON.parse(readFileSync(p, 'utf8').replace(/^﻿/, ''));
 const config = readJson(join(here, 'pieces.config.json'));
 const theme = readJson(join(here, 'piece-theme.json'));
+// The four materials' colours live in the game's source (src/table/materialColors.ts, plain data
+// that Node 22.18+ loads directly), so the baked models and the 2D icons cannot drift apart.
+await resolveColorFrom(theme);
+
+async function resolveColorFrom(t) {
+  const from = [...new Set(Object.values(t.materials).map((m) => m.colorFrom).filter(Boolean))];
+  for (const rel of from) {
+    let mod;
+    try {
+      mod = await import(pathToFileURL(join(repo, rel)).href);
+    } catch (e) {
+      throw new Error(`cannot load ${rel} (needs Node 22.18 or newer, which runs TypeScript files): ${e.message}`);
+    }
+    for (const [name, m] of Object.entries(t.materials)) {
+      if (m.colorFrom !== rel) continue;
+      const color = mod.MATERIAL_COLOR?.[name];
+      const surface = mod.MATERIAL_SURFACE?.[name];
+      if (!color || !surface) throw new Error(`${rel} has no colour for material "${name}"`);
+      t.materials[name] = { color, roughness: surface.roughness, metalness: 0, emissive: surface.emissive, colorFrom: rel };
+    }
+  }
+}
 
 const docs = new Map();
 function loadDoc(file) {
@@ -310,6 +333,7 @@ async function convert(piece) {
       .setBaseColorFactor([...hexToLinear(m.color), 1])
       .setRoughnessFactor(m.roughness ?? 0.8)
       .setMetallicFactor(m.metalness ?? 0);
+    if (m.emissive) mat.setEmissiveFactor(hexToLinear(m.color).map((x) => Math.round(x * m.emissive * 1e6) / 1e6));
     const p = doc
       .createPrimitive()
       .setAttribute('POSITION', doc.createAccessor().setType('VEC3').setArray(prim.positions).setBuffer(buffer))

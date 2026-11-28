@@ -1,18 +1,25 @@
 // Inline SVG icons, drawn after the printed pieces (from the mock-ups). The SVG text is a
-// fixed constant of this file; colours come only from the fixed player colour table.
+// fixed constant of this file; colours come only from the fixed player colour table and the
+// fixed material colours (table/materialColors.ts).
 
+import type { Material } from '../engine/config';
 import type { SeatColor } from '../session/room';
+import { MATERIAL_COLOR, MATERIAL_EDGE } from '../table/materialColors';
 
 export const COLORS: Record<SeatColor, string> = { blue: '#2f6fd6', red: '#e0454f', orange: '#f08a24', green: '#2e9e5b' };
 export const COLOR_NAME: Record<SeatColor, string> = { blue: 'Blue', red: 'Red', orange: 'Orange', green: 'Green' };
 
+/** Fill and edge of a material icon (colours from table/materialColors.ts). */
+const mat = (m: Material): string => `fill="${MATERIAL_COLOR[m]}" stroke="${MATERIAL_EDGE[m]}" stroke-width="1.2" stroke-linejoin="round"`;
+
 const svg = (body: string, vb = '0 0 24 24'): string => `<svg viewBox="${vb}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">${body}</svg>`;
 
 const ICONS = {
-  ore: (): string => svg('<path d="M12 3.2c.6 0 1.1.3 1.4.8l8 13.7c.6 1-.1 2.3-1.3 2.3H3.9c-1.2 0-1.9-1.3-1.3-2.3l8-13.7c.3-.5.8-.8 1.4-.8z" fill="#9ee89c"/>'),
-  plate: (): string => svg('<path d="M8.2 5.5h13c.9 0 1.4.9 1 1.6l-5.5 10.6c-.2.5-.7.8-1.2.8h-13c-.9 0-1.4-.9-1-1.6L7 6.3c.2-.5.7-.8 1.2-.8z" fill="#3fbf4c"/>'),
-  sphere: (): string => svg('<circle cx="12" cy="12" r="9" fill="#a9d630"/><circle cx="12" cy="12" r="6.8" fill="none" stroke="rgba(0,0,0,.18)" stroke-width="1.2"/>'),
-  tess: (): string => svg('<path d="M12 2.5l2.3 7.2 7.2 2.3-7.2 2.3L12 21.5l-2.3-7.2L2.5 12l7.2-2.3z" fill="#5fcf6a" stroke="#1d4a29" stroke-width="1" stroke-linejoin="round"/>'),
+  // Materials: the true colour as the fill, with a thin lighter edge so the dark ones show on dark panels.
+  ore: (): string => svg(`<path d="M12 3.2c.6 0 1.1.3 1.4.8l8 13.7c.6 1-.1 2.3-1.3 2.3H3.9c-1.2 0-1.9-1.3-1.3-2.3l8-13.7c.3-.5.8-.8 1.4-.8z" ${mat('ore')}/>`),
+  plate: (): string => svg(`<path d="M8.2 5.5h13c.9 0 1.4.9 1 1.6l-5.5 10.6c-.2.5-.7.8-1.2.8h-13c-.9 0-1.4-.9-1-1.6L7 6.3c.2-.5.7-.8 1.2-.8z" ${mat('plate')}/>`),
+  sphere: (): string => svg(`<circle cx="12" cy="12" r="9" ${mat('sphere')}/><circle cx="12" cy="12" r="6.4" fill="none" stroke="${MATERIAL_EDGE.sphere}" stroke-opacity=".35" stroke-width="1"/>`),
+  tess: (): string => svg(`<path d="M12 2.5l2.3 7.2 7.2 2.3-7.2 2.3L12 21.5l-2.3-7.2L2.5 12l7.2-2.3z" ${mat('tesseract')}/>`),
   power: (): string => svg('<circle cx="12" cy="12" r="10" fill="#e1ac36"/><path d="M13.6 4.6 7.6 13h3.6l-1.6 6.4 6.6-9h-3.7l1.9-5.8z" fill="#121214"/>'),
   card: (): string => svg('<rect x="5" y="2.5" width="14" height="19" rx="2.2" fill="#121214" stroke="#e8b730" stroke-width="1.4"/><path d="M8 9c3-3 5 3 8 0M8 14c3-3 5 3 8 0" stroke="#e8b730" stroke-width="1.2" fill="none"/>'),
   meeple: (c: string): string => svg(`<g fill="${c}"><circle cx="12" cy="5.4" r="3.9"/><rect x="2.2" y="8.4" width="19.6" height="5.4" rx="2.7"/><path d="M7.2 10.5h9.6l2.7 9.6c.3 1-.4 1.9-1.4 1.9h-3.3L12 17.6 9.2 22H5.9c-1 0-1.7-.9-1.4-1.9z"/></g>`),

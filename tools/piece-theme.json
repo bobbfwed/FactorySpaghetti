@@ -1,5 +1,5 @@
 {
-  "_comment": "Colour of every material name used in public/models/*.glb. Colours are the filament colours stored in 'Factory Speghetti AMS.3mf' (Metadata/project_settings.config, filament_colour; 'filament' is the 1-based slot number). The converter warns if the file's colour for that slot no longer matches. 'player' is tinted at runtime with the owner's colour; its colour here is a neutral placeholder (the file's slot 4 colour is #71D0FF).",
+  "_comment": "Colour of every material name used in public/models/*.glb. Colours are the filament colours stored in 'Factory Speghetti AMS.3mf' (Metadata/project_settings.config, filament_colour; 'filament' is the 1-based slot number). The converter warns if the file's colour for that slot no longer matches. 'player' is tinted at runtime with the owner's colour; its colour here is a neutral placeholder (the file's slot 4 colour is #71D0FF). The four materials (ore, plate, sphere, tesseract) take colour and surface from src/table/materialColors.ts, the one source of truth the game's 2D icons also read: the print file's slot colours for them (filaments 8, 7, 6, 5) are all very light and do not darken with value as the printed pieces do. icon-green, lime-green and yellow-green keep the file's slot colours (yellow-green: the starting-player piece).",
   "materials": {
     "body": { "color": "#D6D3D3", "filament": 2, "roughness": 0.85, "metalness": 0 },
     "inlay-black": { "color": "#000000", "filament": 1, "roughness": 0.6, "metalness": 0 },
@@ -10,6 +10,10 @@
     "lime-green": { "color": "#9DFB20", "filament": 6, "roughness": 0.6, "metalness": 0 },
     "yellow-green": { "color": "#B7EC00", "filament": 5, "roughness": 0.6, "metalness": 0 },
     "bolt-yellow": { "color": "#F9FF09", "filament": 9, "roughness": 0.6, "metalness": 0 },
+    "ore": { "colorFrom": "src/table/materialColors.ts" },
+    "plate": { "colorFrom": "src/table/materialColors.ts" },
+    "sphere": { "colorFrom": "src/table/materialColors.ts" },
+    "tesseract": { "colorFrom": "src/table/materialColors.ts" },
     "player": { "color": "#B8B8B8", "roughness": 0.7, "metalness": 0 }
   }
 }

@@ -59,13 +59,41 @@
       "roughness": 0.6,
       "metalness": 0
     },
+    "ore": {
+      "color": "#92DF7E",
+      "roughness": 0.6,
+      "metalness": 0,
+      "emissive": 0,
+      "colorFrom": "src/table/materialColors.ts"
+    },
+    "plate": {
+      "color": "#4CA945",
+      "roughness": 0.55,
+      "metalness": 0,
+      "emissive": 0,
+      "colorFrom": "src/table/materialColors.ts"
+    },
+    "sphere": {
+      "color": "#237228",
+      "roughness": 0.45,
+      "metalness": 0,
+      "emissive": 0.08,
+      "colorFrom": "src/table/materialColors.ts"
+    },
+    "tesseract": {
+      "color": "#114218",
+      "roughness": 0.4,
+      "metalness": 0,
+      "emissive": 0.18,
+      "colorFrom": "src/table/materialColors.ts"
+    },
     "player": {
       "color": "#B8B8B8",
       "roughness": 0.7,
       "metalness": 0
     }
   },
-  "totalBytes": 1247184,
+  "totalBytes": 1247292,
   "models": [
     {
       "name": "tile-blank",
@@ -372,7 +400,7 @@
           "vertices": 62
         },
         {
-          "material": "icon-green-light",
+          "material": "ore",
           "triangles": 59,
           "vertices": 59
         }
@@ -399,7 +427,7 @@
           78.262
         ]
       },
-      "bytes": 191748,
+      "bytes": 191740,
       "notes": [
         "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex). Its body is painted filament 10 (grey #A0A0A0) in the print file; the designer asked for it to be the same white as the other board pieces, so filament 10 maps to body."
       ]
@@ -434,7 +462,7 @@
           "vertices": 400
         },
         {
-          "material": "icon-green",
+          "material": "plate",
           "triangles": 134,
           "vertices": 158
         }
@@ -461,7 +489,7 @@
           78.262
         ]
       },
-      "bytes": 185032,
+      "bytes": 185028,
       "notes": [
         "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
       ]
@@ -496,7 +524,7 @@
           "vertices": 602
         },
         {
-          "material": "lime-green",
+          "material": "sphere",
           "triangles": 254,
           "vertices": 278
         }
@@ -523,7 +551,7 @@
           78.262
         ]
       },
-      "bytes": 189488,
+      "bytes": 189528,
       "notes": [
         "Hex centres at x = -34.4 (rayed hex) and x = +34.4 (second hex)."
       ]
@@ -635,7 +663,7 @@
       "colourParts": false,
       "parts": [
         {
-          "material": "icon-green-light",
+          "material": "ore",
           "triangles": 578,
           "vertices": 489
         }
@@ -662,7 +690,7 @@
           10.5
         ]
       },
-      "bytes": 16180
+      "bytes": 16172
     },
     {
       "name": "plate",
@@ -680,7 +708,7 @@
       "colourParts": false,
       "parts": [
         {
-          "material": "icon-green",
+          "material": "plate",
           "triangles": 480,
           "vertices": 394
         }
@@ -707,7 +735,7 @@
           12
         ]
       },
-      "bytes": 13308
+      "bytes": 13304
     },
     {
       "name": "sphere",
@@ -725,7 +753,7 @@
       "colourParts": false,
       "parts": [
         {
-          "material": "lime-green",
+          "material": "sphere",
           "triangles": 800,
           "vertices": 455
         }
@@ -752,7 +780,7 @@
           13.988
         ]
       },
-      "bytes": 16732
+      "bytes": 16776
     },
     {
       "name": "tesseract",
@@ -770,7 +798,7 @@
       "colourParts": false,
       "parts": [
         {
-          "material": "yellow-green",
+          "material": "tesseract",
           "triangles": 220,
           "vertices": 352
         }
@@ -797,7 +825,7 @@
           9.546
         ]
       },
-      "bytes": 10780
+      "bytes": 10828
     },
     {
       "name": "power-token",
