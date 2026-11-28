@@ -210,6 +210,36 @@ export function longRoute(
   state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget = 6000,
   cont: { piece: BoardPiece; pos: number; length: number } | null = null,
 ): BeltPlacement[] | null {
+  // The search reads only the pieces (with their claims and teleporters), the belts and the
+  // arguments, so an identical position gives an identical answer: remember recent answers. A
+  // failed search costs the whole budget and is otherwise repeated at every step of a turn.
+  const key = longRouteKey(state, me, minBelts, maxBelts, budget, cont);
+  const hit = longRouteMemo.get(key);
+  if (hit !== undefined) return hit === null ? null : [...hit];
+  const found = longRouteSearch(state, me, minBelts, maxBelts, budget, cont);
+  if (longRouteMemo.size >= 256) longRouteMemo.clear();
+  longRouteMemo.set(key, found === null ? null : [...found]);
+  return found;
+}
+
+const longRouteMemo = new Map<string, BeltPlacement[] | null>();
+
+function longRouteKey(
+  state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget: number,
+  cont: { piece: BoardPiece; pos: number; length: number } | null,
+): string {
+  const parts: string[] = [`${me}|${minBelts}|${maxBelts}|${budget}|${cont ? `${cont.piece.id}:${cont.pos}:${cont.length}` : '-'}`];
+  for (const p of state.board) {
+    parts.push(`${p.id}@${p.coord.q},${p.coord.r},${p.rotation ?? 0}:${p.claims.map(c => c.ownerId).join('')}:${JSON.stringify(p.input?.teleporters ?? [])}${JSON.stringify(p.output?.teleporters ?? [])}`);
+  }
+  for (const b of state.belts) parts.push(`${b.ownerId}${b.pieceId}:${b.fromPoint}-${b.toPoint}`);
+  return parts.join(';');
+}
+
+function longRouteSearch(
+  state: GameState, me: PlayerId, minBelts: number, maxBelts: number, budget: number,
+  cont: { piece: BoardPiece; pos: number; length: number } | null,
+): BeltPlacement[] | null {
   const c = ctxOf(state, me);
   const destKeys = new Set<string>();
   for (const p of state.board) {

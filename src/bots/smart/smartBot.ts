@@ -61,6 +61,8 @@ interface Ctx {
   readonly lead: number;
   /** The board is about to run out: buy nothing that only pays back over later rounds. */
   readonly thrifty: boolean;
+  /** Worth of each building with my modules as they stand (filled on first use; speed only). */
+  readonly valueCache: Map<string, number>;
 }
 
 const TESS_WIN_WORTH = 23;
@@ -114,7 +116,7 @@ function makeCtx(state: GameState, me: PlayerId, style: Style): Ctx {
   let best = 0;
   for (const o of state.players) if (o.id !== me) best = Math.max(best, resourcePoints(o));
   const thrifty = style.endgameThrift && roundsLeft <= 1.5 && state.pendingMineIds.length === 0;
-  return { state, me, style, p, pv, need, horizon, fw, ownsTess, reserve, lead: mePts - best, thrifty };
+  return { state, me, style, p, pv, need, horizon, fw, ownsTess, reserve, lead: mePts - best, thrifty, valueCache: new Map() };
 }
 
 // ── Features (with the switches that turn one off, to measure what it is worth) ──
@@ -497,12 +499,18 @@ function claimSetWorth(ctx: Ctx, changes: Map<string, number[]>): number {
   let tessFactories = 0;
   for (const b of state.board) {
     if (!isBuilding(b)) continue;
-    const mods = changes.get(b.id) ?? myModules(b, me);
+    const changed = changes.get(b.id);
+    const mods = changed ?? myModules(b, me);
     if (mods.length === 0) continue;
     distinct++;
     if (b.type === 'tesseractFact') tessFactories++;
     for (const m of mods) myMax = Math.max(myMax, m);
-    v += valueOf(ctx, state, b, mods) * ctx.horizon * 0.6;
+    let bv = changed ? undefined : ctx.valueCache.get(b.id);
+    if (bv === undefined) {
+      bv = valueOf(ctx, state, b, mods);
+      if (!changed) ctx.valueCache.set(b.id, bv);
+    }
+    v += bv * ctx.horizon * 0.6;
   }
   // A Tesseract Factory is the gateway to real Tesseracts: the first one is worth a lot.
   if (tessFactories > 0 && !ctx.style.hoard) v += 14;
@@ -516,6 +524,8 @@ function claimSetWorth(ctx: Ctx, changes: Map<string, number[]>): number {
     const locked = leads && myMax >= TOP_MODULE;
     const share = locked ? 1 : (leads ? 0.6 : 0) + 0.4 * Math.max(0, Math.min(1, (myMax - 3) / (TOP_MODULE - 3)));
     v += TESS_WIN_WORTH * w.investor * share;
+    // Reaching 18 while leading ends the race for good (a tie keeps it with its holder).
+    if (locked) v += TESS_WIN_WORTH * w.investor * ctx.style.lockBonus;
   }
   // Factory Empire: most distinct buildings claimed, at least 6 (a tie keeps it with its holder).
   const otherDistinct = maxOtherDistinct(state, me);
@@ -937,7 +947,9 @@ function weaverStep(ctx: Ctx, budget: number): Action | null {
   // Lay the whole chain in one turn, source end first; each step continues the chain begun
   // this turn (belts placed this turn are its first part).
   const cont = thisTurnChainEnd(state, me);
-  const route = longRoute(state, me, target, target + 2, 6000, cont);
+  // A new chain needs at least `target` belts: without them the search cannot succeed (speed).
+  if (!cont && budget < target) return null;
+  const route = longRoute(state, me, target, target + 2, ctx.style.weaveBudget, cont);
   if (!route || route.length === 0) return null;
   if (!cont && route.length > budget) return null;
   if (ctx.p.beltsRemaining <= 0 || (!cont && ctx.p.beltsRemaining < route.length)) {

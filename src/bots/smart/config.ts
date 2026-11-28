@@ -23,6 +23,10 @@ export interface SmartConfig extends Style {
   readonly endgamePoints: boolean;
   /** One Tesseract from the win: value the power and inputs of the last run much more. */
   readonly closer: boolean;
+  /** Extra worth (× the Investor's worth) of locking The Investor at module 18. */
+  readonly lockBonus: number;
+  /** Most search steps for one Belt Weaver route (a node budget, never the clock: speed on phones). */
+  readonly weaveBudget: number;
   /** Measurement only: turn one feature off to see what it is worth (never set in play). */
   readonly ablate?: { readonly dice?: boolean; readonly supply?: boolean; readonly power?: boolean };
 }
@@ -46,4 +50,6 @@ export const SMART_STYLE: SmartConfig = {
   placeDeny: 0,
   endgamePoints: false,
   closer: false,
+  lockBonus: 0,
+  weaveBudget: 6000,
 };
