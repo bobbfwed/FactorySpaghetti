@@ -13,9 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "models": "node tools/convert-3mf.mjs",
-    "sim": "vite-node src/sim/cli.ts --",
-    "release": "node tools/release.mjs",
-    "prepare": "node tools/release.mjs --install-hooks"
+    "sim": "vite-node src/sim/cli.ts --"
   },
   "devDependencies": {
     "@gltf-transform/core": "^4.5.1",

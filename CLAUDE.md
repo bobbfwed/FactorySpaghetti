@@ -118,9 +118,58 @@ The printed game is the visual reference. The designer's files are outside the r
 - Interface text uses the rulebook's words (Control Module, Power Token, Leverage card), never internal names such as `placePiece`.
 - Design for a phone first: every touch target at least 44 px, no hover-only information.
 - **Always commit after each round of code changes.** When a piece of work is finished and its checks pass, commit it before starting the next; do not leave finished work uncommitted in the working tree.
-- **Version number:** the game's version is `version` in `package.json` (the start menu shows it, without the build's commit hash). It goes up by one patch number with **every** push to `main`, in its own commit, made by `npm run release` (it raises the number in `package.json`, `package-lock.json` and `README.md`, commits them as `Version X.Y.Z`, then pushes; `-- --minor` for a minor bump, `-- --dry-run` to see the plan). Never bump it by hand in an ordinary commit, and never push `main` with a plain `git push`: the pre-push hook in `.githooks/` (installed by `npm install`) and the deploy workflow both refuse a push whose version did not go up. The owner usually pushes, so before saying whether something has been pushed, run `git fetch origin` and compare `main` with `origin/main` instead of assuming.
+- **Version number:** see the section "Version number" below, and "Release tags" after it. The owner pushes by hand, so before saying whether something has been pushed, run `git fetch origin` and compare `main` with `origin/main` instead of assuming.
 - **Rules version:** the rules version is `RULES_VERSION` in `src/engine/config.ts` (today 0.70; the printed rulebook is 0.61). It is shown on the start menu and in the guide. Treat a rule the owner describes as a clarification of the current rules version unless the owner says it is a new rule, and raise `RULES_VERSION` only then (updating `RULES.md` line 1, the "Rule versions" section of `RULES_CHANGES.md` and `README.md` in the same commit). The app version in `package.json` tracks the digital game and follows its own bullet.
 - **Guide change log:** the guide's "What changed" topic is a change log of the rules by rules version (newest first; the oldest section compares with the printed rulebook). It lists only differences in how the game is played; changes of the digital version and corrections that make the digital game follow the rules do not go there. When a rule changes, update the section of the current rules version in the same commit, or add a new section when the owner raises the rules version.
 - **Old saves:** `SAVES_BROKEN_THROUGH` in `src/session/save.ts` is the newest app version whose saves no longer load (today 0.1.0); the start menu states it. Raise it in the same commit as any change that makes older saves unusable; refused saves are not listed, and no other explanation is shown.
-- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site, so commit locally after each round of changes and publish only when the round is finished and checked, with `npm run release` (or the VS Code task "Release: bump version and push"), not a plain `git push`.
+- Branches: `main` is the online version and is what GitHub Pages serves. `vite-prototype` is the frozen 2D prototype. Work directly on `main` (one developer, no pull requests). Every push to `main` redeploys the live site. Commit locally after each round of changes; the owner pushes, with a plain push, when a round is finished and checked.
 - Git: there is no GitHub CLI on this machine; use plain `git` over HTTPS.
+
+## Version number
+
+The game's version is `version` in `package.json` (the start menu shows 0.1.4 as "0.1.04"). The same
+number must stand in `package-lock.json` (its two top `version` fields) and in the two places
+`README.md` names the current version; change all of them together. It goes up by one patch number
+at most once per push to `main`, and only when the product's code changed since the last push.
+"Product code" means what ships to players: `src/` (without the `__tests__` folders and without
+`src/sim/`), `public/`, `index.html`, `net-check.html` and `vite.config.ts`, plus a change to the
+`dependencies` in `package.json`. Docs, `RULES.md`, `RULES_CHANGES.md`, tests, `tools/`, `dev/`,
+`.github/` and `CLAUDE.md` are not product code.
+
+Do not try to remember whether a push has happened. You cannot know that from the conversation, and
+the owner pushes by hand. Ask git instead, before every commit:
+
+1. Read the pushed number: `git show origin/main:package.json` (the `version` line).
+2. Read the local number in the working copy.
+3. Check whether product code differs from the pushed copy, counting the changes you are about to
+   commit: `git diff --stat origin/main -- src public index.html net-check.html vite.config.ts ":(exclude)src/**/__tests__/**" ":(exclude)src/sim/**"`
+4. Decide:
+   - Product code differs and the local number equals the pushed number: add one, in this commit.
+   - The local number is already the pushed number plus one: leave it alone, however many commits follow.
+   - Product code does not differ: do not bump. The local number must equal the pushed number.
+   - The local number is more than one above the pushed number: that is a mistake. Set it back to the
+     pushed number plus one.
+
+Rules that follow from this:
+- Never bump twice between two pushes. Never bump because a new session, task or day started.
+- Everything done between two pushes belongs to one release: the pushed number plus one. Comments,
+  plans and commit messages name that number, not a number per commit.
+- Every commit message ends with that number in brackets, written as the start menu shows it, for
+  example `(0.1.04)`. This includes commits that change no product code and commits made before the
+  one that bumps the number.
+- If a push carries no product code, the number does not go up, and later commits keep the same number.
+- Never run `git push` or `git pull` yourself. The owner pushes, with a plain push.
+- When work is handed to helper agents or done on other branches or worktrees, the helpers do not
+  touch the version. The session that commits or merges onto `main` applies the steps above there.
+- One exception, already applied: the pushes of 24 and 27 November 2026 went out without a bump and
+  showed 0.1.01. They count as 0.1.02 and 0.1.03, so the release after the pushed 0.1.1 is 0.1.4.
+  Once 0.1.4 is pushed, the steps above apply with no exception.
+
+## Release tags
+
+Each pushed release gets a git tag so any earlier version can be found later.
+- Before the first commit of a piece of work, read the pushed version (step 1 above). If
+  `git tag -l v<version as the start menu shows it>` (for example `v0.1.04`) prints nothing, tag the
+  pushed commit: `git tag -a v0.1.04 origin/main -m "Release 0.1.04"`.
+- Never move or delete a tag. A push with no product code keeps the existing tag where it is.
+- Tags reach the remote only when the owner pushes them (`git push --follow-tags`).

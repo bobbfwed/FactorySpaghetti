@@ -110,14 +110,11 @@ npm run preview    # serve dist/ at http://localhost:4173 (service worker and in
 npm run typecheck
 npm run lint
 npm run sim -- --players 2,3,4 --seeds 10 --jobs 4   # bot tournament; options at the top of src/sim/cli.ts
-npm run release    # publish: raise the version, commit "Version X.Y.Z", push main (add -- --dry-run to see the plan first)
 ```
-
-**Publishing.** Every push to `main` goes live, and every push carries its own version number. Publish with `npm run release` (in VS Code: Terminal > Run Task > "Release: bump version and push"). It checks that everything is committed and nothing needs pulling, raises the patch number in `package.json`, `package-lock.json` and this README, commits that as `Version X.Y.Z`, and pushes. A plain `git push` of `main` is refused by the pre-push hook in `.githooks/` (switched on by `npm install`), and the deploy workflow does not publish a push whose version did not go up.
 
 ## Branches
 
-- `main` — the online version. GitHub Pages serves the game from here at https://bobbfwed.github.io/FactorySpaghetti/. Publish it with `npm run release`.
+- `main` — the online version. GitHub Pages serves the game from here at https://bobbfwed.github.io/FactorySpaghetti/.
 - `vite-prototype` — the frozen 2D prototype with LAN play.
 
 To try two players on one computer, open the game in two tabs with `?t=local` added to the address, host in one and join with the code in the other.
