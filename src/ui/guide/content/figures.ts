@@ -9,6 +9,7 @@ import {
 } from '../../../engine/config';
 import { hexNeighbours, mineSecondaryCoord } from '../../../engine/rules/pieces';
 import type { FigureBlock, LineupItem, ScenePiece, SceneSpec } from '../figures/types';
+import { recipesInOrder } from '../../../play/recipes';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, MINE_RESOURCE_REWARD, MINE_UPGRADE_REWARD, amount, count, exchangeDown } from './facts';
 
 const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
@@ -192,13 +193,15 @@ const FACTORY_MODEL = { plateFact: 'tile-plate-factory', sphereFact: 'tile-spher
 export function recipeFigure(type: keyof typeof FACTORY_MODEL): FigureBlock {
   const r = FACTORY_RECIPES[type]!;
   const product = r.product as Exclude<Material, 'ore'>;
-  const sets = r.inputs.map(s => s.map(m => MATERIAL_NAME[m]).join(' + '));
+  // Lowest total value first (play/recipes.ts), as everywhere recipes are listed.
+  const inputs = recipesInOrder(type);
+  const sets = inputs.map(s => s.map(m => MATERIAL_NAME[m]).join(' + '));
   return {
     k: 'figure',
     alt: `${BUILDING_NAME[type]}: ${sets.join(', or ')}, makes 1 ${MATERIAL_NAME[product]}.`,
     show: {
       kind: 'recipe', factory: FACTORY_MODEL[type], name: BUILDING_NAME[type],
-      note: `${count(FACTORY_POWER_COST[product], 'Power Token')} to run`, inputs: r.inputs, product,
+      note: `${count(FACTORY_POWER_COST[product], 'Power Token')} to run`, inputs, product,
     },
   };
 }

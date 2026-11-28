@@ -7,6 +7,7 @@ import {
   POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET, TELEPORTER_COUNT, cardCost, teleporterCost,
 } from '../../../engine/config';
 import type { Topic } from '../types';
+import { recipesInOrder } from '../../../play/recipes';
 import {
   BUILDING_NAME, FACTORY_TYPES, MATERIALS, MATERIAL_NAME, MINE_NUMBERS, amount, cardPriceWords, count, exchangeDown,
   exchangeWords, listWords, mineExits, minePriceWords, piecePoints, pointRanges, recipeWords, upgradePointWords,
@@ -121,7 +122,7 @@ export const factories: Topic = {
       k: 'table', head: ['Factory', 'Takes any one of', 'Makes', 'Power'],
       rows: FACTORY_TYPES.map(t => {
         const r = FACTORY_RECIPES[t]!;
-        return [BUILDING_NAME[t], r.inputs.map(recipeWords).join(' · '), `1 ${MATERIAL_NAME[r.product]}`, String(FACTORY_POWER_COST[r.product as Exclude<Material, 'ore'>])];
+        return [BUILDING_NAME[t], recipesInOrder(t).map(recipeWords).join(' · '), `1 ${MATERIAL_NAME[r.product]}`, String(FACTORY_POWER_COST[r.product as Exclude<Material, 'ore'>])];
       }),
     },
     recipeFigure('plateFact'),

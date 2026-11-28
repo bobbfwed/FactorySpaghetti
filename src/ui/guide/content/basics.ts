@@ -5,6 +5,7 @@ import {
   POWER_TOKEN_CAP, RULES_VERSION, STACK_COMPOSITION, STARTING_POWER_TOKENS, TELEPORTER_COUNT, TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import type { Topic } from '../types';
+import { recipesInOrder } from '../../../play/recipes';
 import {
   BUILDING_NAME, MATERIALS, MATERIAL_NAME, MINE_RESOURCE_REWARD, PLAYER_COUNTS, STACK_PIECE_TYPES, amount, count, listWords, recipeWords,
   stackSize, startingPiecesPerPlayer, startingPiecesWords, totalPieces,
@@ -17,7 +18,7 @@ import { FIRST_CLAIMS_FIGURE } from './plays';
 
 const makes = (type: 'plateFact' | 'sphereFact' | 'tesseractFact'): string => {
   const r = FACTORY_RECIPES[type]!;
-  const ins = r.inputs.map(recipeWords);
+  const ins = recipesInOrder(type).map(recipeWords);
   return `Turns ${ins.length === 1 ? ins[0] : `${ins.slice(0, -1).join(', ')} or ${ins[ins.length - 1]}`} into 1 ${MATERIAL_NAME[r.product]}.`;
 };
 

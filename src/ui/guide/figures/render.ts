@@ -92,10 +92,15 @@ function renderPlay(b: FigureBlock, ex: PlayExample, inline: Inline): VNode {
     v('ol', { class: 'g-psteps' }, ex.steps.map((s, i) => v('li', { class: 'g-pstep', 'data-step': String(i) },
       v('span', { class: 'g-pnum', 'aria-hidden': 'true' }, String(i + 1)),
       v('span', { class: 'g-ptext' }, inline(s.caption),
-        (s.callouts ?? []).length ? v('span', { class: 'g-pmarks' }, (s.callouts ?? []).map(c => v('span', { class: 'g-pmark' },
+        legendOf(s.callouts, i).length ? v('span', { class: 'g-pmarks' }, legendOf(s.callouts, i).map(c => v('span', { class: 'g-pmark' },
           v('span', { class: `g-mark${markTone(c.mark)}`, 'aria-hidden': 'true' }, c.mark), ' ', inline(c.text)))) : null)))),
     b.caption ? v('figcaption', { class: 'g-figcap' }, inline(b.caption)) : null,
     v('div', { class: 'g-sr', 'aria-live': 'polite' }));
+}
+
+/** A step's markers that need a word under its caption: one numbered as the step itself needs none. */
+function legendOf(callouts: readonly Callout[] | undefined, i: number): readonly Callout[] {
+  return (callouts ?? []).filter(c => c.mark !== String(i + 1));
 }
 
 /** ✓ and ✗ markers are drawn green and red. */

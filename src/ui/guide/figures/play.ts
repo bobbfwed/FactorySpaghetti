@@ -242,6 +242,11 @@ export function playLayout(ex: PlayExample, tl: Timeline): PlayLayout {
   const pieces = new Map<string, GameState['board'][number]>();
   for (const s of states) for (const p of s.board) if (!ids || ids.has(p.id)) pieces.set(`${p.id}@${p.coord.q},${p.coord.r}`, p);
   let b = boardBounds([...pieces.values()]);
+  // Spaces that glow at some rest are part of the picture too.
+  if (!ids) {
+    const cells = [...tl.startGlow, ...tl.steps.flatMap(s => s.glow)].filter((t): t is Extract<Target, { kind: 'cell' }> => t.kind === 'cell');
+    if (cells.length) b = unionBounds(b, boardBounds(cells.map(c => ({ type: 'blank' as const, coord: { q: c.q, r: c.r } }))));
+  }
   const pad = ex.frame?.pad ?? 0;
   if (pad) b = { minX: b.minX - pad, maxX: b.maxX + pad, minZ: b.minZ - pad, maxZ: b.maxZ + pad };
   const board = b;

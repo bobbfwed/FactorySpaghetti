@@ -242,7 +242,9 @@ export class Player {
   private run(fromReader: boolean): void {
     void this.prepare().then(ok => {
       if (!ok || this.disposed) return;
-      if (!fromReader && !this.wantsAuto()) return;
+      // Starting by itself: only while no other example plays (that one may have started meanwhile).
+      const other = this.o.coordinator.playing;
+      if (!fromReader && (!this.wantsAuto() || (other && other !== this))) return;
       this.o.coordinator.claim(this);
       this.o.stage.running(true);
       this.playing = true;

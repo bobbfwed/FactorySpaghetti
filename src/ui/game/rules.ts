@@ -2,6 +2,7 @@
 // comes from the engine's config, so a tuned value shows up here without editing this file.
 
 import type { Material, PieceType } from '../../engine/config';
+import { recipesInOrder } from '../../play/recipes';
 import {
   BELT_COST, BONUS_THRESHOLDS, FACTORY_POWER_COST, FACTORY_RECIPES, INVENTORY_CAP, MATERIAL_VALUES, MAX_CARDS_PLAYED_PER_TURN,
   MAX_CLAIMS_PER_BUILDING, MINE_COSTS, POWER_PLANT_BASE_YIELD, POWER_PLANT_MATERIAL_YIELD, POWER_TOKEN_CAP, PRODUCTION_INCREASE_BUDGET,
@@ -90,7 +91,7 @@ export function rulesSheet(ctx: Ctx): HTMLElement {
       const power = FACTORY_POWER_COST[product];
       return h('div', { class: 'tg-recipe' },
         h('b', { text: BUILDING_NAME[type] }),
-        h('div', { class: 'ins' }, r.inputs.map((set, i) => h('span', { class: 'set' }, i > 0 ? h('span', { class: 'or', text: 'or' }) : null, mats(set)))),
+        h('div', { class: 'ins' }, recipesInOrder(type).map((set, i) => h('span', { class: 'set' }, i > 0 ? h('span', { class: 'or', text: 'or' }) : null, mats(set)))),
         h('div', { class: 'out' }, icon('power', undefined, 'ic small'), h('span', { text: `${power} → 1 ` }), icon(MATERIAL_ICON[product], undefined, 'ic small'),
           h('span', { class: 'sr', text: MATERIAL_NAME[product] })));
     }),

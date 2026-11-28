@@ -18,37 +18,37 @@ export const FIRST_CLAIMS_PLAY: PlayExample = {
     {
       caption: '**Green**, the starting player, claims a Plate Factory with Control Module 3.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-plateFact-1' } }],
-      callouts: [{ mark: '1', at: { piece: 's0-plateFact-1', centre: true, dz: 20 }, text: 'Green\'s Plate Factory' }],
+      callouts: [{ mark: '1', at: { piece: 's0-plateFact-1', centre: true, dx: 20, dz: 14 }, text: 'Green\'s Plate Factory' }],
       glow: 'legal',
     },
     {
       caption: '**Blue**, next in turn order, claims a Plate Factory with Control Module 3.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-plateFact-0' } }],
-      callouts: [{ mark: '2', at: { piece: 's0-plateFact-0', centre: true, dz: 20 }, text: 'Blue\'s Plate Factory' }],
+      callouts: [{ mark: '2', at: { piece: 's0-plateFact-0', centre: true, dx: 20, dz: 14 }, text: 'Blue\'s Plate Factory' }],
       glow: 'legal',
     },
     {
       caption: '**Red** takes the last Plate Factory with Control Module 3.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-plateFact-4' } }],
-      callouts: [{ mark: '3', at: { piece: 's0-plateFact-4', centre: true, dz: 20 }, text: 'Red\'s Plate Factory' }],
+      callouts: [{ mark: '3', at: { piece: 's0-plateFact-4', centre: true, dx: 20, dz: 14 }, text: 'Red\'s Plate Factory' }],
       glow: 'legal',
     },
     {
       caption: 'Now the reverse order: **Red**, who picked last, claims a Power Plant first, with Control Module 2.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-powerPlant-11' } }],
-      callouts: [{ mark: '4', at: { piece: 's0-powerPlant-11', centre: true, dz: 20 }, text: 'Red\'s Power Plant' }],
+      callouts: [{ mark: '4', at: { piece: 's0-powerPlant-11', centre: true, dx: 20, dz: 14 }, text: 'Red\'s Power Plant' }],
       glow: 'legal',
     },
     {
       caption: '**Blue** claims a Power Plant with Control Module 2.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-powerPlant-12' } }],
-      callouts: [{ mark: '5', at: { piece: 's0-powerPlant-12', centre: true, dz: 20 }, text: 'Blue\'s Power Plant' }],
+      callouts: [{ mark: '5', at: { piece: 's0-powerPlant-12', centre: true, dx: 20, dz: 14 }, text: 'Blue\'s Power Plant' }],
       glow: 'legal',
     },
     {
-      caption: '**Green**, who picked the first Plate Factory, gets the last Power Plant. The first turn can begin.',
+      caption: '**Green**, who picked the first Plate Factory, gets the last Power Plant, with Control Module 2. The first turn can begin.',
       moves: [{ act: { type: 'SETUP_CLAIM', pieceId: 's0-powerPlant-13' } }],
-      callouts: [{ mark: '6', at: { piece: 's0-powerPlant-13', centre: true, dz: 20 }, text: 'Green\'s Power Plant' }],
+      callouts: [{ mark: '6', at: { piece: 's0-powerPlant-13', centre: true, dx: 20, dz: 14 }, text: 'Green\'s Power Plant' }],
     },
   ],
 };
@@ -70,6 +70,7 @@ export const PLACE_PLAY: PlayExample = {
   colors: ['blue', 'red', 'green'],
   aspect: 4 / 3,
   pile: true,
+  keepMarks: true,
   steps: [
     {
       caption: '**Green**\'s turn: the top piece of stack 1 is turned over. It is a Sphere Factory. Every free space that touches the board glows: it may go on any of them.',
@@ -77,8 +78,9 @@ export const PLACE_PLAY: PlayExample = {
       glow: 'legal',
     },
     {
-      caption: 'Green chooses a space next to Green\'s Plate Factory, turns the piece the way Green wants (any of the six ways), and places it.',
-      moves: [{ act: { type: 'PLACE_PIECE', stackIndex: 0, coord: { q: 1, r: 2 }, rotation: 4 } }],
+      caption: 'Green picks one of the glowing spaces, turns the piece the way Green wants (any of the six ways), and places it.',
+      moves: [{ act: { type: 'PLACE_PIECE', stackIndex: 0, coord: { q: -1, r: 3 }, rotation: 4 } }],
+      callouts: [{ mark: '2', at: { piece: 's0-sphereFact-8', centre: true }, text: 'Green\'s new Sphere Factory' }],
     },
     {
       caption: 'After Green\'s turn it is **Blue**\'s: the next piece, a Plate Factory, is turned over, and every free space touching the board, the new piece included, glows.',
@@ -88,6 +90,7 @@ export const PLACE_PLAY: PlayExample = {
     {
       caption: 'Blue places it somewhere else: any free space that touches the board will do.',
       moves: [{ act: { type: 'PLACE_PIECE', stackIndex: 0, coord: { q: -2, r: 0 }, rotation: 0 } }],
+      callouts: [{ mark: '4', at: { piece: 's0-plateFact-6', centre: true }, text: 'Blue\'s new Plate Factory' }],
     },
   ],
 };
@@ -131,7 +134,7 @@ export const ROLL_PLAY: PlayExample = {
     },
     {
       caption: `Blue's Plate Factory has a 7 too. Blue runs it: ${PLATE_COST} Power Token, the Ore is used up and a Plate comes out. Blue's Power Plant (5) and Red's Sphere Factory (9) do nothing.`,
-      moves: [{ act: { type: 'OPERATE_BUILDING', pieceId: 'pf' } }],
+      moves: [{ act: { type: 'OPERATE_BUILDING', pieceId: 'pf', ownerId: 0 } }],
     },
     {
       caption: 'On Red\'s turn Red rolls 4 and 5: **9**. Only Red\'s Sphere Factory has a 9.',
@@ -140,7 +143,7 @@ export const ROLL_PLAY: PlayExample = {
     },
     {
       caption: `Red runs it: ${SPHERE_COST} Power Tokens, the Ore and the Plate are used up, and a Sphere comes out.`,
-      moves: [{ act: { type: 'OPERATE_BUILDING', pieceId: 'sf' } }],
+      moves: [{ act: { type: 'OPERATE_BUILDING', pieceId: 'sf', ownerId: 1 } }],
     },
   ],
 };
