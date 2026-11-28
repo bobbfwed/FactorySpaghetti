@@ -156,13 +156,14 @@ describe('a save whose buffers or teleporters do not add up is refused', () => {
     if (blank) refused(consistent({ ...game, board: game.board.map(p => (p.id === blank.id ? { ...p, input: { slots: [null], teleporters: [me] } } : p)) }));
   });
 
-  it('a teleporter of a player who holds no claim on the building; one of a co-owner is fine', () => {
+  it('a teleporter of a player who holds no claim on the building (and a building shared by two players is refused anyway, #57)', () => {
     refused(withSf([other]));
+    accepted(withSf([me]));
     const shared = consistent({
       ...withSf([me, other]),
       board: withSf([me, other]).board.map(p => (p.id === sfId ? { ...p, claims: [...p.claims, { ownerId: other, controlModule: 9 }] } : p)),
     });
-    accepted(shared);
+    try { validateSave(toSave(room(shared), META)); expect.unreachable(); } catch (e) { expect((e as SaveError).kind).toBe('shared-building'); }
   });
 
   it('slot counts that do not match the piece type (a Plate Factory with four inputs)', () => {

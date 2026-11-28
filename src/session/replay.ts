@@ -11,7 +11,7 @@ import type { Room, SeatColor } from './room';
 import { SEAT_COLORS, activeSeat, cleanName, NAME_MAX } from './room';
 import type { JournalData, ReplayStart } from './journal';
 import { MAX_JOURNAL_MOVES, isActionLike, parseStart, startSeq, startState } from './journal';
-import { rulesFingerprint } from './save';
+import { rulesFingerprint, sharedBuildingIn } from './save';
 import { describeAction } from './describe';
 import { roundFileTag, shownRound } from './rounds';
 import { diceRngFromSeed, rollDice } from './dice';
@@ -44,7 +44,7 @@ export interface ReplayFile {
 /** Largest replay or report text accepted (pasted or from a file). */
 export const MAX_REPLAY_BYTES = 4 * 1024 * 1024;
 
-export type ReplayErrorKind = 'empty' | 'too-large' | 'not-replay' | 'unsupported-version' | 'damaged';
+export type ReplayErrorKind = 'empty' | 'too-large' | 'not-replay' | 'unsupported-version' | 'damaged' | 'shared-building';
 
 export class ReplayError extends Error {
   constructor(public readonly kind: ReplayErrorKind, message: string) {
@@ -59,6 +59,8 @@ const REPLAY_ERROR_TEXT: Record<ReplayErrorKind, string> = {
   'not-replay': 'This is not a Factory Spaghetti replay, report or save file.',
   'unsupported-version': 'This file was made by a newer version of the game. Reload the page to update, then try again.',
   damaged: 'This replay is damaged and cannot be opened.',
+  // A game from before RULES_CHANGES.md #46 could hold one; one owner per building since #57.
+  'shared-building': 'This game has a building shared by two players. The rules no longer allow that, so it cannot be opened.',
 };
 
 export function replayFail(kind: ReplayErrorKind, detail?: string): never {
@@ -123,6 +125,7 @@ export function validateReplay(x: unknown): ReplayFile {
   check(typeof x.app === 'string' && x.app.length <= 100, 'version');
   check(typeof x.savedAt === 'number' && Number.isFinite(x.savedAt), 'date');
   check(typeof x.code === 'string' && x.code.length <= 16, 'room code');
+  if (isObj(x.start) && sharedBuildingIn(x.start.state)) replayFail('shared-building'); // #57
   const start = parseStart(x.start);
   check(start !== null, 'start');
   const pc = 'seed' in start ? start.playerCount : start.state.playerCount;

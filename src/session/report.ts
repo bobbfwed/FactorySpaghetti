@@ -102,7 +102,8 @@ function validateReport(x: Obj): ReportFile {
   let room: SaveEnvelope;
   try {
     room = validateSave(x.room);
-  } catch {
+  } catch (e) {
+    if (e instanceof SaveError && e.kind === 'shared-building') replayFail('shared-building');
     replayFail('damaged', 'room');
   }
   const replay = validateReplay(x.replay);
@@ -146,6 +147,7 @@ export function openPlaytestText(text: string): OpenedFile {
     try {
       save = validateSave(x);
     } catch (e) {
+      if (e instanceof SaveError && e.kind === 'shared-building') replayFail('shared-building'); // #57
       replayFail(e instanceof SaveError && e.kind === 'unsupported-version' ? 'unsupported-version' : 'damaged', 'save file');
     }
     const room = save.room;

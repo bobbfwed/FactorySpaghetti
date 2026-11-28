@@ -26,7 +26,7 @@ export interface SaveEnvelope {
   journal?: JournalData;
 }
 
-export type SaveErrorKind = 'truncated' | 'corrupt' | 'unsupported-version' | 'invalid';
+export type SaveErrorKind = 'truncated' | 'corrupt' | 'unsupported-version' | 'invalid' | 'shared-building';
 
 export class SaveError extends Error {
   constructor(public readonly kind: SaveErrorKind, message: string) {
@@ -40,6 +40,7 @@ const SAVE_ERROR_TEXT: Record<SaveErrorKind, string> = {
   corrupt: 'This is not a Factory Spaghetti save.',
   'unsupported-version': 'This save was made by a newer version of the game.',
   invalid: 'This save is damaged and cannot be resumed.',
+  'shared-building': 'This saved game has a building shared by two players. The rules no longer allow that, so it cannot be opened.',
 };
 
 function fail(kind: SaveErrorKind, detail?: string): never {
@@ -113,7 +114,9 @@ function stable(x: unknown): unknown {
  *      one-Mine-belt limit, a teleporter cuts its buffer off from belts and direct contact, a
  *      removed belt goes back to the bank unless it was laid this turn, a teleporter sits on one
  *      input of a building and cuts off and supplies only that input (#55; also room format 2),
- *      and the belts Sink Hole removes go back to the bank (#56). Not released yet, so still 4.
+ *      and the belts Sink Hole removes go back to the bank (#56); one owner per building, with
+ *      saves holding a building shared by two players refused (#57), and a building that loses
+ *      its owner forfeiting its material to the bank (#58). Not released yet, so still 4.
  */
 export const RULES_REVISION = 4;
 
@@ -601,6 +604,21 @@ export function asGameState(x: unknown): GameState | null {
   }
 }
 
+/** A board piece (of any shape) whose claims belong to more than one player (#57). */
+const isSharedBuilding = (p: unknown): boolean => {
+  if (!isObj(p) || !Array.isArray(p.claims)) return false;
+  const owners = new Set(p.claims.map(c => (isObj(c) ? c.ownerId : undefined)));
+  return owners.size > 1;
+};
+
+/**
+ * True when `x` looks like an engine state whose board holds a building shared by two players
+ * (#57): such a state is refused, and a replay or a report says why (asGameState only says null).
+ */
+export function sharedBuildingIn(x: unknown): boolean {
+  return isObj(x) && Array.isArray(x.board) && x.board.some(isSharedBuilding);
+}
+
 const isPiece = (p: unknown): boolean => isObj(p) && isStr(p.id, MAX_ID) && PIECE_TYPES.has(p.type as string);
 const isPlayerId = (pc: number) => (p: unknown): boolean => isInt(p) && p >= 0 && p < pc;
 
@@ -659,7 +677,13 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
     && Array.isArray((p as Obj).claims) && ((p as Obj).claims as unknown[]).length <= 12
     && ((p as Obj).claims as unknown[]).every(c => isObj(c) && pid(c.ownerId) && isInt(c.controlModule))
     && isBuffer((p as Obj).input, pid) && isBuffer((p as Obj).output, pid)) as Obj[];
-  const stacks = checkList(g.stacks, 3, 'stacks', s => isObj(s) && isInt(s.index) && typeof s.available === 'boolean') as Obj[];
+  // One owner per building (RULES_CHANGES.md #57): a building shared by two players, which a save
+  // from before #46 could hold, is refused with its own message; more claims than one player may
+  // place on a building is damage.
+  const shared = board.find(isSharedBuilding);
+  if (shared) fail('shared-building', shared.id as string);
+  for (const p of board) check((p.claims as unknown[]).length <= config.MAX_CLAIMS_PER_BUILDING, `${p.id as string}: claims`);
+  const stacks =checkList(g.stacks, 3, 'stacks', s => isObj(s) && isInt(s.index) && typeof s.available === 'boolean') as Obj[];
   check(stacks.length === 3, 'stacks');
   for (const s of stacks) checkList(s.pieces, 200, 'stack pieces', isPiece);
   checkList(g.unplacedMines, 3, 'unplaced mines', isPiece);
@@ -703,7 +727,7 @@ function checkGame(g: Obj, pc: 2 | 3 | 4): void {
  *   - each piece's input and output have the slot counts of its piece type (rules/pieces.ts
  *     makeBuffers: none on a blank tile, an output only on a Mine, …);
  *   - a Teleporter sits only on a building where its owner holds a claim — never on a Mine or a
- *     blank tile (returnOrphanedTeleporters takes back any other after every move, #37);
+ *     blank tile (settleLostClaims takes back any other after every move, #37, #58);
  *   - each player's Teleporters on the board plus those still in hand make TELEPORTER_COUNT;
  *   - globalTeleporterCount, which sets the price, is the number on the board.
  * `g` is in the shape of #55 (withTeleporterSlots) and has passed the shape checks.
