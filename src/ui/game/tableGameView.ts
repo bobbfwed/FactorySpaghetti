@@ -38,6 +38,7 @@ import { tableSeat } from '../../table/seat';
 import type { Feel, Haptic } from './feel';
 import { canVibrate, deviceStorage, loadFeel, prefersReducedMotion, saveFeel, vibrate } from './feel';
 import { movingPortals, onPortalMotionChange } from '../portalPref';
+import { isGuideOpen, onGuideOpen } from '../guide/open';
 import { FxLayer } from './fx';
 import { Sound } from './sound';
 import { Stage, type Shown, type StageHost } from './stage';
@@ -544,7 +545,7 @@ export function tableGameView(ctrl: AppController): View {
     const lock = lockReason();
     // A bot plays this seat: nothing to press. A move in flight: nothing lit, and the controls stay
     // where they are (inert) so the pressed one can say it is sending.
-    let view = lock === 'bot' || lock === 'closed' ? busyView(play.view) : lock === 'sending' ? { ...play.view, targets: [] } : play.view;
+    let view = lock === 'bot' || lock === 'closed' ? busyView(play.view) : lock === 'sending' ? { ...play.view, targets: [], quietTargets: [] } : play.view;
     if (busy) {
       if (displayGame !== shown.game || displaySeat !== me) {
         displayGame = shown.game;
@@ -670,8 +671,8 @@ export function tableGameView(ctrl: AppController): View {
     if (!table) return;
     const v = ctx.view;
     const color = seatColor(ctx.room, ctx.me) as PlayerColor;
-    const tk = JSON.stringify(v.targets) + color;
-    if (tk !== targetsKey) { targetsKey = tk; table.setTargets(v.targets, color); }
+    const tk = JSON.stringify([v.targets, v.quietTargets ?? []]) + color;
+    if (tk !== targetsKey) { targetsKey = tk; table.setTargets(v.targets, color, v.quietTargets ?? []); }
     // My own choice is shown as the same preview the others see (one piece, not two): the local
     // ghost remains only for a space that would not be valid.
     const ghost = v.ghost && !v.ghost.valid ? v.ghost : null;
@@ -1031,6 +1032,9 @@ export function tableGameView(ctrl: AppController): View {
       // The player's "Moving Teleporter portals" setting, now and whenever it is flipped.
       t.setPortalMotion(movingPortals());
       offs.push(onPortalMotionChange(() => t.setPortalMotion(movingPortals())));
+      // The guide covers the whole table while it is open: the portals rest meanwhile.
+      t.setCovered(isGuideOpen());
+      offs.push(onGuideOpen(on => t.setCovered(on)));
       offs.push(t.onPick((hit) => onPick(hit)));
       offs.push(ctrl.onPreview((seat, pv) => {
         if (pv) otherPreviews.set(seat, { p: pv, seq: ctrl.room?.seq ?? -1 });

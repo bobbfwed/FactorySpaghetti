@@ -176,11 +176,14 @@ class Builder {
 
   /** A tap that does something without the target glowing (another choice beside the selected one). */
   quiet(t: Target, fn: () => void): void {
-    this.taps.set(targetKey(t), fn);
+    const k = targetKey(t);
+    if (!this.taps.has(k)) (this.view.quietTargets ??= []).push(t);
+    this.taps.set(k, fn);
   }
 
   clearTargets(): void {
     this.view.targets = [];
+    delete this.view.quietTargets;
     this.taps.clear();
   }
 
@@ -253,6 +256,8 @@ export class PlayController {
     this.hintText = null;
     if (seatChanged || !game || me === null || game.gameOver) {
       this.mode = IDLE; this.queue = []; this.queueSent = null; this.piActive = false;
+      // A planned route belongs to the seat (and game) that planned it: never offered to another.
+      this.dropPlan();
     } else {
       if (this.piActive && (game.productionIncreaseBudget <= 0 || !this.piActions(game, me).length)) {
         this.piActive = false;
@@ -326,6 +331,16 @@ export class PlayController {
   }
 
   cancel(): void {
+    // While queued steps (a route being laid, a route being taken back) are being sent one by one,
+    // Escape and the ✕ close panels only: stopping half-way would leave belts half laid or half
+    // taken back with the plan already gone. The steps finish, or stop for their own reasons as
+    // before (a refused move, a step no longer legal, a seat change).
+    if (this.queue.length > 0 || this.queueSent !== null) {
+      if (this.mode.k !== 'route' && this.mode.k !== 'pi') this.mode = IDLE;
+      this.hintText = null;
+      this.render(false);
+      return;
+    }
     if (this.mode.k === 'pi') this.piActive = false;
     // The ✕ of a planned route (and Escape) drops its unlaid part, like its "Cancel" button; belts
     // already laid stay. "Keep the plan for a later turn" is the way to put a plan aside.

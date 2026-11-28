@@ -10,7 +10,7 @@ import { applyAction } from '../../engine/reducer';
 import { createGame } from '../../engine/rules/setup';
 import { makeBuffers } from '../../engine/rules/pieces';
 import { withTeleporter } from '../../engine/rules/teleporters';
-import type { BoardPiece, CardType, GameState, PieceType, PlayerId } from '../../engine/state';
+import type { BoardPiece, CardType, GameState, Material, PieceType, PlayerId } from '../../engine/state';
 import { moveEvents } from '../../session/events';
 import { Animator } from '../animator';
 import { boardBounds, bufferSlotWorld, portalWorld, sideLayout } from '../layout';
@@ -101,6 +101,58 @@ describe('through the portal', () => {
     expect(ofKind(plan, 'appear').filter(x => x.pieceId === 'g')).toHaveLength(0);
   });
 
+  describe('a material out of the portal is drawn without a break until it is used up, and only once', () => {
+    // Every input of each factory type carries player 0's Teleporter; the whole recipe comes from
+    // player 0's materials. Sampled every 2 ms from the moment it starts coming out of the portal
+    // until its use-up step ends: on the stub's way from the portal to the input, exactly one
+    // material of its kind must be drawn at every moment.
+    const cases: { type: PieceType; supply: Material[] }[] = [
+      { type: 'plateFact', supply: ['ore'] },
+      { type: 'sphereFact', supply: ['plate', 'plate'] },
+      { type: 'sphereFact', supply: ['ore', 'plate'] },
+      { type: 'tesseractFact', supply: ['plate', 'sphere', 'sphere'] },
+      { type: 'tesseractFact', supply: ['sphere', 'sphere', 'sphere'] },
+      // A Power Plant costs no Power Token: nothing comes before the use-up in its phase.
+      { type: 'powerPlant', supply: ['plate'] },
+    ];
+    for (const c of cases) {
+      it(`${c.type}, supplied ${c.supply.join(', ')}`, () => {
+        const f = piece('t', c.type, -1, 0, 0, 5, 3);
+        let inp = f.input!;
+        for (let i = 0; i < inp.slots.length; i++) inp = withTeleporter(inp, i, 0);
+        const s = staged([{ ...f, input: inp }], x => ({
+          ...x, pendingFactoryOps: [{ pieceId: 't', ownerId: 0 }], globalTeleporterCount: inp.slots.length,
+          players: x.players.map(p => (p.id === 0 ? { ...p, inventory: { ore: 3, plate: 3, sphere: 3, tesseract: 0 } } : p)),
+        }));
+        const { prev, next, plan } = move(s, { type: 'OPERATE_BUILDING', pieceId: 't', ownerId: 0, supply: c.supply });
+        const portals = ofKind(plan, 'portalIn');
+        expect(portals).toHaveLength(c.supply.length);
+        const built = prev.board.find(p => p.id === 't')!;
+        const a = animator();
+        a.start(prev, next, plan.steps, 1, 0, sideLayout(boardBounds(next.board), next.mineCount));
+        for (const pin of portals) {
+          const used = ofKind(plan, 'consume').find(x => x.late && x.slot === pin.slot && x.material === pin.material)!;
+          expect(used).toBeDefined();
+          const from = portalWorld(built, 'input', pin.slot), to = bufferSlotWorld(built, 'input', pin.slot);
+          // Distance (in the table's plane) from the segment portal -> input of this slot.
+          const off = (e: { x: number; z: number }): number => {
+            const dx = to.x - from.x, dz = to.z - from.z;
+            const u = Math.max(0, Math.min(1, ((e.x - from.x) * dx + (e.z - from.z) * dz) / (dx * dx + dz * dz)));
+            return Math.hypot(e.x - (from.x + u * dx), e.z - (from.z + u * dz));
+          };
+          const bad: string[] = [];
+          for (let t = pin.at + 1; t < used.at + used.dur; t += 2) {
+            a.update(t);
+            const n = a.extras().filter(e => e.material === pin.material && off(e) < 0.6).length;
+            if (n !== 1) bad.push(`t=${t}: ${n}`);
+          }
+          expect(bad.slice(0, 5), `slot ${pin.slot} (${pin.material}): portal ${pin.at}-${pin.at + pin.dur}, used up ${used.at}-${used.at + used.dur}`).toEqual([]);
+        }
+        a.dispose();
+      });
+    }
+  });
+
   it('a move with no Teleporter and nothing leaving plays exactly as before (no new steps, same length)', () => {
     const h = piece('h', 'plateFact', -1, 0, 0, 5, 3);
     const s = staged([{ ...h, input: { ...h.input!, slots: ['ore'] } }], x => ({ ...x, pendingFactoryOps: [{ pieceId: 'h', ownerId: 0 }] }));
@@ -170,6 +222,42 @@ describe('leaving the table', () => {
     a.dispose();
   });
 
+  it('Changing Priorities with a module staying behind: it moves to its new spot with the leaving one, not at once', () => {
+    const from = piece('a', 'tesseractFact', -1, 0, 0, 4, 3);
+    const two = { ...from, claims: [{ ownerId: 0 as PlayerId, controlModule: 4 }, { ownerId: 0 as PlayerId, controlModule: 6 }] };
+    const to = piece('c', 'sphereFact', 0, 1, null);
+    const s = withHand(staged([two, to]), 'changingPriorities');
+    const { prev, next, plan } = move(s, { type: 'PLAY_CARD', cardType: 'changingPriorities', pieceId: 'a', toPieceId: 'c', controlModule: 4 });
+    expect(next.board.find(p => p.id === 'a')!.claims).toEqual([{ ownerId: 0, controlModule: 6 }]);
+    const um = ofKind(plan, 'unmodule');
+    const leaving = um.find(x => x.module === 4)!;
+    expect(leaving).toMatchObject({ pieceId: 'a', index: 0, toPieceId: 'c' });
+    // Module 6 was the second of two on the building; now it is the only one, in the middle.
+    const stays = um.find(x => x.module === 6)!;
+    expect(stays).toMatchObject({ pieceId: 'a', index: 1, owner: 0, toPieceId: 'a', toIndex: 0 });
+    // Together with (or after) the leaving one, never before it.
+    expect(stays.at).toBeGreaterThanOrEqual(leaving.at);
+    expect(stays.at).toBeLessThan(leaving.at + leaving.dur);
+    // Nothing comes back to the tray or drops from above for it.
+    expect(ofKind(plan, 'toPlayer').filter(x => x.item === 'module')).toHaveLength(0);
+    expect(ofKind(plan, 'module').filter(x => x.pieceId === 'a')).toHaveLength(0);
+    // Drawn: at its old spot until its step starts, travelling meanwhile, then in its new spot.
+    const a = animator();
+    a.start(prev, next, plan.steps, 1, 0, sideLayout(boardBounds(next.board), next.mineCount));
+    a.update(0);
+    expect(a.claim('a', 0)).toBe('hide');
+    expect(a.leaving().modules.find(x => x.module === 6)).toMatchObject({ index: 1, of: 2, to: { index: 0, of: 1, t: 0 } });
+    a.update(mid(stays));
+    const m = a.leaving().modules.find(x => x.module === 6)!;
+    expect(m.to!.piece.id).toBe('a');
+    expect(m.to!.t).toBeGreaterThan(0);
+    expect(m.to!.t).toBeLessThan(1);
+    a.update(stays.at + stays.dur + 1);
+    expect(a.claim('a', 0)).not.toBe('hide');
+    expect(a.leaving().modules.find(x => x.module === 6)).toBeUndefined();
+    a.dispose();
+  });
+
   it('Asset Forfeiture: Plates lift out of every output and fly to the player', () => {
     const mine = piece('p', 'plateFact', -1, 0, 0, 5, 3), theirs = piece('q', 'plateFact', 0, 1, 1, 4);
     const s = withHand(staged([{ ...mine, output: { ...mine.output!, slots: ['plate'] } }, { ...theirs, output: { ...theirs.output!, slots: ['plate'] } }]), 'assetForfeiture');
@@ -185,7 +273,17 @@ describe('leaving the table', () => {
     const b = piece('u', 'plateFact', -1, 0, 0, 4, 3);
     const s = staged([b], x => ({ ...x, phase: 'roundEnd', players: x.players.map(p => (p.id === 0 ? { ...p, freeUpgradesRemaining: 1 } : p)) }));
     const { plan } = move(s, { type: 'UPGRADE_BUILDING', pieceId: 'u', oldModule: 4, newModule: 5, freeCredits: 1 });
-    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', upgrade: true })]);
+    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', upgrade: true, replaced: 4 })]);
     expect(ofKind(plan, 'unmodule')).toHaveLength(0);
+  });
+
+  it('an upgrade names the module it replaced by owner and number, not by its place among the claims', () => {
+    // Two of player 0's modules on one building, the order changed between the states: 4 and 6
+    // before, 6 and 7 after. The 7 replaced the 4 (the 6 stayed), though the 7 sits where the 6 was.
+    const b = piece('u', 'tesseractFact', -1, 0, 0, 4, 3);
+    const prev = staged([{ ...b, claims: [{ ownerId: 0, controlModule: 4 }, { ownerId: 0, controlModule: 6 }] }]);
+    const next = { ...prev, board: prev.board.map(p => (p.id === 'u' ? { ...p, claims: [{ ownerId: 0 as PlayerId, controlModule: 6 }, { ownerId: 0 as PlayerId, controlModule: 7 }] } : p)) };
+    const plan = planTransition(prev, next, []);
+    expect(ofKind(plan, 'module')).toEqual([expect.objectContaining({ pieceId: 'u', index: 1, upgrade: true, replaced: 4 })]);
   });
 });

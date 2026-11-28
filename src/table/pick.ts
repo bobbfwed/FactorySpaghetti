@@ -110,11 +110,14 @@ export function boardCandidates(
   return out.sort((a, b) => a.score - b.score);
 }
 
-/** Pick one: a candidate that is a current target wins; otherwise the most specific one. */
-export function choose(cands: readonly Candidate[], targets: ReadonlySet<string>): Target | null {
+/**
+ * Pick one: the nearest candidate that is a current target (glowing) or answers a tap without
+ * glowing (`quiet`: another belt beside the chosen one) wins; otherwise the most specific one.
+ */
+export function choose(cands: readonly Candidate[], targets: ReadonlySet<string>, quiet: ReadonlySet<string> = new Set()): Target | null {
   if (cands.length === 0) return null;
-  if (targets.size > 0) {
-    const hit = cands.find(c => targets.has(targetKey(c.target)));
+  if (targets.size > 0 || quiet.size > 0) {
+    const hit = cands.find(c => { const k = targetKey(c.target); return targets.has(k) || quiet.has(k); });
     if (hit) return hit.target;
   }
   return cands[0]!.target;

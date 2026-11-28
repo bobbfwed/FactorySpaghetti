@@ -364,9 +364,16 @@ export function factoryExpectedProduct(piece: BoardPiece): Material | null {
 // a roll on anyone's turn never spends your power/materials without your consent
 // (RULES_CHANGES.md #25: everyone activates, but the owner always chooses). A building has one
 // owner (#57), so several matching claims on it still make one activation.
-function resolveProduction(state: GameState, diceSum: number): { state: GameState; pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> } {
+//
+// `gains`: the Power Tokens each Power Plant that ran by itself gave its owner, in the order they
+// ran (0 for one whose owner was already at the cap). For display only (session/events.ts): it
+// changes nothing in the state.
+function resolveProduction(state: GameState, diceSum: number): {
+  state: GameState; pendingOps: Array<{ pieceId: string; ownerId: PlayerId }>; gains: Array<{ pieceId: string; ownerId: PlayerId; amount: number }>;
+} {
   let current = state;
   const pendingOps: Array<{ pieceId: string; ownerId: PlayerId }> = [];
+  const gains: Array<{ pieceId: string; ownerId: PlayerId; amount: number }> = [];
 
   for (const piece of current.board) {
     if (piece.type === 'mine' || piece.type === 'blank') continue;
@@ -380,7 +387,9 @@ function resolveProduction(state: GameState, diceSum: number): { state: GameStat
 
     if (currentPiece.type === 'powerPlant' && !isPowerPlantDecision(currentPiece, ownerId)) {
       const next = operatePowerPlant(current, currentPiece, ownerId, []);
+      const had = current.players[ownerId]?.powerTokens ?? 0;
       if (next.ok) current = next.state;
+      gains.push({ pieceId: piece.id, ownerId, amount: (current.players[ownerId]?.powerTokens ?? 0) - had });
       continue;
     }
 
@@ -391,7 +400,19 @@ function resolveProduction(state: GameState, diceSum: number): { state: GameStat
     }
   }
 
-  return { state: current, pendingOps };
+  return { state: current, pendingOps, gains };
+}
+
+/**
+ * The Power Tokens each Power Plant gives by itself when `rolls` are rolled in `state` (the same
+ * steps as ROLL_DICE, so the same result): plant id -> tokens, 0 where its owner was at the cap.
+ * Plants waiting for their owner's choice are not listed. For what the table and the roll line
+ * show (session/events.ts); it decides nothing.
+ */
+export function powerPlantGains(state: GameState, rolls: readonly number[]): ReadonlyMap<string, number> {
+  const sum = rolls.reduce((a, b) => a + b, 0);
+  const { gains } = resolveProduction(resolveDirectAdjacency(state), sum);
+  return new Map(gains.map(g => [g.pieceId, g.amount]));
 }
 
 // ── ROLL_DICE action ──────────────────────────────────────────────────────────

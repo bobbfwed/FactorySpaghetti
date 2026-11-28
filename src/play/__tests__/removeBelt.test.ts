@@ -11,6 +11,9 @@ import { optionGroups } from '../../app/gameText';
 import type { Room } from '../../session/room';
 import { newLobbyRoom } from '../../session/room';
 import { atActions, harness } from './helpers';
+import { beltCurve, bezierAt, distanceToCurve } from '../../table/layout';
+import { boardCandidates, choose, targetKey } from '../../table/pick';
+import type { Target } from '../../table/types';
 
 function apply(s: GameState, a: Action): GameState {
   const r = applyAction(s, a);
@@ -75,6 +78,39 @@ describe('Remove a belt tells where the belt goes (#54)', () => {
     // A second tap on the chosen belt lets it go: both glow again.
     c.tap({ kind: 'belt', beltId: other.id });
     expect(beltTargets()).toEqual(expect.arrayContaining([belt.id, other.id]));
+  });
+
+  it('one tap on my other belt on the same tile selects it, even where the tap is also near the chosen one', () => {
+    // Two of my belts on one tile, and a spot nearer the second that is still within the first's reach.
+    const R = 3.5; // the table's belt pick radius (pick.ts R_BELT)
+    let found: { two: GameState; other: string; at: { x: number; z: number } } | null = null;
+    for (const second of legalActions(laid, player).filter((x): x is Extract<Action, { type: 'PLACE_BELT' }> => x.type === 'PLACE_BELT' && x.pieceId === belt.pieceId)) {
+      const two = apply(laid, second);
+      const other = two.belts[two.belts.length - 1]!;
+      const piece = two.board.find(p => p.id === belt.pieceId)!;
+      const ca = beltCurve(piece, belt.fromPoint, belt.toPoint), cb = beltCurve(piece, other.fromPoint, other.toPoint);
+      for (let i = 0; i <= 40 && !found; i++) {
+        const m = bezierAt(cb, i / 40);
+        const da = distanceToCurve(ca, m.x, m.z), db = distanceToCurve(cb, m.x, m.z);
+        if (da < R && db < da) found = { two, other: other.id, at: { x: m.x, z: m.z } };
+      }
+      if (found) break;
+    }
+    expect(found).not.toBeNull();
+    const { two, other, at } = found!;
+    const { c } = harness(two, player);
+    c.choose('bank:removeBelt');
+    c.tap({ kind: 'belt', beltId: belt.id });
+    const keys = (ts: readonly Target[] | undefined): Set<string> => new Set((ts ?? []).map(targetKey));
+    // Only the chosen belt glows; the other answers a tap without glowing.
+    expect(c.view.targets.filter(t => t.kind === 'belt')).toEqual([{ kind: 'belt', beltId: belt.id }]);
+    expect(c.view.quietTargets).toEqual(expect.arrayContaining([{ kind: 'belt', beltId: other }]));
+    // The table's picker, given both, resolves the tap to the other belt; one tap selects it.
+    const hit = choose(boardCandidates(two, at.x, at.z), keys(c.view.targets), keys(c.view.quietTargets));
+    expect(hit).toEqual({ kind: 'belt', beltId: other });
+    c.tap(hit!);
+    expect(c.view.targets.filter(t => t.kind === 'belt')).toEqual([{ kind: 'belt', beltId: other }]);
+    expect(c.view.confirmBar).toMatchObject({ confirm: true });
   });
 
   it('the text view\'s move list says the same', () => {

@@ -16,7 +16,7 @@ import {
   pointWorld, revealedStack, sampleCurve, sideLayout, stackHeight, teleporterPlacement, axialToWorld, type ModelName,
   type Bounds, type SideLayout,
 } from './layout';
-import { sideAnchor } from './framing';
+import { freshView, shownGame, sideAnchor } from './framing';
 import { moduleColors } from './moduleLook';
 import { PORTAL_STILL_TIME, portalGeometry, portalMaterial } from './portal';
 import {
@@ -326,9 +326,9 @@ export class TableScene {
       this.known.clear();
       this.appear.clear();
     }
-    // A board with fewer pieces than before is another game or a replay going back: the piles
-    // are laid out afresh round it. During a game the board only grows.
-    if (!game || game.board.length < (this.game?.board.length ?? 0)) this.anchor = null;
+    // Another game or a jump back (framing.ts freshView): the piles are laid out afresh round it.
+    // A Sink Hole leaves them where they are (the board is one piece smaller, inside their area).
+    if (!game || !this.game || freshView(shownGame(this.game), game)) this.anchor = null;
     this.game = game;
     this.updateSide();
     this.updateReveal(now, prevKnown && !!game);

@@ -30,8 +30,11 @@ export type StepBody =
   | { kind: 'place'; pieceId: string; stack: number | null }
   /** A belt is laid (drops onto its tile). */
   | { kind: 'belt'; beltId: string }
-  /** A Control Module drops onto a building: claim (new) or upgrade (number changed). */
-  | { kind: 'module'; pieceId: string; index: number; owner: number; upgrade: boolean }
+  /**
+   * A Control Module drops onto a building: claim (new) or upgrade (number changed). `replaced`:
+   * the number of the module an upgrade replaced (matched by owner and number, not by position).
+   */
+  | { kind: 'module'; pieceId: string; index: number; owner: number; upgrade: boolean; replaced?: number }
   /** A teleporter appears on one input (`slot`, #55) or on the output (slot 0) of a building. */
   | { kind: 'teleporter'; pieceId: string; buffer: Buf; slot: number; owner: number }
   /**
@@ -193,11 +196,21 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
   for (const p of prev.board) {
     const now = after.get(p.id);
     if (!now) continue;
-    for (const g of claimsChange(p, now).gone) {
+    const change = claimsChange(p, now);
+    for (const g of change.gone) {
       const to = arrivals.find(a => a.owner === g.owner && a.module === g.module && a.pieceId !== p.id && !moved.has(`${a.pieceId}:${a.index}`));
       if (to) moved.add(`${to.pieceId}:${to.index}`);
       phases[P_BUILD]!.push({ kind: 'unmodule', pieceId: p.id, index: g.index, owner: g.owner, module: g.module, toPieceId: to?.pieceId ?? null, toIndex: to?.index ?? 0 });
       if (!to) phases[P_PLAYER]!.push({ kind: 'toPlayer', player: g.owner, item: 'module', count: 1, from: { kind: 'piece', pieceId: p.id } });
+    }
+    // The modules that stay on a building one left: their spots depend on how many there are, so
+    // each that changes spot travels there (on the same building) right after the one leaving,
+    // instead of jumping there while the other is still lifting off.
+    if (change.gone.length > 0) {
+      for (const k of change.kept) {
+        if (k.from === k.to && p.claims.length === now.claims.length) continue;
+        phases[P_BUILD]!.push({ kind: 'unmodule', pieceId: p.id, index: k.from, owner: k.owner, module: k.module, toPieceId: p.id, toIndex: k.to });
+      }
     }
   }
 
@@ -215,10 +228,10 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
         });
       }
     }
-    for (const { index, owner, upgrade } of claimsChange(old, p).added) {
+    for (const { index, owner, upgrade, replaced } of claimsChange(old, p).added) {
       // A module that arrives from another building travels there itself (unmodule below).
       if (moved.has(`${p.id}:${index}`)) continue;
-      phases[P_BUILD]!.push({ kind: 'module', pieceId: p.id, index, owner, upgrade });
+      phases[P_BUILD]!.push({ kind: 'module', pieceId: p.id, index, owner, upgrade, ...(replaced !== undefined ? { replaced } : {}) });
     }
     for (const b of ['input', 'output'] as const) {
       for (const { slot, owner } of teleportersOf(p[b])) {
@@ -424,19 +437,22 @@ export function planTransition(prev: GameState, next: GameState, events: readonl
 }
 
 interface ClaimsChange {
-  /** Claims now on the building that were not before (index in the claims now). `upgrade`: it replaced a lower module of the same player. */
-  readonly added: readonly { index: number; owner: number; module: number; upgrade: boolean }[];
+  /** Claims now on the building that were not before (index in the claims now). `upgrade`: it replaced a lower module of the same player (`replaced`). */
+  readonly added: readonly { index: number; owner: number; module: number; upgrade: boolean; replaced?: number }[];
   /** Claims that left the building (index in the claims before), not counting a module replaced by an upgrade. */
   readonly gone: readonly { index: number; owner: number; module: number }[];
+  /** Claims on the building in both states: their index before (`from`) and now (`to`). */
+  readonly kept: readonly { from: number; to: number; owner: number; module: number }[];
 }
 
 /** How a building's Control Modules changed between two states (compared as owner and number, not by position). */
 function claimsChange(old: BoardPiece | undefined, now: BoardPiece): ClaimsChange {
   const was = (old?.claims ?? []).map((c, i) => ({ owner: c.ownerId as number, module: c.controlModule, index: i, used: false }));
   const fresh: { index: number; owner: number; module: number }[] = [];
+  const kept: { from: number; to: number; owner: number; module: number }[] = [];
   now.claims.forEach((c, i) => {
     const same = was.find(w => !w.used && w.owner === c.ownerId && w.module === c.controlModule);
-    if (same) same.used = true;
+    if (same) { same.used = true; kept.push({ from: same.index, to: i, owner: c.ownerId, module: c.controlModule }); }
     else fresh.push({ index: i, owner: c.ownerId, module: c.controlModule });
   });
   const added = fresh.map(f => {
@@ -444,9 +460,9 @@ function claimsChange(old: BoardPiece | undefined, now: BoardPiece): ClaimsChang
     const lower = was.find(w => !w.used && w.owner === f.owner && w.index === f.index && w.module < f.module)
       ?? was.find(w => !w.used && w.owner === f.owner && w.module < f.module);
     if (lower) lower.used = true;
-    return { ...f, upgrade: !!lower };
+    return lower ? { ...f, upgrade: true, replaced: lower.module } : { ...f, upgrade: false };
   });
-  return { added, gone: was.filter(w => !w.used).map(({ index, owner, module }) => ({ index, owner, module })) };
+  return { added, gone: was.filter(w => !w.used).map(({ index, owner, module }) => ({ index, owner, module })), kept };
 }
 
 function nearest(game: GameState, sources: readonly FlowSource[], s: Slot): number {
@@ -521,6 +537,15 @@ function schedule(phases: StepBody[][], roll: number[] | null): TransitionPlan {
       at += gap;
     }
     end = Math.max(end, phaseEnd);
+  });
+  // A material out of a portal is used up only once it has come out (phases overlap a little, and
+  // with no Power Token flight first, as at a Power Plant, its use-up would start while it still emerges).
+  steps.forEach((s, i) => {
+    if (s.kind !== 'consume' || !s.late) return;
+    const out = steps.find(x => x.kind === 'portalIn' && x.pieceId === s.pieceId && x.slot === s.slot && x.material === s.material);
+    if (!out || s.at >= out.at + out.dur) return;
+    steps[i] = { ...s, at: out.at + out.dur };
+    end = Math.max(end, out.at + out.dur + s.dur);
   });
   return { steps, baseMs: Math.round(end), roll };
 }

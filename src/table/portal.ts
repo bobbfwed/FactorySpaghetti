@@ -20,6 +20,23 @@ export const PORTAL_HALO = 1.22;
 /** How far in front of the end face the disc floats (mm, model units): no fighting with the face. */
 const LIFT = 0.06;
 
+/** What decides whether the portals are redrawn by themselves (table.ts, a few frames a second). */
+export interface PortalLoop {
+  readonly portals: number;
+  /** The page is visible. */
+  readonly visible: boolean;
+  /** The swirl is to move (the player's setting, or the device's reduced-motion preference). */
+  readonly swirl: boolean;
+  readonly disposed: boolean;
+  readonly contextLost: boolean;
+  /** Something covers the whole table (the game guide): nothing of it can be seen. */
+  readonly covered: boolean;
+}
+
+export function portalsRun(s: PortalLoop): boolean {
+  return s.portals > 0 && s.visible && s.swirl && !s.disposed && !s.contextLost && !s.covered;
+}
+
 /**
  * The portal quad in the Teleporter's model space: a square facing +X, centred on the recess,
  * large enough for the halo. Its uv runs from -PORTAL_HALO to +PORTAL_HALO across, in units of the

@@ -18,6 +18,7 @@ import { CLOSED, currentPage, offersContents, reduce } from './state';
 import { toDom } from './vdom';
 import { mountFigures, releaseFigures } from './figures/mount';
 import { mountPlays } from './figures/playMount';
+import { setGuideOpen } from './open';
 
 const HISTORY_KEY = 'fsGuide';
 
@@ -172,6 +173,7 @@ function sync(): void {
       root = body = main = side = null;
       shownKey = '';
       document.documentElement.classList.remove('guide-open');
+      setGuideOpen(false);
       window.removeEventListener('keydown', onKey, true);
       // The popstate listener stays: the history.go() sent by Close arrives after this.
       const back = opener;
@@ -218,6 +220,7 @@ export function showGuide(host: HTMLElement, target: string | null = null): void
     opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     build(host);
     document.documentElement.classList.add('guide-open');
+    setGuideOpen(true);
     window.addEventListener('keydown', onKey, true);
     if (!listening) { window.addEventListener('popstate', onPopState); listening = true; }
   }

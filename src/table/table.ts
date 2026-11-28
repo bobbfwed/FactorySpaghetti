@@ -3,7 +3,8 @@
 // while the user drags / zooms. The one exception is the Teleporters' glowing portals (portal.ts):
 // while at least one is on the board and the page is visible, they are redrawn a few times a second
 // (PORTAL_FPS), without redrawing the shadow map; never when the player turned "Moving Teleporter
-// portals" off (setPortalMotion) or, by default, with prefers-reduced-motion.
+// portals" off (setPortalMotion) or, by default, with prefers-reduced-motion, nor while the game
+// guide covers the table (setCovered).
 
 import * as THREE from 'three';
 import type { GameState } from '../engine/state';
@@ -15,10 +16,10 @@ import { Overlay } from './overlay';
 import { PreviewLayer } from './preview';
 import { woodTexture } from './textures';
 import { ACROSS_FLATS, TILE_TOP, boardBounds, tableBounds, type Bounds } from './layout';
-import { frameAll, frameArea, keepInView as keepAreaInView, turnPivot, turnRefitArea, type FramingTable } from './framing';
+import { frameAll, frameArea, freshView, keepInView as keepAreaInView, shownGame, turnPivot, turnRefitArea, type FramingTable, type ShownGame } from './framing';
 import { seatAzimuth } from './seat';
 import { BELT_PICK_Y, TELEPORTER_PICK_Y, boardCandidates, choose, rayBox, sideBoxes, targetAnchor, targetKey, type SideHeights } from './pick';
-import { PORTAL_STILL_TIME } from './portal';
+import { PORTAL_STILL_TIME, portalsRun } from './portal';
 import { PLAYER_COLOR_HEX, type Ghost, type PlayerColor, type Table, type TableOptions, type TableStats, type Target } from './types';
 
 const DEFAULT_COLORS: readonly PlayerColor[] = ['blue', 'red', 'orange', 'green'];
@@ -89,9 +90,12 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let targets: readonly Target[] = [];
   let targetColor: PlayerColor = 'blue';
   let targetKeys = new Set<string>();
+  /** Things that answer a tap without glowing (setTargets `quiet`). */
+  let quietKeys = new Set<string>();
   let ghost: Ghost | null = null;
   let framedOnce = false;
-  let lastBoardSize = 0;
+  /** The game shown last (framing.ts freshView). */
+  let lastShown: ShownGame | null = null;
   /** The table area the camera was last framed to (framing.ts). */
   let framedArea: Bounds | null = null;
   /** The player has dragged, pinched, scrolled, turned or tilted the view. */
@@ -141,8 +145,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
   let portalTimer: number | undefined;
   /** When the last frame was drawn (performance.now() ms). */
   let lastFrameAt = 0;
-  const portalsMove = (): boolean =>
-    table.portalCount > 0 && document.visibilityState === 'visible' && portalsSwirl() && !disposed && !contextLost;
+  /** Something covers the whole table (the guide): the portals rest (setCovered). */
+  let covered = false;
+  const portalsMove = (): boolean => portalsRun({
+    portals: table.portalCount, visible: document.visibilityState === 'visible', swirl: portalsSwirl(), disposed, contextLost, covered,
+  });
   /**
    * Ask for the next portal frame 1/PORTAL_FPS s after the last frame, if the portals are to move
    * at all (the frame itself then waits for the screen's next refresh, about half a refresh on average).
@@ -341,7 +348,7 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     if (!g) return null;
     const b = rig.groundAt(px, py, BELT_PICK_Y) ?? g;
     const t = rig.groundAt(px, py, TELEPORTER_PICK_Y) ?? g;
-    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }, { x: t.x, z: t.z }), targetKeys);
+    return choose(boardCandidates(game ?? { board: [], belts: [] }, g.x, g.z, { x: b.x, z: b.z }, { x: t.x, z: t.z }), targetKeys, quietKeys);
   }
 
   // ── Public interface ─────────────────────────────────────────────────────────────────────────
@@ -407,12 +414,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
     refreshTargets();
     overlay.setGhost(ghost, game);
     fitShadow();
-    const size = next?.board.length ?? 0;
-    // Frame the table the first time a game appears, and again for a board with fewer pieces
-    // (another game, or a replay going back); otherwise the camera moves only when asked
+    // Frame the table the first time a game appears, and again for another game or a jump back
+    // (framing.ts freshView; not for a Sink Hole); otherwise the camera moves only when asked
     // (recenter, keepInView).
-    if (next && (!framedOnce || (size < lastBoardSize))) { recenter(framedOnce); framedOnce = true; }
-    lastBoardSize = size;
+    if (next && (!framedOnce || freshView(lastShown, next))) { recenter(framedOnce); framedOnce = true; }
+    if (next) lastShown = shownGame(next);
     invalidate();
   }
 
@@ -467,10 +473,11 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       table.rebuild(performance.now(), rig.azimuth);
       invalidate();
     },
-    setTargets(next, color) {
+    setTargets(next, color, quiet) {
       targets = [...next];
       targetColor = color;
       targetKeys = new Set(targets.map(targetKey));
+      quietKeys = new Set((quiet ?? []).map(targetKey));
       refreshTargets();
       invalidate();
     },
@@ -570,6 +577,12 @@ export async function createTable(canvas: HTMLCanvasElement, opts?: TableOptions
       portalMotion = on;
       if (!portalsSwirl()) stopPortals();
       invalidate();
+    },
+    setCovered(on) {
+      if (on === covered) return;
+      covered = on;
+      // Covered: the slow portal redraw stops; uncovered: one frame, and it carries on from there.
+      if (on) stopPortals(); else invalidate();
     },
     renderNow() {
       if (contextLost) return;
