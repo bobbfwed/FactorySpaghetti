@@ -4,6 +4,8 @@
 // is an image file, so the pictures always match the current pieces.
 
 import type { CardType, Material, PieceType } from '../../../engine/config';
+import type { Action } from '../../../engine/actions';
+import type { TurnPhase } from '../../../engine/state';
 
 export type FigColor = 'blue' | 'red' | 'orange' | 'green';
 
@@ -143,6 +145,102 @@ export type LineupItem =
   /** A sign between pictures: "+", "→", "or". */
   | { readonly sign: string };
 
+// ── Animated examples ("play" figures) ────────────────────────────────────────────────────────
+// An example is a starting position and a list of steps. Each step is one or more real engine
+// moves (applied with applyAction, so every step is legal by construction) and is drawn with the
+// game's own animation code (planTransition, Animator). Where something is not a move, a step may
+// say so directly: the turn passes to another player (`turnTo`), or the board jumps to a new
+// staged position later in the game (`jump`). Plain data: about fifteen examples are written this way.
+
+/** A move by the player whose turn it is (or `seat`, for a decision on another player's building). */
+export interface PlayMove { readonly act: Action; readonly seat?: number }
+
+/** What a player holds at the start of an example (staged positions). Missing: as the game deals. */
+export interface PlayHoldings {
+  readonly power?: number;
+  readonly materials?: Partial<Readonly<Record<Material, number>>>;
+  /** Mine credits (from a Mine's upgrade point) and free upgrades, as in a round-end turn. */
+  readonly credits?: number;
+  readonly freeUpgrades?: number;
+}
+
+/** Where an example starts: the real starting board for a seed, or a staged board. */
+export interface PlayStart {
+  /** The board the game deals for this seed; `claims`: after every player's first claims. */
+  readonly setup?: { readonly seed: number; readonly players: 2 | 3 | 4; readonly claims?: boolean };
+  /** A staged board (pieces, belts, meeples), as for a still scene. Player Control Modules on it leave the trays. */
+  readonly scene?: Pick<SceneSpec, 'pieces' | 'belts' | 'meeples'>;
+  /**
+   * Whose turn it is and in which step; `order`: the turn order (players by number, first to
+   * last). Default: as the setup leaves it, or player 0's actions step on a staged board.
+   */
+  readonly turn?: { readonly seat: number; readonly phase: TurnPhase; readonly order?: readonly number[] };
+  /** Per player, by number. */
+  readonly players?: readonly PlayHoldings[];
+  /** Staged boards: the pieces left in stack 1, top first (default none; stacks 2 and 3 stay empty). */
+  readonly stack?: readonly PieceType[];
+  /** At the start (before step 1): light what the player whose turn it is may choose (example starts only). */
+  readonly glow?: 'legal';
+}
+
+/** One step of an example. Every caption is shown in the step list from the start. */
+export interface PlayStep {
+  /** One sentence in the rulebook's words, saying what happens and why. */
+  readonly caption: string;
+  /** Not a move: the board jumps to a new staged position ("later in the game"). Applied first. */
+  readonly jump?: PlayStart;
+  /** Not a move: the turn passes to `seat`, in `phase` (what happens in between is not shown). */
+  readonly turnTo?: { readonly seat: number; readonly phase: TurnPhase };
+  /** Engine moves, in order. Each is animated as the game animates it. */
+  readonly moves?: readonly PlayMove[];
+  /** Numbered markers shown once the step has played (and, with keepMarks, after it). */
+  readonly callouts?: readonly Callout[];
+  /**
+   * Glow once the step has played: 'legal' lights what the player whose turn it is may choose
+   * next (from the engine's legal moves: free spaces, buildings to claim, meeple spots), or a list.
+   */
+  readonly glow?: 'legal' | readonly GlowAt[];
+}
+
+/** HTML under the picture: the parts of a player's area the example uses. */
+export interface PlaySide {
+  /** Whose tray and upgrades (player number). */
+  readonly player: number;
+  /** The Control Module tray: a module lights, then travels to its building (and back on an upgrade). */
+  readonly tray?: boolean;
+  /** Mine credits and free upgrades. */
+  readonly upgrades?: boolean;
+  /** These players' Power Tokens and materials (Power Tokens and materials fly to and from them). */
+  readonly holdings?: readonly number[];
+  /** The dice and their total, and what the roll did, in one line. */
+  readonly roll?: boolean;
+}
+
+export interface PlayExample {
+  /** Unique; names the example in tests and in the page. */
+  readonly id: string;
+  readonly start: PlayStart;
+  readonly steps: readonly PlayStep[];
+  /** Player colours, index = player number. Default blue, red, orange, green. */
+  readonly colors?: readonly FigColor[];
+  /** Width / height of the picture. Default 16 / 9. */
+  readonly aspect?: number;
+  /**
+   * The camera frame, fixed for the whole example: these pieces plus `pad` millimetres. Default:
+   * every piece the example ever shows.
+   */
+  readonly frame?: { readonly pieces: readonly string[]; readonly pad?: number };
+  /** Turn the view by 60-degree steps. */
+  readonly turn?: number;
+  /** Show stack 1 beside the board (where placed pieces come from). */
+  readonly pile?: boolean;
+  /** Show the dice beside the board. */
+  readonly dice?: boolean;
+  readonly side?: PlaySide;
+  /** Markers of finished steps stay on the picture (an order, built up step by step). */
+  readonly keepMarks?: boolean;
+}
+
 export type FigureShow =
   /** Pieces side by side, each with its name (and a value) under it; the row wraps on narrow screens. */
   | { readonly kind: 'lineup'; readonly items: readonly LineupItem[] }
@@ -152,7 +250,9 @@ export type FigureShow =
     readonly inputs: readonly (readonly Material[])[]; readonly product: Material;
   }
   /** A staged scene with optional numbered markers. */
-  | { readonly kind: 'scene'; readonly scene: SceneSpec; readonly callouts?: readonly Callout[]; readonly icon?: FigIcon };
+  | { readonly kind: 'scene'; readonly scene: SceneSpec; readonly callouts?: readonly Callout[]; readonly icon?: FigIcon }
+  /** An animated example: a picture that plays its steps, with the numbered step list under it. */
+  | { readonly kind: 'play'; readonly play: PlayExample };
 
 export interface FigureBlock {
   readonly k: 'figure';

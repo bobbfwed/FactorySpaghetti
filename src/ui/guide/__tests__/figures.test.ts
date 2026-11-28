@@ -11,6 +11,7 @@ import { isAdjacentToBoard, isCoordsOccupied, mineSecondaryCoord } from '../../.
 import { canLoadMaterial } from '../../../engine/rules/recipes';
 import type { GameState, Material } from '../../../engine/state';
 import { ICON_NAMES } from '../../icons';
+import { recipesInOrder } from '../../../play/recipes';
 import { GUIDE } from '../content';
 import { freeSpaces } from '../content/figures';
 import { FigureCache, jobKey, modelPlan, type FigureJob, type FigureRenderer, type Rendered } from '../figures/jobs';
@@ -145,7 +146,9 @@ describe('the guide\'s pictures', () => {
     expect(recipes).toHaveLength(3);
     for (const r of recipes) {
       const type = ({ 'tile-plate-factory': 'plateFact', 'tile-sphere-factory': 'sphereFact', 'tile-tesseract-factory': 'tesseractFact' } as const)[r.factory as 'tile-plate-factory'];
-      expect(r.inputs).toEqual(FACTORY_RECIPES[type]!.inputs);
+      // Lowest total value first (play/recipes.ts), and exactly the engine's recipes.
+      expect(r.inputs).toEqual(recipesInOrder(type));
+      expect([...r.inputs].map(x => x.join('+')).sort()).toEqual(FACTORY_RECIPES[type]!.inputs.map(x => x.join('+')).sort());
       expect(r.product).toBe(FACTORY_RECIPES[type]!.product);
     }
   });

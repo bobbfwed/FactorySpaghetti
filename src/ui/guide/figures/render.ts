@@ -7,7 +7,7 @@ import { v } from '../vdom';
 import type { FigureJob } from './jobs';
 import { BIG_SCALE, ITEM_H, ITEM_W, SCENE_W, modelIcon } from './jobs';
 import type { Material } from '../../../engine/config';
-import type { Callout, FigIcon, FigureBlock, LineupItem, Pic, SceneSpec } from './types';
+import type { Callout, FigIcon, FigureBlock, LineupItem, Pic, PlayExample, SceneSpec } from './types';
 
 const MATERIAL_WORD: Record<Material, string> = { ore: 'Ore', plate: 'Plate', sphere: 'Sphere', tesseract: 'Tesseract' };
 
@@ -74,6 +74,35 @@ function legend(callouts: readonly Callout[], inline: Inline): VNode | null {
   return v('ol', { class: 'g-legend' }, rows.map(c => v('li', null, v('span', { class: `g-mark${markTone(c.mark)}`, 'aria-hidden': 'true' }, c.mark), v('span', null, inline(c.text)))));
 }
 
+/**
+ * An animated example: the picture (filled and played by figures/playMount.ts), the side panel,
+ * the controls, and every step's caption in a numbered list from the start (the order, like the
+ * printed rulebook shows it). Without the player the list and the captions still read on their own.
+ */
+function renderPlay(b: FigureBlock, ex: PlayExample, inline: Inline): VNode {
+  const aspect = ex.aspect ?? 16 / 9;
+  const h = Math.round(SCENE_W / aspect);
+  const btn = (pc: string, label: string, text: string): VNode =>
+    v('button', { class: `btn btn-dark g-pbtn g-p${pc}`, type: 'button', 'data-pc': pc, 'aria-label': label }, text);
+  return v('figure', { class: 'g-fig g-play', 'data-play': JSON.stringify(ex) },
+    v('div', { class: 'g-pic g-scene g-playpic', role: 'img', 'aria-label': b.alt, style: `aspect-ratio: ${SCENE_W} / ${h}` }),
+    ex.side ? v('div', { class: 'g-pside', 'aria-hidden': 'true' }) : null,
+    v('div', { class: 'g-pbar', role: 'group', 'aria-label': 'Example controls', hidden: '' },
+      btn('primary', 'Play the example', 'Play'), btn('prev', 'Previous step', 'Previous'), btn('next', 'Next step', 'Next')),
+    v('ol', { class: 'g-psteps' }, ex.steps.map((s, i) => v('li', { class: 'g-pstep', 'data-step': String(i) },
+      v('span', { class: 'g-pnum', 'aria-hidden': 'true' }, String(i + 1)),
+      v('span', { class: 'g-ptext' }, inline(s.caption),
+        legendOf(s.callouts, i).length ? v('span', { class: 'g-pmarks' }, legendOf(s.callouts, i).map(c => v('span', { class: 'g-pmark' },
+          v('span', { class: `g-mark${markTone(c.mark)}`, 'aria-hidden': 'true' }, c.mark), ' ', inline(c.text)))) : null)))),
+    b.caption ? v('figcaption', { class: 'g-figcap' }, inline(b.caption)) : null,
+    v('div', { class: 'g-sr', 'aria-live': 'polite' }));
+}
+
+/** A step's markers that need a word under its caption: one numbered as the step itself needs none. */
+function legendOf(callouts: readonly Callout[] | undefined, i: number): readonly Callout[] {
+  return (callouts ?? []).filter(c => c.mark !== String(i + 1));
+}
+
 /** ✓ and ✗ markers are drawn green and red. */
 export const markTone = (mark: string): string => (mark === '✓' ? ' ok' : mark === '✗' ? ' no' : '');
 
@@ -97,6 +126,7 @@ export function renderFigure(b: FigureBlock, inline: Inline): VNode {
         mini(r.product)))),
       caption);
   }
+  if (b.show.kind === 'play') return renderPlay(b, b.show.play, inline);
   const { scene, callouts = [] } = b.show;
   const { w, h } = sceneSize(scene);
   const job: FigureJob = { t: 'scene', scene, w, h, ...(callouts.length ? { marks: callouts.map(c => c.at) } : {}) };

@@ -9,6 +9,7 @@ import {
 } from '../../../engine/config';
 import { hexNeighbours, mineSecondaryCoord } from '../../../engine/rules/pieces';
 import type { FigureBlock, LineupItem, ScenePiece, SceneSpec } from '../figures/types';
+import { recipesInOrder } from '../../../play/recipes';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, MINE_RESOURCE_REWARD, MINE_UPGRADE_REWARD, amount, count, exchangeDown } from './facts';
 
 const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
@@ -81,7 +82,7 @@ const BELT_ON_TILE: SceneSpec = { pieces: [{ id: 't', type: 'blank', q: 0, r: 0 
 
 export const PLAYER_PIECES_FIGURE: FigureBlock = {
   k: 'figure',
-  alt: 'Each player\'s pieces: a meeple in each of the four colours, a Control Module, the Control Module tray, a belt, a teleporter, a Power Token, and the starting player marker.',
+  alt: 'Each player\'s pieces: a meeple in each of the four colours, a Control Module, a belt, a teleporter, a Power Token, and the starting player marker.',
   caption: 'Each player\'s pieces, in their colour, and the starting player marker.',
   show: {
     kind: 'lineup', items: [
@@ -90,7 +91,6 @@ export const PLAYER_PIECES_FIGURE: FigureBlock = {
       { pic: { model: 'meeple', color: 'orange' }, label: 'Meeple', value: 'Orange' },
       { pic: { model: 'meeple', color: 'green' }, label: 'Meeple', value: 'Green' },
       { pic: { model: 'control-module', color: 'blue', numeral: 7 }, label: 'Control Module', value: 'Numbered 1 to 18' },
-      { pic: { model: 'control-module-tray' }, label: 'Control Module tray' },
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: 'On a blank tile' },
       { pic: { model: 'teleporter', color: 'blue', yaw: TELEPORTER_YAW }, label: 'Teleporter', big: true },
       { pic: { model: 'power-token' }, label: 'Power Token' },
@@ -168,13 +168,6 @@ export const UPGRADE_FIGURE: FigureBlock = {
   },
 };
 
-export const TRAY_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: 'The Control Module tray on the screen, with modules 2, 3 and 5 on the board.',
-  caption: 'Your tray on the screen: a module on a building leaves its pocket empty (here 2, 3 and 5).',
-  show: { kind: 'lineup', items: [{ pic: { flat: { k: 'tray', color: 'blue', onBoard: [2, 3, 5] } }, label: '' }] },
-};
-
 export const POWER_PLANT_FIGURE: FigureBlock = {
   k: 'figure',
   alt: `What a Power Plant gives: empty, ${POWER_PLANT_BASE_YIELD} Power Token; with Ore ${POWER_PLANT_MATERIAL_YIELD.ore}; with a Plate ${POWER_PLANT_MATERIAL_YIELD.plate}; with a Sphere ${POWER_PLANT_MATERIAL_YIELD.sphere}.`,
@@ -193,13 +186,15 @@ const FACTORY_MODEL = { plateFact: 'tile-plate-factory', sphereFact: 'tile-spher
 export function recipeFigure(type: keyof typeof FACTORY_MODEL): FigureBlock {
   const r = FACTORY_RECIPES[type]!;
   const product = r.product as Exclude<Material, 'ore'>;
-  const sets = r.inputs.map(s => s.map(m => MATERIAL_NAME[m]).join(' + '));
+  // Lowest total value first (play/recipes.ts), as everywhere recipes are listed.
+  const inputs = recipesInOrder(type);
+  const sets = inputs.map(s => s.map(m => MATERIAL_NAME[m]).join(' + '));
   return {
     k: 'figure',
     alt: `${BUILDING_NAME[type]}: ${sets.join(', or ')}, makes 1 ${MATERIAL_NAME[product]}.`,
     show: {
       kind: 'recipe', factory: FACTORY_MODEL[type], name: BUILDING_NAME[type],
-      note: `${count(FACTORY_POWER_COST[product], 'Power Token')} to run`, inputs: r.inputs, product,
+      note: `${count(FACTORY_POWER_COST[product], 'Power Token')} to run`, inputs, product,
     },
   };
 }
@@ -278,23 +273,6 @@ export function freeSpaces(pieces: readonly ScenePiece[]): { q: number; r: numbe
   }
   return out;
 }
-
-const PLACE_PIECES: ScenePiece[] = [
-  { id: 'mine-1', type: 'mine', q: 0, r: 0 },
-  { id: 'pp', type: 'powerPlant', q: 0, r: 1, rot: 1 },
-  { id: 'b1', type: 'blank', q: -1, r: 0 },
-  { id: 'pf', type: 'plateFact', q: 1, r: -1, rot: 2 },
-];
-
-export const PLACE_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: 'A small board: the first Mine with a Power Plant, a Plate Factory and a blank tile. Every free space touching the board glows; a Sphere Factory waits, see-through, on one of them.',
-  caption: 'Every free space that touches the board glows. Tap one, turn the piece, and confirm.',
-  show: {
-    kind: 'scene',
-    scene: { pieces: PLACE_PIECES, glow: { color: 'blue', at: freeSpaces(PLACE_PIECES) }, ghost: { type: 'sphereFact', q: -1, r: 1, rot: 1 } },
-  },
-};
 
 export const MINE_FIGURE: FigureBlock = {
   k: 'figure',
@@ -469,11 +447,4 @@ export const MEEPLE_FIGURE: FigureBlock = {
     ],
     icon: 'meeple',
   },
-};
-
-export const SETUP_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: 'A starting board for three players: four pieces per player laid around the first Mine, with each player\'s Control Module 3 on a Plate Factory and 2 on a Power Plant.',
-  caption: 'A starting board for three players, after the first claims: each player\'s 3 on a Plate Factory and 2 on a Power Plant.',
-  show: { kind: 'scene', scene: { setup: { seed: 7, players: 3, claims: true }, colors: ['blue', 'red', 'green'], aspect: 4 / 3 } },
 };

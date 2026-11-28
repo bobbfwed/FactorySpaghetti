@@ -18,6 +18,7 @@ import { payMaterials } from '../engine/rules/flow';
 import { factoryExpectedProduct } from '../engine/rules/production';
 import { factoryProduct } from '../engine/rules/recipes';
 import { supplySlots } from '../engine/rules/teleporters';
+import { recipesInOrder } from './recipes';
 
 export const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
@@ -160,12 +161,14 @@ export function inputWaitsForFeed(piece: BoardPiece, player: PlayerId): boolean 
 
 /**
  * The materials that would complete one of this factory's recipes, given what lies in its input
- * (the recipe table in config, for the words only): each distinct set, largest material first.
+ * (the recipe table in config, for the words only): each distinct set, largest material first,
+ * the sets in the order recipes are shown (recipes.ts: lowest total value first).
  * A Power Plant: any one Ore, Plate or Sphere.
  */
 export function neededSets(piece: BoardPiece): Material[][] {
   if (piece.type === 'powerPlant') return POWER_PLANT_INPUTS.map(m => [m]);
-  const recipes = FACTORY_RECIPES[piece.type]?.inputs ?? [];
+  // In display order (lowest total value first): the words list the options in that order.
+  const recipes = recipesInOrder(piece.type);
   const filled = (piece.input?.slots ?? []).filter((s): s is Material => s !== null);
   const out: Material[][] = [];
   const seen = new Set<string>();

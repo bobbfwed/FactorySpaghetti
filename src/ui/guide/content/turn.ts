@@ -9,7 +9,8 @@ import {
   MINE_NUMBERS, MINE_RESOURCE_REWARD, ORDINAL, amount, cardPriceWords, diceOdds, likeliest, listWords, upgradePointWords,
   minePriceWords, percent,
 } from './facts';
-import { BANK_FIGURE, MEEPLE_FIGURE, PLACE_FIGURE, ROLL_FIGURE, TURN_STEPS_FIGURE, UPGRADE_FIGURE } from './figures';
+import { BANK_FIGURE, MEEPLE_FIGURE, ROLL_FIGURE, TURN_STEPS_FIGURE, UPGRADE_FIGURE } from './figures';
+import { PLACE_PLAY_FIGURE, ROLL_PLAY_FIGURE } from './plays';
 
 const seconds = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
 
@@ -57,7 +58,7 @@ export const stepPlace: Topic = {
   blocks: [
     { k: 'p', t: 'If more than one stack is open, first choose which stack to draw from; the open stacks glow. You see the piece only once you have drawn it, and you must place what you drew. If only one stack is open, its top piece is yours to place straight away.' },
     { k: 'p', t: 'Tap a glowing space next to the board, turn the piece until it faces the way you want, and confirm. Any free space that touches the board will do, in any of the six directions.' },
-    PLACE_FIGURE,
+    PLACE_PLAY_FIGURE,
     { k: 'note', tone: 'tip', t: 'Turn a building so its input faces something useful: a Mine\'s ore exit, another building\'s output, or a spot where your belts can reach it.' },
     { k: 'h', t: 'When a stack runs out' },
     { k: 'p', t: 'When a stack becomes empty, the next Mine **drops** into play by itself and the stack under it opens. The next player places that Mine instead of drawing a piece. See [[mines|Mines]].' },
@@ -100,6 +101,7 @@ export const stepRoll: Topic = {
         '**Factories** that are able to run ask their owner how to run them, or to **Skip**. Running costs Power Tokens and uses up the inputs. See [[production|Production]].',
       ],
     },
+    ROLL_PLAY_FIGURE,
     { k: 'p', t: 'Material also moves along belts and between touching pieces, just before and just after the buildings run. See [[moving#when|When material moves]].' },
     { k: 'h', t: 'Which totals come up', id: 'odds' },
     {

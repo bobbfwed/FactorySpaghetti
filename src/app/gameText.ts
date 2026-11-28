@@ -5,6 +5,7 @@ import type { Action } from '../engine/actions';
 import type { BoardPiece, GameState, PlayerId } from '../engine/state';
 import type { Material } from '../engine/config';
 import { BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MINE_COSTS, cardCost } from '../engine/config';
+import { recipesInOrder } from '../play/recipes';
 import { beltLaidThisTurn, legalActions, piecesExhausted, revealedStack } from '../engine';
 import { resourcePoints, tesseractCount } from '../engine/rules/scoring';
 import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, STACK_ORDINAL } from '../session/describe';
@@ -86,7 +87,7 @@ export function operateCost(game: GameState, pieceId: string): string {
   const recipe = p ? FACTORY_RECIPES[p.type] : undefined;
   if (!p || !recipe) return '';
   const product = recipe.product as Exclude<Material, 'ore'>;
-  const inputs = recipe.inputs.map(set => set.map(m => MATERIAL_NAME[m]).join(' + ')).join(' or ');
+  const inputs = recipesInOrder(p.type).map(set => set.map(m => MATERIAL_NAME[m]).join(' + ')).join(' or ');
   return `−${FACTORY_POWER_COST[product]} power, ${inputs} → ${MATERIAL_NAME[product]}`;
 }
 

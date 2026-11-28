@@ -27,6 +27,8 @@ function texts(blocks: readonly Block[]): string[] {
         if (b.show.kind === 'lineup') for (const it of b.show.items) if ('pic' in it) out.push(it.label, ...(it.value ? [it.value] : []));
         if (b.show.kind === 'scene') out.push(...(b.show.callouts ?? []).map(c => c.text));
         if (b.show.kind === 'recipe') out.push(b.show.name, ...(b.show.note ? [b.show.note] : []));
+        // An animated example: every step's caption and marker words.
+        if (b.show.kind === 'play') for (const s of b.show.play.steps) out.push(s.caption, ...(s.callouts ?? []).map(c => c.text));
         break;
     }
   }
