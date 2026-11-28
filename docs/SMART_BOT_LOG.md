@@ -88,3 +88,8 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 4f | Investor lock: extra 0.4 × the Investor's worth for reaching 18 while leading | batch 4 (same seeds, `--merge b3.json,b4.json`) | 1.440 → 1.488; +0.048 (95% −0.019 to +0.115) | inconclusive; again on top of 4d |
 | 4g | End-game thrift (3a) again | batch 4 | 1.440 → 1.424; −0.016 (95% −0.030 to −0.002) | dropped (worse) |
 | 4h | End-game points (3h) again | batch 4 | 1.440 → 1.348; **−0.092 (95% −0.127 to −0.056)** | dropped (worse: the bot needs its plan premium to the very end) |
+| **5a** | **Stronger bonus weights** (4e) on top of 4d | batch 5: `--mode gauntlet --bots greedy,bonusplus,lock,placedeny,deny,weave1500 --import cand/batch5.ts --seeds 120 --start 402000 --jobs 8` | 1.468 → **1.580**; **+0.112 (95% +0.025 to +0.199)**; 3p +4.7, 4p +3.5 points | **kept** (commit 6b788f3) |
+| 5b | Investor lock (4f) on top of 4d | batch 5 | 1.468 → 1.563; +0.095 (95% +0.026 to +0.165), but 2p −2.9 points (95% −5.6 to −0.2) | not kept: makes 2 players clearly worse (rule 5); again on top of 5a |
+| 5c | Placement denial (3i, 4c) on top of 4d | batch 5 | 1.468 → 1.499; +0.031 (95% −0.048 to +0.111) | dropped: third inconclusive measurement |
+| 5d | Bonus denial (3d, 4b) on top of 4d | batch 5 | 1.468 → 1.494; +0.026 (95% −0.000 to +0.052) | inconclusive (small but always positive); again on top of 5a |
+| **5e** | **Belt Weaver search budget 1500 steps instead of 6000** (speed) | batch 5 | 1.468 → 1.465; −0.003 (95% −0.014 to +0.008) | **kept for speed** (commit 07d5c34): no measurable loss, and failed Belt Weaver searches were the slowest decisions |
