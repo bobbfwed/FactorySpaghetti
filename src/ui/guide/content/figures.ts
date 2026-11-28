@@ -4,8 +4,7 @@
 
 import type { CardType, Material } from '../../../engine/config';
 import {
-  BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MATERIAL_VALUES, MINE_COSTS, POWER_PLANT_BASE_YIELD,
-  POWER_PLANT_MATERIAL_YIELD, TESSERACTS_TO_WIN,
+  BELT_COST, FACTORY_POWER_COST, FACTORY_RECIPES, MATERIAL_VALUES, MINE_COSTS, TESSERACTS_TO_WIN,
 } from '../../../engine/config';
 import { hexNeighbours, mineSecondaryCoord } from '../../../engine/rules/pieces';
 import type { FigureBlock, LineupItem, ScenePiece, SceneSpec } from '../figures/types';
@@ -168,18 +167,6 @@ export const UPGRADE_FIGURE: FigureBlock = {
   },
 };
 
-export const POWER_PLANT_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: `What a Power Plant gives: empty, ${POWER_PLANT_BASE_YIELD} Power Token; with Ore ${POWER_PLANT_MATERIAL_YIELD.ore}; with a Plate ${POWER_PLANT_MATERIAL_YIELD.plate}; with a Sphere ${POWER_PLANT_MATERIAL_YIELD.sphere}.`,
-  caption: 'Power Tokens a Power Plant gives when it runs, by what lies in its input.',
-  show: {
-    kind: 'lineup', items: [
-      { pic: { model: 'tile-power-plant' }, label: 'Nothing', value: `+${POWER_PLANT_BASE_YIELD}` },
-      ...(['ore', 'plate', 'sphere'] as const).map((m): LineupItem => ({ pic: { model: m }, label: MATERIAL_NAME[m], value: `+${POWER_PLANT_MATERIAL_YIELD[m]}` })),
-    ],
-  },
-};
-
 const FACTORY_MODEL = { plateFact: 'tile-plate-factory', sphereFact: 'tile-sphere-factory', tesseractFact: 'tile-tesseract-factory' } as const;
 
 /** One factory with every set of inputs it takes and what it makes. */
@@ -245,13 +232,6 @@ export const TESSERACT_COUNT_FIGURE: FigureBlock = {
       { pic: { flat: { k: 'pips', n: 2 } }, label: 'Tesseracts toward winning' },
     ],
   },
-};
-
-export const WIN_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: `The Tesseract count of a player area, full: ${TESSERACTS_TO_WIN} of ${TESSERACTS_TO_WIN}.`,
-  caption: `All ${TESSERACTS_TO_WIN} marks lit during your own turn: you win.`,
-  show: { kind: 'lineup', items: [{ pic: { flat: { k: 'pips', n: TESSERACTS_TO_WIN } }, label: '' }] },
 };
 
 // ── Staged scenes ──────────────────────────────────────────────────────────────────────────────
@@ -353,33 +333,9 @@ export const PRODUCTION_FIGURE: FigureBlock = {
   },
 };
 
-export const BELT_CHAIN_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: 'Two belts on two blank tiles carry Ore from an ore exit of the first Mine to a Plate Factory\'s input.',
-  caption: 'A chain of two belts from a Mine to a Plate Factory. The chevrons point the way material flows.',
-  show: {
-    kind: 'scene',
-    scene: {
-      pieces: [
-        { id: 'mine-1', type: 'mine', q: 0, r: 0 },
-        { id: 'b1', type: 'blank', q: -1, r: 0 },
-        { id: 'b2', type: 'blank', q: -2, r: 1 },
-        { id: 'pf', type: 'plateFact', q: -3, r: 1, rot: 3, claims: [[0, 4]], input: ['ore'] },
-      ],
-      belts: [{ piece: 'b1', a: 7, b: 10 }, { piece: 'b2', a: 5, b: 1 }],
-      aspect: 2.6,
-    },
-    callouts: [
-      { mark: '1', at: { piece: 'b1', belt: 0 }, text: 'The first belt starts at the point facing an ore exit.' },
-      { mark: '2', at: { piece: 'b2', belt: 0 }, text: 'The next belt starts at the matching point of the neighbouring piece.' },
-      { mark: '3', at: { piece: 'pf', buffer: 'input' }, text: 'The last belt ends at the point facing the input: Ore arrives.' },
-    ],
-  },
-};
-
 export const BELT_RULE_FIGURE: FigureBlock = {
   k: 'figure',
-  alt: 'Two blank tiles. On the left, a belt from point 3 to point 9, allowed. On the right, a belt from point 5 to point 7, across one corner, not allowed.',
+  alt: 'Two blank tiles. On the left, a belt straight across the tile, allowed. On the right, a belt whose ends are only two points apart, across one corner, not allowed.',
   caption: 'A belt\'s two ends must be more than two points apart.',
   show: {
     kind: 'scene',
@@ -389,8 +345,8 @@ export const BELT_RULE_FIGURE: FigureBlock = {
       aspect: 2,
     },
     callouts: [
-      { mark: '✓', at: { piece: 'l', belt: 0 }, text: 'From #3 to #9: far enough apart.' },
-      { mark: '✗', at: { piece: 'r', belt: 0 }, text: 'From #5 to #7: only two points apart, across one corner. The game does not allow it.' },
+      { mark: '✓', at: { piece: 'l', belt: 0 }, text: 'Its two ends are straight across the tile from each other: far enough apart.' },
+      { mark: '✗', at: { piece: 'r', belt: 0 }, text: 'Its two ends are only two points apart, across one corner. The game does not allow it.' },
     ],
   },
 };
@@ -426,25 +382,3 @@ export const TELEPORTER_FIGURE: FigureBlock = {
   },
 };
 
-export const MEEPLE_FIGURE: FigureBlock = {
-  k: 'figure',
-  alt: 'Blue\'s meeple on the first Mine\'s resource point, Red\'s on its upgrade point, and Orange\'s on Orange\'s Plate Factory.',
-  caption: 'Meeples on both points of a Mine and on a building of their owner.',
-  show: {
-    kind: 'scene',
-    scene: {
-      pieces: [
-        { id: 'mine-1', type: 'mine', q: 0, r: 0 },
-        { id: 'pf', type: 'plateFact', q: -1, r: 0, rot: 3, claims: [[2, 3]], input: ['ore'] },
-      ],
-      meeples: [{ player: 0, piece: 'mine-1', slot: 0 }, { player: 1, piece: 'mine-1', slot: 1 }, { player: 2, piece: 'pf' }],
-      aspect: 2.4,
-    },
-    callouts: [
-      { mark: '1', at: { piece: 'mine-1', slot: 0 }, text: 'Blue on the resource point: Blue gets the Mine\'s material at the end of the round.' },
-      { mark: '2', at: { piece: 'mine-1', slot: 1 }, text: 'Red on the upgrade point: Red gets Mine credits.' },
-      { mark: '3', at: { piece: 'pf', centre: true, dz: 22 }, text: 'Orange on Orange\'s own Plate Factory: in the round-end turn Orange may load it, run it and collect from it.' },
-    ],
-    icon: 'meeple',
-  },
-};

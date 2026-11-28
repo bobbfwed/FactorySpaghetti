@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import type { BoardPiece, GameState, Material, PieceType, PlayerId } from '../engine/state';
 import { partsOf, type ModelLib, type ModelPart } from './models';
 import { teleportersOf } from '../engine/rules/teleporters';
-import type { SceneFx } from './animator';
+import type { Leaving, SceneFx } from './animator';
 import { arrowEnds, beltHeadMap } from './beltArrows';
 import {
   BELT_SPILL, BELT_TUCK, BUFFER_MATERIAL_SCALE, CARD, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT,
@@ -207,6 +207,8 @@ export class TableScene {
   fx: SceneFx | null = null;
   /** Belts dropping into place, drawn on their own until they lie (then merged with the rest). */
   private readonly dropBelts = new Map<string, THREE.Mesh>();
+  /** Belts leaving the table (picked up, or with their piece), drawn on their own until they are gone. */
+  private readonly goneBelts = new Map<string, THREE.Mesh>();
 
   /** `farLib`: the same models with lighter geometry, used when zoomed out (see models.ts farDetail). */
   constructor(private readonly lib: ModelLib, private readonly farLib: ModelLib = lib) {
@@ -377,6 +379,9 @@ export class TableScene {
     for (const e of this.fx?.extras() ?? []) {
       if (e.s > 0.01) this.materialParts.get(e.material)!.push(mat4(e.x, e.y, e.z, e.yaw, e.s));
     }
+    // Pieces, Teleporters and Control Modules no longer in the state, still leaving the table.
+    const gone = this.fx?.leaving?.();
+    if (gone) this.addLeaving(gone, az);
     // Piles (the drawn piece above its pile is one of the tile instances).
     this.buildStacks(game, now);
     for (const parts of this.tileParts.values()) for (const p of parts) p.end();
@@ -387,6 +392,7 @@ export class TableScene {
     this.buildCards(game);
     this.buildDice(game);
     this.buildBelts(game);
+    this.updateGoneBelts(gone?.belts ?? []);
   }
 
   private addPiece(piece: BoardPiece, now: number, az: number): void {
@@ -457,6 +463,67 @@ export class TableScene {
         for (const part of this.teleporters) part.push(m, color);
         this.portals.push(m);
       }
+    }
+  }
+
+  /** Draw what is leaving the table (animator.ts Leaving): lifted and shrinking about its own middle. */
+  private addLeaving(gone: Leaving, az: number): void {
+    for (const g of gone.pieces) {
+      if (g.piece.type === 'mine') continue;
+      const pl = piecePlacement(g.piece);
+      const m = mat4(pl.x, g.y, pl.z, pl.yaw, g.s);
+      for (const part of this.tileParts.get(TILE_MODEL[g.piece.type])!) part.push(m);
+    }
+    for (const t of gone.teleporters) {
+      const tp = teleporterPlacement(t.piece, t.buffer, t.slot);
+      const m = mat4(tp.x, TILE_TOP + t.y, tp.z, tp.yaw, TELEPORTER_SCALE * t.s);
+      const color = this.colorOf(t.owner);
+      for (const part of this.teleporters) part.push(m, color);
+      this.portals.push(m);
+    }
+    const spot = (piece: BoardPiece, index: number, of: number): { x: number; z: number; s: number } => {
+      const lay = claimLayout(Math.max(1, of));
+      const pl = piecePlacement(piece);
+      const off = lay.offsets[index] ?? { x: 0, z: 0 };
+      const w = modelToWorld({ x: pl.x, z: pl.z, yaw: az }, off.x, off.z);
+      return { x: w.x, z: w.z, s: lay.scale };
+    };
+    for (const md of gone.modules) {
+      let at = spot(md.piece, md.index, md.of);
+      if (md.to) {
+        const b = spot(md.to.piece, md.to.index, md.to.of), t = md.to.t;
+        at = { x: at.x + (b.x - at.x) * t, z: at.z + (b.z - at.z) * t, s: at.s + (b.s - at.s) * t };
+      }
+      const sc = at.s * md.s;
+      const look = moduleColors(this.colorOf(md.owner), md.module, this.game?.mineCount ?? 1);
+      this.modules.push(mat4(at.x, TILE_TOP + md.y, at.z, az, sc), look.face);
+      this.numerals.push(mat4(at.x, TILE_TOP + md.y + 2 * sc + 0.04, at.z, az, sc), md.module, look.numeral);
+    }
+  }
+
+  /** Belts leaving the table, each drawn on its own, lifted and shrunk about its middle. */
+  private updateGoneBelts(gone: Leaving['belts']): void {
+    const keep = new Set(gone.map(g => g.beltId));
+    for (const [id, mesh] of this.goneBelts) {
+      if (keep.has(id)) continue;
+      this.root.remove(mesh);
+      mesh.geometry.dispose();
+      this.goneBelts.delete(id);
+    }
+    for (const g of gone) {
+      let mesh = this.goneBelts.get(g.beltId);
+      if (!mesh) {
+        const belt = g.game.belts.find(b => b.id === g.beltId);
+        if (!belt) continue;
+        mesh = new THREE.Mesh(bendBelts(this.far ? this.beltFar : this.beltBase, g.game, b => this.colorOf(b), [belt], beltHeadMap(g.game)), this.beltMaterial);
+        mesh.castShadow = true;
+        mesh.geometry.computeBoundingBox();
+        this.root.add(mesh);
+        this.goneBelts.set(g.beltId, mesh);
+      }
+      const c = mesh.geometry.boundingBox!.getCenter(new THREE.Vector3());
+      mesh.scale.setScalar(g.s);
+      mesh.position.set(c.x * (1 - g.s), g.y + c.y * (1 - g.s), c.z * (1 - g.s));
     }
   }
 
@@ -722,6 +789,8 @@ export class TableScene {
 
   dispose(): void {
     for (const mesh of this.dropBelts.values()) mesh.geometry.dispose();
+    for (const mesh of this.goneBelts.values()) mesh.geometry.dispose();
+    this.goneBelts.clear();
     this.portals.dispose();
     this.portalGeo.dispose();
     this.portalMat.dispose();

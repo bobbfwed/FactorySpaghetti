@@ -139,6 +139,8 @@ export class Player {
     if (!this.visible && this.playing && !this.paused) {
       this.hiddenPause = true;
       this.freeze();
+      // Out of sight it does not hold up another example in view; coming back, it takes over again.
+      this.o.coordinator.release(this);
       this.ui(false);
     } else if (this.visible && this.playing && this.paused && this.hiddenPause) {
       this.hiddenPause = false;

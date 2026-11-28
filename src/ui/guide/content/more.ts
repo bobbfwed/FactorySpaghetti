@@ -8,7 +8,8 @@ import { defaultSettings } from '../../../session/room';
 import { BOT_TYPES } from '../../../bots/registry';
 import type { Topic } from '../types';
 import { minePointRows } from './turn';
-import { MINE_FIGURE, MINE_REWARDS_FIGURE, TESSERACT_COUNT_FIGURE, WIN_FIGURE } from './figures';
+import { MINE_FIGURE, MINE_REWARDS_FIGURE, TESSERACT_COUNT_FIGURE } from './figures';
+import { BONUS_PLAY_FIGURE, MINE_DROP_PLAY_FIGURE, WIN_PLAY_FIGURE } from './morePlays';
 import { MATERIALS, MATERIAL_NAME, ORDINAL, cardPriceWords, listWords, minePriceWords, upgradePointWords } from './facts';
 
 const secs = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
@@ -36,6 +37,7 @@ export const mines: Topic = {
       ],
     },
     { k: 'p', t: 'Either way the stack under that Mine opens, and from then on everyone rolls one more die.' },
+    MINE_DROP_PLAY_FIGURE,
     { k: 'h', t: 'Meeple points', id: 'points' },
     { k: 'p', t: 'Each Mine has a resource point and an upgrade point, each with room for one meeple. They pay out at the end of the round:' },
     MINE_FIGURE,
@@ -72,6 +74,7 @@ export const bonuses: Topic = {
       ],
     },
     { k: 'p', t: 'The game checks after every move and hands a card over the moment someone beats its holder — even in the middle of another player\'s turn. The **Bonuses** tab shows who holds each one.' },
+    BONUS_PLAY_FIGURE,
     {
       k: 'details', blocks: [
         { k: 'p', t: 'Ties: the holder keeps the card. If nobody held it yet and several players qualify at once, the player in the earliest seat (the order of the seats in the lobby) gets it.' },
@@ -91,7 +94,7 @@ export const winning: Topic = {
   summary: `${TESSERACTS_TO_WIN} Tesseracts on your own turn — or the most valuable materials when the pieces run out.`,
   blocks: [
     { k: 'p', t: `You win the moment you hold **${TESSERACTS_TO_WIN} Tesseracts** — in your materials plus your bonus cards — during your own turn, your round-end turn included. The game checks after every move; there is nothing to announce.` },
-    WIN_FIGURE,
+    WIN_PLAY_FIGURE,
     { k: 'p', t: 'Tesseracts that reach you on someone else\'s turn, for example through an output teleporter, count as soon as your next turn (or round-end turn) begins and you make a move.' },
     { k: 'h', t: 'When the pieces run out', id: 'exhausted' },
     { k: 'p', t: 'When all three stacks are empty (and no Mine is waiting to be placed), the round is finished: the notice **The pieces have run out: this is the final round** appears, every player still to play takes their turn — starting at the roll, since there is nothing to place — and the round-end turns are played. You can still win with Tesseracts in those last turns.' },

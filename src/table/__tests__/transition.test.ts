@@ -175,7 +175,8 @@ describe('planTransition', () => {
     for (const m of ops) {
       const id = (m.action as { pieceId: string }).pieceId;
       const had = m.prev.board.find(p => p.id === id)?.input?.slots.filter(Boolean).length ?? 0;
-      expect(ofKind(m.plan, 'consume').filter(s => s.pieceId === id && s.buffer === 'input').length).toBe(had);
+      // Materials supplied through a Teleporter just now are used up too (late), on top of what lay there.
+      expect(ofKind(m.plan, 'consume').filter(s => s.pieceId === id && s.buffer === 'input' && !s.late).length).toBe(had);
     }
   });
 
@@ -275,11 +276,12 @@ describe('material moving aside for a teleporter (slide)', () => {
     expect(ofKind(planTransition(withPiece(teleported), withPiece(teleported), []), 'slide')).toHaveLength(0);
   });
 
-  it('a building that loses its owner (#58): its material is used up where it lay, beside the teleporter, with no slide', () => {
+  it('a building that loses its owner (#58): its material lifts away to the bank from where it lay, with no slide', () => {
     const lost = { ...teleported, claims: [], input: { slots: [null], teleporters: [] as Array<PlayerId | null> } };
     const plan = planTransition(withPiece(teleported), withPiece(lost), []);
     expect(ofKind(plan, 'slide')).toHaveLength(0);
-    expect(ofKind(plan, 'consume').map(c => [c.pieceId, c.buffer, c.slot])).toEqual([[factory.id, 'input', 0]]);
+    expect(ofKind(plan, 'leave').map(c => [c.pieceId, c.buffer, c.slot])).toEqual([[factory.id, 'input', 0]]);
+    expect(ofKind(plan, 'consume')).toHaveLength(0);
   });
 
   it('a teleporter that leaves while the material stays: the material slides back', () => {

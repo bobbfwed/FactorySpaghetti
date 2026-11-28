@@ -91,14 +91,15 @@ export function startState(start: PlayStart): GameState {
     }),
     stacks: [
       { ...base.stacks[0], available: true, pieces: stack },
-      { ...base.stacks[1], available: mines >= 2, pieces: [] },
-      { ...base.stacks[2], available: mines >= 3, pieces: [] },
+      { ...base.stacks[1], available: mines >= 2, pieces: (start.stacks23?.[0] ?? []).map((type: PieceType, i) => ({ id: `s2-${type}-${STACK_IDS[i] ?? i}`, type })) },
+      { ...base.stacks[2], available: mines >= 3, pieces: (start.stacks23?.[1] ?? []).map((type: PieceType, i) => ({ id: `s3-${type}-${STACK_IDS[i] ?? i}`, type })) },
     ],
     unplacedMines: base.unplacedMines.filter(m => !board.some(p => p.id === m.id)),
     pendingMineIds: [],
     mineCount: Math.max(1, mines),
     globalTeleporterCount: board.reduce((n, p) => n + (p.input?.teleporters.filter(o => o != null).length ?? 0) + (p.output?.teleporters.filter(o => o != null).length ?? 0), 0),
-    cardDeck: [],
+    // The deck as the game deals it (a card bought in an example is the top one), the discard pile empty.
+    cardDeck: base.cardDeck,
     cardDiscard: [],
     lastRoll: null,
     drawnStackIndex: null,
@@ -126,6 +127,9 @@ function withHoldings(s: GameState, start: PlayStart): GameState {
         inventory: inv,
         freeActionCredits: x.credits ?? pl.freeActionCredits,
         freeUpgradesRemaining: x.freeUpgrades ?? pl.freeUpgradesRemaining,
+        hand: x.hand ?? pl.hand,
+        beltsRemaining: x.belts ?? pl.beltsRemaining,
+        teleportersRemaining: x.teleporters ?? pl.teleportersRemaining,
       };
     }),
   };
@@ -164,6 +168,7 @@ export function legalTargets(s: GameState): Target[] {
   for (const a of legalActions(s, activeSeat(s) as PlayerId)) {
     if (a.type === 'PLACE_PIECE' || a.type === 'PLACE_MINE') add({ kind: 'cell', q: a.coord.q, r: a.coord.r });
     else if (a.type === 'SETUP_CLAIM' || a.type === 'CLAIM_BUILDING' || a.type === 'UPGRADE_BUILDING') add({ kind: 'piece', pieceId: a.pieceId });
+    else if (a.type === 'PLACE_TELEPORTER') add({ kind: 'buffer', pieceId: a.pieceId, buffer: a.bufferType, ...(a.bufferType === 'input' ? { slot: a.inputIndex ?? 0 } : {}) });
     else if (a.type === 'PLACE_MEEPLE') add(a.slotIndex === undefined ? { kind: 'piece', pieceId: a.pieceId } : { kind: 'mineSlot', pieceId: a.pieceId, slot: a.slotIndex });
   }
   return [...out.values()];
@@ -178,7 +183,20 @@ function glowTarget(g: GlowAt): Target {
 
 function glowOf(spec: PlayStep['glow'], s: GameState): Target[] {
   if (spec === undefined) return [];
-  return spec === 'legal' ? legalTargets(s) : spec.map(glowTarget);
+  if (spec === 'legal') return legalTargets(s);
+  if ('beltsFrom' in spec) return beltEnds(s, spec.beltsFrom.piece, spec.beltsFrom.point);
+  return spec.map(glowTarget);
+}
+
+/** Where a belt starting at that point may end, by the engine's legal moves (empty: none may start there). */
+export function beltEnds(s: GameState, pieceId: string, point: number): Target[] {
+  const out: Target[] = [];
+  for (const a of legalActions(s, activeSeat(s) as PlayerId)) {
+    if (a.type !== 'PLACE_BELT' || a.pieceId !== pieceId) continue;
+    const other = a.fromPoint === point ? a.toPoint : a.toPoint === point ? a.fromPoint : null;
+    if (other !== null) out.push({ kind: 'point', pieceId, point: other });
+  }
+  return out;
 }
 
 // ── The whole example ──────────────────────────────────────────────────────────────────────────
@@ -255,8 +273,14 @@ export function playLayout(ex: PlayExample, tl: Timeline): PlayLayout {
   let dice: XZ[] = [];
   let top = 12;
   if (ex.pile) {
-    stacks[0] = { x: board.maxX + HEX_RADIUS + 16, z: midZ };
-    b = unionBounds(b, { minX: stacks[0].x - HEX_RADIUS, maxX: stacks[0].x + HEX_RADIUS, minZ: stacks[0].z - HEX_RADIUS, maxZ: stacks[0].z + HEX_RADIUS });
+    // The piles shown stand in a column to the right of the board (a Mine lying on one overhangs it).
+    const shown = ex.pile === true ? [0] : ex.pile;
+    shown.forEach((k, j) => {
+      const at = { x: board.maxX + HEX_RADIUS + 16 + (shown.length > 1 ? 18 : 0), z: midZ + (j - (shown.length - 1) / 2) * (HEX_RADIUS * 2 + 14) };
+      stacks[k as 0 | 1 | 2] = at;
+      const half = shown.length > 1 ? HEX_RADIUS * 2.1 : HEX_RADIUS;
+      b = unionBounds(b, { minX: at.x - half, maxX: at.x + half, minZ: at.z - HEX_RADIUS, maxZ: at.z + HEX_RADIUS });
+    });
     top = 36;
   }
   if (ex.dice) {
@@ -304,6 +328,7 @@ export function stepTiming(step: StepRun, k: number, tray: boolean): StepTiming 
     segments.push({ move: i, at: t, lead, anim });
     t += lead + anim;
   });
-  if (segments.length === 0) t = STILL_STEP_MS * k;
+  // A step whose moves show nothing (material that does not move) still rests on screen a moment.
+  t = Math.max(t, STILL_STEP_MS * k);
   return { segments, total: Math.max(t, 1) };
 }

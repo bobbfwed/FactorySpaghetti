@@ -9,7 +9,7 @@ import { MATERIAL_ICON } from './pieces';
 
 export interface Point { x: number; y: number }
 
-const ICON: Record<Carried, IconName> = { ...MATERIAL_ICON, power: 'power', card: 'card' };
+const ICON: Record<Exclude<Carried, 'module'>, IconName> = { ...MATERIAL_ICON, power: 'power', card: 'card', teleporter: 'teleporter' };
 const MAX_TOKENS = 6;
 
 /** The pace of a flight (shared with the guide's animated examples, which draw the same flights). */
@@ -17,8 +17,10 @@ export const FLIGHT_EASING = 'cubic-bezier(.45,.05,.35,1)';
 
 /** The token that flies: an icon of the item (a card in the player's colour), with an optional count. */
 export function flightToken(item: Carried, color?: string, label?: string): HTMLElement {
-  return h('div', { class: `tg-fly ${item === 'card' ? 'card' : ''}`, style: color ? `--seat:${color}` : '' },
-    icon(ICON[item]), label ? h('b', { text: label }) : null);
+  // A Control Module going back to its owner: a small block in their colour.
+  const face = item === 'module' ? h('span', { class: 'mod' }) : icon(ICON[item]);
+  return h('div', { class: `tg-fly ${item === 'card' || item === 'module' ? item : ''}`, style: color ? `--seat:${color}` : '' },
+    face, label ? h('b', { text: label }) : null);
 }
 
 /**

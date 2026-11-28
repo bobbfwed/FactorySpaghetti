@@ -18,7 +18,6 @@ import type { FigureBlock, PlayExample } from '../figures/types';
 import type { Block } from '../types';
 import { textOf, walk, type VNode } from '../vdom';
 
-const EXAMPLES: readonly PlayExample[] = [FIRST_CLAIMS_PLAY, PLACE_PLAY, ROLL_PLAY, CLAIM_PLAY];
 const COLOR_WORD = { blue: 'Blue', red: 'Red', orange: 'Orange', green: 'Green' } as const;
 
 function figuresIn(blocks: readonly Block[]): FigureBlock[] {
@@ -27,14 +26,19 @@ function figuresIn(blocks: readonly Block[]): FigureBlock[] {
 const PLAYS = GUIDE.topics.flatMap(t => figuresIn(t.blocks).filter(f => f.show.kind === 'play').map(f => ({ topic: t.id, f })));
 
 describe('the animated examples in the guide', () => {
-  it('are the four of the first batch, each in its topic', () => {
-    expect(PLAYS.map(p => `${p.topic}:${(p.f.show as { play: PlayExample }).play.id}`)).toEqual([
-      'starting:first-claims', 'step-place:place-piece', 'step-roll:roll', 'claiming:claim-upgrade',
-    ]);
+  it('are each in the topic where their rule is explained', () => {
+    const byTopic = new Map<string, string[]>();
+    for (const p of PLAYS) byTopic.set(p.topic, [...(byTopic.get(p.topic) ?? []), (p.f.show as { play: PlayExample }).play.id].sort());
+    expect(Object.fromEntries(byTopic)).toEqual({
+      starting: ['first-claims'], turn: ['turn'], 'step-place': ['place-piece'], 'step-roll': ['roll'], 'step-actions': ['actions'],
+      'step-meeple': ['meeple'], 'round-end': ['round-end'], claiming: ['claim-upgrade'], production: ['power-plants', 'production'],
+      moving: ['moving'], belts: ['belt-chain', 'belt-rules'], teleporters: ['teleporter-in', 'teleporter-out'], bank: ['bank'],
+      cards: ['asset-forfeiture', 'changing-priorities', 'short-sale', 'sink-hole'], mines: ['mine-drop'], bonuses: ['bonus'], winning: ['win'],
+    });
   });
 
   it('replay through the engine: every move is accepted and is one the game would offer', () => {
-    for (const ex of EXAMPLES) {
+    for (const ex of PLAYS.map(x => (x.f.show as { play: PlayExample }).play)) {
       const tl = buildTimeline(ex);
       expect(tl.steps).toHaveLength(ex.steps.length);
       for (const [i, s] of tl.steps.entries()) {
@@ -89,11 +93,11 @@ describe('the animated examples in the guide', () => {
   });
 
   it('frame the board, the glowing spaces and what stands beside it, and time every step', () => {
-    for (const ex of EXAMPLES) {
+    for (const ex of PLAYS.map(x => (x.f.show as { play: PlayExample }).play)) {
       const tl = buildTimeline(ex);
       const l = playLayout(ex, tl);
       expect(l.bounds.maxX).toBeGreaterThan(l.bounds.minX);
-      if (ex.pile) expect(l.side.stacks[0].x).toBeLessThan(1e5);
+      for (const k of ex.pile === true ? [0] : ex.pile || []) expect(l.side.stacks[k as 0 | 1 | 2].x).toBeLessThan(1e5);
       if (ex.dice) expect(l.side.dice.length).toBe(Math.max(...[tl.start, ...tl.steps.map(s => s.after)].map(s => s.mineCount)));
       for (const s of tl.steps) {
         const t = stepTiming(s, 1, !!ex.side?.tray);

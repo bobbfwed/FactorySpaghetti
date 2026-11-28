@@ -9,8 +9,9 @@ import {
   MINE_NUMBERS, MINE_RESOURCE_REWARD, ORDINAL, amount, cardPriceWords, diceOdds, likeliest, listWords, upgradePointWords,
   minePriceWords, percent,
 } from './facts';
-import { BANK_FIGURE, MEEPLE_FIGURE, ROLL_FIGURE, TURN_STEPS_FIGURE, UPGRADE_FIGURE } from './figures';
+import { ROLL_FIGURE, TURN_STEPS_FIGURE, UPGRADE_FIGURE } from './figures';
 import { PLACE_PLAY_FIGURE, ROLL_PLAY_FIGURE } from './plays';
+import { ACTIONS_PLAY_FIGURE, MEEPLE_PLAY_FIGURE, ROUND_END_PLAY_FIGURE, TURN_PLAY_FIGURE } from './morePlays';
 
 const seconds = (ms: number): string => `${Math.round(ms / 1000)} seconds`;
 
@@ -42,6 +43,7 @@ export const turn: Topic = {
       ],
     },
     TURN_STEPS_FIGURE,
+    TURN_PLAY_FIGURE,
     { k: 'p', t: `You may play up to **${MAX_CARDS_PLAYED_PER_TURN} Leverage cards** per turn, in any of the four steps of your own turn — even before you place your piece, or after your meeple is down${PLAY_ON_DRAW_COUNTS_TOWARD_LIMIT ? '; a card played as soon as it is drawn counts as one of them' : ''}. Cards are bought in the actions step, with no limit. See [[cards|Leverage cards]].` },
     { k: 'p', t: 'Once the pieces have run out, a turn has no piece to place: it starts at the roll. The round is still played to the end, round-end turns included, and then the game ends. See [[winning#exhausted|When the pieces run out]].' },
     { k: 'p', t: 'When everyone has had a turn, the round ends and each player takes a short **round-end turn**: free upgrades, Mine rewards, and the building their meeple stands on. See [[round-end|The end of a round]].' },
@@ -135,7 +137,7 @@ export const stepActions: Topic = {
         ['Exchange materials', 'Press a Plate, Sphere or Tesseract, or the bank\'s **Exchange**, then **Exchange** to confirm. [[bank#exchange|Exchanging]]', 'Free'],
       ],
     },
-    BANK_FIGURE,
+    ACTIONS_PLAY_FIGURE,
     { k: 'p', t: 'You can buy anything your materials are worth in total: the game pays for you and gives change, keeping your most valuable materials. See [[bank#paying|Paying with change]].' },
     { k: 'h', t: 'Decisions on your buildings come first' },
     { k: 'p', t: 'If your roll activated one of your own buildings and the game asks you about it, decide how to run it (or **Skip**) before anything else. Factories of other players are decided by their owners on their own devices: you can carry on meanwhile, but **Done with actions** waits until they have answered.' },
@@ -165,7 +167,7 @@ export const stepMeeple: Topic = {
         ...minePointRows(),
       ],
     },
-    MEEPLE_FIGURE,
+    MEEPLE_PLAY_FIGURE,
     { k: 'p', t: `Each Mine point holds one meeple. When you choose a Mine point, the game says what it will give you, for example "Place your meeple on the Mine resource point to gain ${amount(MINE_RESOURCE_REWARD[0]!.n, MINE_RESOURCE_REWARD[0]!.material)} at the end of the round?", and warns you if your limit of ${INVENTORY_CAP} would cut the reward.` },
     {
       k: 'details', blocks: [
@@ -202,6 +204,7 @@ export const roundEnd: Topic = {
         'Exchange materials with the bank.',
       ],
     },
+    ROUND_END_PLAY_FIGURE,
     UPGRADE_FIGURE,
     { k: 'p', t: 'Press **Finish round-end turn** when you are done. Whatever you do not use is lost: free upgrades and Mine credits do not carry over to the next round. See [[claiming|Claiming and upgrading]] for the costs.' },
     { k: 'p', t: `Online, a round-end turn with no move for ${seconds(ROUND_END_TIMEOUT_MS)} (the host can change this) ends by itself. Each move starts the countdown again, so a player who is busy is never cut off.` },

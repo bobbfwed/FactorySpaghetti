@@ -18,7 +18,9 @@ export type Target =
   | { kind: 'point'; pieceId: string; point: number }                // a connection point
   // A building's input or output buffer; with `slot`, one input of it (its stub, its material and
   // the teleporter on it: each input of a Sphere or Tesseract Factory is its own target, #55).
-  | { kind: 'buffer'; pieceId: string; buffer: 'input' | 'output'; slot?: number }
+  // `portal`: where a token flies to or from, not something to tap: the glowing end of the
+  // Teleporter on that input (or the output) instead of the buffer itself.
+  | { kind: 'buffer'; pieceId: string; buffer: 'input' | 'output'; slot?: number; portal?: true }
   | { kind: 'mineSlot'; pieceId: string; slot: number }
   | { kind: 'belt'; beltId: string }
   | { kind: 'stack'; index: number }

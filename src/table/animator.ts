@@ -9,7 +9,7 @@ import * as THREE from 'three';
 import type { BoardPiece, GameState, Material } from '../engine/state';
 import {
   BUFFER_MATERIAL_SCALE, DIE_SIZE, HEX_RADIUS, PENDING_MINE_LIFT, TILE_TOP, axialToWorld, bufferSlotWorld,
-  buildingMeepleWorld, minePileAt, mineSlotWorld, piecePlacement, revealedPose, revealedStack,
+  buildingMeepleWorld, minePileAt, mineSlotWorld, piecePlacement, portalWorld, revealedPose, revealedStack,
   stackHeight, type SideLayout, type XZ,
 } from './layout';
 import { pointAlong } from './flowPath';
@@ -33,7 +33,27 @@ export interface SceneFx {
   belt(id: string): number | 'hide' | null;
   die(index: number, rest: { x: number; z: number; yaw: number }): DiePose | null;
   extras(): readonly ExtraMaterial[];
+  /** Things no longer in the new state that are still leaving the table (drawn from the state before). */
+  leaving?(): Leaving;
 }
+
+/** A piece, belt, Teleporter or Control Module on its way off the table: lifted by `y` mm, scaled by `s`. */
+export interface Leaving {
+  readonly pieces: readonly { piece: BoardPiece; y: number; s: number }[];
+  /** `game`: the state the belt is in (before), for its curve and colour. */
+  readonly belts: readonly { game: GameState; beltId: string; y: number; s: number }[];
+  readonly teleporters: readonly { piece: BoardPiece; buffer: Buf; slot: number; owner: number; y: number; s: number }[];
+  /**
+   * `index` of `of` claims on `piece` (as it was laid out). With `to`, it is travelling to claim
+   * `to.index` of `to.of` on `to.piece`, `t` of the way (0-1).
+   */
+  readonly modules: readonly {
+    piece: BoardPiece; index: number; of: number; owner: number; module: number; y: number; s: number;
+    to?: { piece: BoardPiece; index: number; of: number; t: number };
+  }[];
+}
+
+const NOTHING_LEAVING: Leaving = { pieces: [], belts: [], teleporters: [], modules: [] };
 
 type Timed = AnimStep & { t0: number; t1: number };
 
@@ -112,10 +132,41 @@ export class Animator implements SceneFx {
       const p = this.progress(s);
       if (s.kind === 'consume' && p < 1) {
         const piece = this.prev?.board.find(b => b.id === s.pieceId) ?? this.next?.board.find(b => b.id === s.pieceId);
-        if (piece) {
+        // A material that came out of a portal just now is not there before its step.
+        if (piece && !(s.late && p <= 0)) {
           const at = bufferSlotWorld(piece, s.buffer, s.slot);
           const k = p <= 0 ? 1 : 1 - easeInOut(p);
           this.extraList.push({ material: s.material, x: at.x, y: TILE_TOP + 0.05 + 4 * Math.sin(Math.PI * clamp01(p)), z: at.z, yaw: piecePlacement(piece).yaw, s: 0.8 * k });
+        }
+      } else if (s.kind === 'portalIn' && p > 0 && p < 1) {
+        // Out of the glowing end of the Teleporter, along its stub, into the input.
+        const piece = this.prev?.board.find(b => b.id === s.pieceId);
+        if (piece) {
+          const from = portalWorld(piece, 'input', s.slot), to = bufferSlotWorld(piece, 'input', s.slot);
+          const e = easeOut(p);
+          this.extraList.push({
+            material: s.material, x: from.x + (to.x - from.x) * e, y: from.y + (TILE_TOP + 0.05 - from.y) * e + 3 * Math.sin(Math.PI * e), z: from.z + (to.z - from.z) * e,
+            yaw: piecePlacement(piece).yaw, s: BUFFER_MATERIAL_SCALE * (0.15 + 0.85 * easeOut(clamp01(p / 0.6))),
+          });
+        }
+      } else if (s.kind === 'portalOut' && p > 0 && p < 1) {
+        // The product pops up in the output, then goes into the portal of the Teleporter there.
+        const piece = this.next?.board.find(b => b.id === s.pieceId) ?? this.prev?.board.find(b => b.id === s.pieceId);
+        if (piece) {
+          const from = bufferSlotWorld(piece, 'output', 0), to = portalWorld(piece, 'output', 0);
+          const pop = clamp01(p / 0.3), go = easeInOut(clamp01((p - 0.3) / 0.7));
+          this.extraList.push({
+            material: s.material, x: from.x + (to.x - from.x) * go, y: TILE_TOP + 0.05 + (to.y - TILE_TOP) * go + 3 * Math.sin(Math.PI * go), z: from.z + (to.z - from.z) * go,
+            yaw: piecePlacement(piece).yaw, s: BUFFER_MATERIAL_SCALE * Math.max(0.01, easeBack(pop)) * (1 - 0.85 * go),
+          });
+        }
+      } else if (s.kind === 'leave' && p < 1) {
+        // Lifted out of its buffer and away (to a player, or to the bank).
+        const piece = this.prev?.board.find(b => b.id === s.pieceId) ?? this.next?.board.find(b => b.id === s.pieceId);
+        if (piece) {
+          const at = bufferSlotWorld(piece, s.buffer, s.slot);
+          const e = easeInOut(clamp01(p));
+          this.extraList.push({ material: s.material, x: at.x, y: TILE_TOP + 0.05 + 26 * e, z: at.z, yaw: piecePlacement(piece).yaw + e * 2, s: BUFFER_MATERIAL_SCALE * (1 - clamp01((p - 0.35) / 0.65)) });
         }
       } else if (s.kind === 'slide' && p < 1) {
         // Moving aside on its stub (a teleporter landing there): drawn here until it arrives.
@@ -243,6 +294,8 @@ export class Animator implements SceneFx {
     if (this.placing(pieceId)) return 'hide';
     let out: { y: number; s: number } | null = null;
     for (const s of this.steps) {
+      // A module on its way here from another building is drawn by leaving() until it lands.
+      if (s.kind === 'unmodule' && s.toPieceId === pieceId && s.toIndex === index && this.progress(s) < 1) return 'hide';
       if (s.kind === 'module' && s.pieceId === pieceId && s.index === index) {
         const p = this.progress(s);
         if (p >= 1) continue;
@@ -348,6 +401,43 @@ export class Animator implements SceneFx {
   }
 
   extras(): readonly ExtraMaterial[] { return this.extraList; }
+
+  leaving(): Leaving {
+    const prev = this.prev;
+    if (!prev || !this.steps.some(s => s.kind === 'remove' || s.kind === 'unbelt' || s.kind === 'unteleport' || s.kind === 'unmodule')) return NOTHING_LEAVING;
+    const out = { pieces: [] as Leaving['pieces'][number][], belts: [] as Leaving['belts'][number][], teleporters: [] as Leaving['teleporters'][number][], modules: [] as Leaving['modules'][number][] };
+    // Until its step starts it stands where it was; then it lifts and shrinks away.
+    const away = (p: number, lift: number): { y: number; s: number } => {
+      const e = easeInOut(clamp01(p));
+      return { y: lift * e, s: Math.max(0.01, 1 - 0.9 * e) };
+    };
+    for (const s of this.steps) {
+      const p = this.progress(s);
+      if (p >= 1) continue;
+      if (s.kind === 'remove') {
+        const piece = prev.board.find(b => b.id === s.pieceId);
+        if (piece) out.pieces.push({ piece, ...away(p, 40) });
+      } else if (s.kind === 'unbelt') {
+        if (prev.belts.some(b => b.id === s.beltId)) out.belts.push({ game: prev, beltId: s.beltId, ...away(p, 22) });
+      } else if (s.kind === 'unteleport') {
+        const piece = prev.board.find(b => b.id === s.pieceId);
+        if (piece) out.teleporters.push({ piece, buffer: s.buffer, slot: s.slot, owner: s.owner, ...away(p, 30) });
+      } else if (s.kind === 'unmodule') {
+        const piece = prev.board.find(b => b.id === s.pieceId);
+        if (!piece) continue;
+        const base = { piece, index: s.index, of: piece.claims.length, owner: s.owner, module: s.module };
+        const dest = s.toPieceId ? this.next?.board.find(b => b.id === s.toPieceId) : undefined;
+        if (dest) {
+          // Lifted off, carried over in an arc, set down on the other building.
+          const e = easeInOut(clamp01(p));
+          out.modules.push({ ...base, y: 30 * Math.sin(Math.PI * e), s: 1 + 0.25 * Math.sin(Math.PI * e), to: { piece: dest, index: s.toIndex, of: dest.claims.length, t: e } });
+        } else {
+          out.modules.push({ ...base, ...away(p, 34) });
+        }
+      }
+    }
+    return out;
+  }
 
   dispose(): void {
     for (const r of this.rings) { this.root.remove(r); (r.material as THREE.Material).dispose(); }
