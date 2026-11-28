@@ -10,6 +10,7 @@ import {
 import type { Block, Topic } from '../types';
 import { CARD_NAME, CARD_TYPES, cardPriceWords, deckSize, listWords } from './facts';
 import { cardFigure } from './figures';
+import { ASSET_FORFEITURE_PLAY_FIGURE, CHANGING_PRIORITIES_PLAY_FIGURE, SHORT_SALE_PLAY_FIGURE, SINK_HOLE_PLAY_FIGURE } from './morePlays';
 
 export interface CardGuide {
   /** One line for the overview table. */
@@ -39,6 +40,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     blocks: [
       p('Claim a building for free. The game uses the lowest Control Module in your tray that is not below the number of Mines; you choose the building.'),
       p('Play it from your hand, tap the building and confirm.'),
+      SHORT_SALE_PLAY_FIGURE,
     ],
     details: [
       p('If your low modules are already on the board, your lowest one may be quite high — which can be useful.'),
@@ -59,6 +61,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
     blocks: [
       p('Remove a board piece that nobody has claimed: a blank tile or an unclaimed building, never a Mine. Belts lying on it go back to the bank: their owners do not get them back and must buy belts again — even a belt laid this turn.'),
       p('Play it from your hand, tap the piece and confirm.'),
+      SINK_HOLE_PLAY_FIGURE,
     ],
     details: [
       p('The piece is gone for good; it does not go back into a stack.'),
@@ -89,6 +92,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
       p(`Move one of your Control Modules from one building to another. The receiving building can hold up to ${MAX_CLAIMS_PER_BUILDING} of your modules.`),
       p('If the building you took it from has no Control Module left, it has no owner: every material in its inputs and output goes to the bank, your teleporters on it come back to you, and anyone can claim it later. Before you confirm, the game says what you would lose.'),
       p('Play it from your hand, tap the building to take the module from, then the building to move it to, choose the module, and confirm.'),
+      CHANGING_PRIORITIES_PLAY_FIGURE,
     ],
     details: [
       p('The module must not be below the number of Mines, and it must go to a different building.'),
@@ -121,7 +125,7 @@ export const CARD_GUIDE: Record<CardType, CardGuide> = {
   },
   assetForfeiture: {
     short: 'Take every Plate from every output on the board.',
-    blocks: [p(`Take every Plate sitting in any output on the board, yours and everyone else's. You keep up to your limit of ${INVENTORY_CAP}; the rest goes back to the bank.`)],
+    blocks: [p(`Take every Plate sitting in any output on the board, yours and everyone else's. You keep up to your limit of ${INVENTORY_CAP}; the rest goes back to the bank.`), ASSET_FORFEITURE_PLAY_FIGURE],
   },
   rdTaxWriteOff: {
     short: 'Place a teleporter for free.',

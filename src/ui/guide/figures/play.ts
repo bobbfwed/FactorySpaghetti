@@ -98,7 +98,8 @@ export function startState(start: PlayStart): GameState {
     pendingMineIds: [],
     mineCount: Math.max(1, mines),
     globalTeleporterCount: board.reduce((n, p) => n + (p.input?.teleporters.filter(o => o != null).length ?? 0) + (p.output?.teleporters.filter(o => o != null).length ?? 0), 0),
-    cardDeck: [],
+    // The deck as the game deals it (a card bought in an example is the top one), the discard pile empty.
+    cardDeck: base.cardDeck,
     cardDiscard: [],
     lastRoll: null,
     drawnStackIndex: null,
@@ -327,6 +328,7 @@ export function stepTiming(step: StepRun, k: number, tray: boolean): StepTiming 
     segments.push({ move: i, at: t, lead, anim });
     t += lead + anim;
   });
-  if (segments.length === 0) t = STILL_STEP_MS * k;
+  // A step whose moves show nothing (material that does not move) still rests on screen a moment.
+  t = Math.max(t, STILL_STEP_MS * k);
   return { segments, total: Math.max(t, 1) };
 }

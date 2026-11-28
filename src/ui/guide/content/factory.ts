@@ -13,10 +13,14 @@ import {
   exchangeWords, listWords, mineExits, minePriceWords, recipeWords, upgradePointWords,
 } from './facts';
 import {
-  BANK_FIGURE, BELT_CHAIN_FIGURE, BELT_RULE_FIGURE, CLAIMED_FIGURE, POWER_PLANT_FIGURE, PRODUCTION_FIGURE, TELEPORTER_FIGURE,
+  BANK_FIGURE, BELT_RULE_FIGURE, CLAIMED_FIGURE, PRODUCTION_FIGURE, TELEPORTER_FIGURE,
   UPGRADE_FIGURE, exchangeFigure, recipeFigure,
 } from './figures';
 import { CLAIM_PLAY_FIGURE } from './plays';
+import {
+  BANK_PLAY_FIGURE, BELT_CHAIN_PLAY_FIGURE, BELT_RULES_PLAY_FIGURE, MOVING_PLAY_FIGURE, POWER_PLANTS_PLAY_FIGURE, PRODUCTION_PLAY_FIGURE,
+  TELEPORTER_IN_PLAY_FIGURE, TELEPORTER_OUT_PLAY_FIGURE,
+} from './morePlays';
 
 const claimCost = (module: number, mines: number): number => module - mines + 1;
 
@@ -84,7 +88,7 @@ export const production: Topic = {
     { k: 'h', t: 'Power Plants', id: 'power-plants' },
     { k: 'p', t: 'A Power Plant runs by itself and gives its owner Power Tokens. If material sits in its input, it uses that up and gives more:' },
     { k: 'table', head: ['In its input', 'Power Tokens'], rows: powerRows() },
-    POWER_PLANT_FIGURE,
+    POWER_PLANTS_PLAY_FIGURE,
     { k: 'p', t: 'With your teleporter on its input, a Power Plant whose input is empty does not run by itself: the game asks **Your Power Plant runs. Provide a material for more Power Tokens?** Choose **Run it as it is** or one of the materials you hold. It always runs, so there is no Skip — unless you are already at the Power Token limit, when Skip is the only answer. See [[teleporters#supply|Supplying through a teleporter]].' },
     { k: 'p', t: `A Tesseract never goes into a Power Plant. You can hold up to ${POWER_TOKEN_CAP} Power Tokens.` },
     { k: 'h', t: 'Factories', id: 'factories' },
@@ -98,6 +102,7 @@ export const production: Topic = {
     },
     { k: 'table', head: ['Factory', 'Power Tokens to run'], rows: FACTORY_TYPES.map(t => [BUILDING_NAME[t], String(FACTORY_POWER_COST[FACTORY_RECIPES[t]!.product as Exclude<Material, 'ore'>])]) },
     { k: 'p', t: 'The product **stays in the output**, which holds one material. From there it moves on to another of your buildings by direct contact or belt, or you collect it with your meeple, an output teleporter or Personal Jet Pack. A factory with a full output cannot run again. See [[moving|Moving material]].' },
+    PRODUCTION_PLAY_FIGURE,
     { k: 'h', t: 'Answering on someone else\'s turn', id: 'off-turn' },
     { k: 'p', t: `Your factories can activate on other players' turns. The question appears on your own device. Online, if you do not answer within the operate timer (${Math.round(FACTORY_OP_TIMEOUT_MS / 1000)} seconds unless the host changed it), the game runs the building only if it can run without your materials (from what is already in its input; a Power Plant as it is), and skips it otherwise — it never hands over anything from your inventory. On your own turn there is no timer: the game waits for your answer, and you must answer before doing anything else.` },
     {
@@ -165,6 +170,7 @@ export const moving: Topic = {
         '**Teleporters** connect a building\'s input or output with your materials. See [[teleporters|Teleporters]].',
       ],
     },
+    MOVING_PLAY_FIGURE,
     PRODUCTION_FIGURE,
     { k: 'p', t: 'Mines never run out. An input connected to an ore exit is filled again whenever material moves.' },
     { k: 'h', t: 'When material moves', id: 'when' },
@@ -212,7 +218,7 @@ export const belts: Topic = {
   blocks: [
     { k: 'p', t: 'A belt lies on one piece and links two of its connection points. It never crosses from one piece to another. Instead, belts **chain**: where a belt ends at the edge of a piece, the next belt can start at the matching point of the neighbouring piece.' },
     { k: 'p', t: 'A chain carries material from a **source** — a Mine\'s ore exit or a building\'s output — to the **input** of a claimed building, when its first and last belts end at the points facing them.' },
-    BELT_CHAIN_FIGURE,
+    BELT_CHAIN_PLAY_FIGURE,
     { k: 'h', t: 'Laying belts', id: 'laying' },
     {
       k: 'steps', items: [
@@ -240,6 +246,7 @@ export const belts: Topic = {
     { k: 'p', t: 'Your belts serve your buildings. A belt end facing the input or output of another player\'s building is a **dead end**: it neither feeds that building nor draws from it. That can happen when someone else claims a building after your belt was laid. The belt stays on the board and works again if that building becomes yours.' },
     { k: 'h', t: 'Buying and removing', id: 'buying' },
     { k: 'p', t: `You start with ${count(BELT_COUNT, 'belt')}. Buy more from the bank for ${BELT_COST} each. In your actions step you can remove any of your belts (**Remove**, tap one of your glowing belts, then confirm). A belt you laid this turn comes back to your own belts (**Take back this belt**), ready to be laid again for free. A belt laid on an earlier turn goes back to the bank (**Return this belt to the bank**): placing a belt there again means buying one. **Take back this turn\'s belts** removes all the belts you laid this turn, and lets you lay a belt at a Mine again. Removing just the belt you laid at a Mine this turn does the same; removing one laid on an earlier turn does not give you an extra one.` },
+    BELT_RULES_PLAY_FIGURE,
     { k: 'h', t: 'Which holes take a belt', id: 'points' },
     { k: 'p', t: 'A blank tile has a hole at every one of its 12 points. On a building piece the points at its input and output have no hole, and a few points beside them have none either; every other hole takes a belt, for any player.' },
     { k: 'p', t: mineExitWords() },
@@ -271,11 +278,13 @@ export const teleporters: Topic = {
       ],
     },
     TELEPORTER_FIGURE,
+    TELEPORTER_OUT_PLAY_FIGURE,
     { k: 'h', t: 'Placing a teleporter' },
     { k: 'p', t: 'In your actions step, press the **Teleporters** tile in your area. It reads **Place a teleporter** and glows when you can place one; when you cannot, pressing it tells you why (none left, too little material value, or no free input or output on your buildings). Then tap an input or the output of one of your buildings, and confirm. On a Sphere or Tesseract Factory each input glows on its own, and the confirmation names it ("input 2"): input 1 is the one on the side opposite the output, and each input lights on its own, so you see which one you tap. A building\'s menu also offers **Teleporter on the input** (on a Sphere or Tesseract Factory, **Teleporter on input 1**, **input 2** …, with what each holds) and **Teleporter on the output**.' },
     { k: 'p', t: `**Price: the number of teleporters on the board (all players) + 1.** The first costs ${teleporterCost(0)}, the next ${teleporterCost(1)}, and so on. It is paid with change like any purchase: a lone Sphere can pay for a teleporter costing ${teleporterCost(2)}. See [[bank#paying|Paying with change]].` },
     { k: 'p', t: 'You can never remove a teleporter yourself. It comes back only if you lose your last claim on its building (for example through Changing Priorities): it then returns to your supply and the price drops by one for everyone. The building\'s material goes to the bank.' },
     { k: 'h', t: 'Supplying through a teleporter', id: 'supply' },
+    TELEPORTER_IN_PLAY_FIGURE,
     { k: 'p', t: 'Each teleporter supplies only its own input. A Sphere or Tesseract Factory with a teleporter on some inputs runs only once its other inputs hold their material (by belt, from a touching building or a Mine); until then a roll of its number asks nothing. With a teleporter of yours on every input, you can run it entirely from your materials.' },
     { k: 'p', t: 'When a building runs and an input with your teleporter is empty, the game shows what the building needs ("The Tesseract Factory needs a Sphere and a Plate to run", or "needs one of these" when several recipes fit), its input slots, and your materials. Below are one button for each way it can run:' },
     {
@@ -325,6 +334,7 @@ export const bank: Topic = {
     { k: 'p', t: 'You do not pick which materials to hand over. The game pays so that you keep the most valuable materials possible: it hands in materials worth at least the price, and the bank gives the change back in smaller materials than the largest one handed in. A material is broken down only when it has to be.' },
     { k: 'note', tone: 'example', t: `A Leverage card costs ${cardCost(2)} with two Mines. You hold a Sphere and an Ore (worth ${MATERIAL_VALUES.sphere + MATERIAL_VALUES.ore}). The game breaks the Sphere into ${exchangeWords('sphere')}, pays with one Plate, and you keep a Plate and 2 Ore (worth ${MATERIAL_VALUES.sphere + MATERIAL_VALUES.ore - cardCost(2)}).` },
     { k: 'p', t: 'When a purchase gives change, its description says what you will keep, for example "You keep 1 Plate and 2 Ore".' },
+    BANK_PLAY_FIGURE,
     {
       k: 'details', title: 'Change and the limit of 6', blocks: [
         { k: 'p', t: `Change still has to fit under your limit of ${INVENTORY_CAP} of each material. Change that fits nowhere is lost. When there is more than one way to pay, the game picks the one that loses the least to the limit, and then the one that leaves you the most Tesseracts, then Spheres, then Plates, then Ore.` },
