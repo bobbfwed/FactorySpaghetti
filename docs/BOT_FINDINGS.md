@@ -19,6 +19,8 @@ The reports behind every table are in [`docs/bot-study/`](bot-study/). The first
 
 Rules v0.70 (`RULES_CHANGES.md` #51–#58): a building's output feeds only its owner's buildings, a building has one owner, a building that loses its owner is emptied to the bank, Teleporters sit on one input each and cut belts off, and removed belts go back to the bank. The Smart Bot was rebuilt the night before and is now the strongest bot. Everything in this section was measured on 2026-11-28 on these rules; no rule, setting or bot was changed for it.
 
+The runs were made with the bots as of commit cedb934. While they ran, `main` gained 7be48a2 (bots judge a Leverage card purchase on public knowledge only). Replaying R2 and R5 with that change: 1,199 of the 1,200 Smart Bot mirror games and 1,288 of the 1,500 play-style games came out identical, the styles bought 3% fewer cards, and every bot's win count moved by at most 6 games of 100–400. The findings below hold for the current bots.
+
 ### Summary
 
 1. **Game length has not changed.** A game takes a median of **22 rounds at 2 players, 21 at 3 and 20 at 4** (10th–90th percentile 16–26), that is about **42 / 60 / 76 turns** in all, or 19–22 turns per player. That holds whether Smart Bots, play-style bots or a mix sit at the table, and matches the old study (23 / 21 / 20 rounds). What the Smart Bot changes is *how* games end: among Smart Bots, **100% / 98% / 85%** of games end by four Tesseracts (2,400 games), against **94% / 80% / 57%** among play-style bots (2,700 games); the rest end on points when the stacks run out.
@@ -37,11 +39,11 @@ All games use fresh seeds that no earlier study or tuning run used, every seat i
 
 | Run | What | Seeds | Games (2p / 3p / 4p) | Report |
 |---|---|---|---|---|
-| R1 | Everyone against everyone: Smart Bot, the six styles, classic Smart Bot; every table of distinct bots, every seat | 1100000–1100503 | 336 / 1,008 / 1,680 | `R1-all-eight.txt` |
+| R1 | Everyone against everyone: Smart Bot, the six styles, classic Smart Bot; every table of distinct bots, every seat | 1100000–1100419 | 336 / 1,008 / 1,680 | `R1-all-eight.txt` |
 | R2 + R6 | Smart Bot mirror games | 1200000–1200399, 1210000–1210399 | 800 / 800 / 800 | `R2-mirror-smart.txt`, `R6-mirror-smart-more.txt` |
 | R3 | Mirror games of each of the six styles (150 seeds each) | 1300000–1300149 | 900 / 900 / 900 | `R3-mirror-styles.txt` |
 | R4 | One Smart Bot at a table of play styles, every seat | 1400000–1400149 | 300 / 450 / 600 | `R4-gauntlet-smart.txt` |
-| R5 | The six styles only, everyone against everyone | 1500000–1500149 | 300 / 600 / 600 | `R5-styles-only.txt` |
+| R5 | The six styles only, everyone against everyone | 1500000–1500199 | 300 / 600 / 600 | `R5-styles-only.txt` |
 | V1, V2 | What-ifs (Smart Bot mirror games, same seeds as R2) | 1200000–1200399 | 400 / 400 / 400 each | `V1-beltWeaver-10.txt`, `V2-factoryEmpire-7.txt` |
 
 All tables below come from [`bot-study/2026-11-28/tables.md`](bot-study/2026-11-28/tables.md) and `tables-variants.md`, made by `analyze.ts` in the same folder.
