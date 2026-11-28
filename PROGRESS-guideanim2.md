@@ -1,11 +1,12 @@
 # Guide animations, round 2 (wp/guideanim2) - progress
 
 Done
-- (nothing yet)
+- Section 4: point-numbering chart and "#N" removed from the guide; test.
+- Section 2: table animations portalIn/portalOut/leave/remove/unbelt/unteleport/unmodule (transition, animator, scene); tests.
+- Section 3: side panels (turn steps, bank, hand, Tesseract count, supply counts).
+- Section 1: 19 new examples in content/morePlays.ts placed in topics; engine-number tests (morePlays.test.ts).
+- Live-game checks work via scratch script (stage.receive at normal speed; table.animateTo at scale 8 for frames).
 
 Left
-- Section 4: remove the point-numbering chart and "#N" in guide text; test.
-- Section 2: game animations: through the portal, removal, leaving a building.
-- Section 3: side panels: bank row, hand, turn steps, Tesseract count.
-- Section 1: examples a-j and others; tests; placement in topics.
-- Screenshots (guideanim2), INDEX.md, checks, bundle sizes, idle measurement.
+- Rerun failed screenshot captures; live-game frames for portal/removal/leaving; INDEX.md.
+- Bundle sizes, idle measurement, final checks, report.
