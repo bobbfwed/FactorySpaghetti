@@ -119,3 +119,7 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 8h | Belt Weaver weight 1.2 → 1.6 | batch 9 | identical games (the weight above 1 changes no decision) | dropped |
 | 8i | Belt Weaver weight 1.2 → 0.6 (no deliberate long chains) | batch 9 | 1.821 → 1.779; −0.043 (95% −0.146 to +0.061) | dropped |
 | 8j | Teleporter appetite 0.2 → 0.05 (7c again) | batch 9 | 1.821 → 1.935; +0.114 (95% +0.060 to +0.168) | qualified, smaller than 8f; again on top of 8f |
+| 9a | Meeple upgrade-point bias 1 → 0 | batch 10: `--mode gauntlet --bots greedy,upg0,upgneg,power+,tele0 --import cand/batch10.ts --seeds 120 --start 406000 --jobs 8` | 1.936 → 1.894; −0.042 (95% −0.112 to +0.029) | dropped |
+| 9b | Meeple upgrade-point bias 1 → −1 | batch 10 | 1.936 → 1.840; −0.096 (95% −0.190 to −0.003) | dropped (worse) |
+| **9c** | **Power Token value 1.2 → 1.6** (8a again) | batch 10 | 1.936 → **2.092**; **+0.156 (95% +0.060 to +0.251)**; 4p +5.6 points | **kept** (commit below) |
+| 9d | Teleporter appetite 0.2 → 0.05 (third time) | batch 10 | 1.936 → 2.053; +0.117 (95% +0.069 to +0.165) | qualified, smaller than 9c; again on top of 9c |
