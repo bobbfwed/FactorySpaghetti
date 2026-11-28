@@ -123,3 +123,7 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 9b | Meeple upgrade-point bias 1 → −1 | batch 10 | 1.936 → 1.840; −0.096 (95% −0.190 to −0.003) | dropped (worse) |
 | **9c** | **Power Token value 1.2 → 1.6** (8a again) | batch 10 | 1.936 → **2.092**; **+0.156 (95% +0.060 to +0.251)**; 4p +5.6 points | **kept** (commit below) |
 | 9d | Teleporter appetite 0.2 → 0.05 (third time) | batch 10 | 1.936 → 2.053; +0.117 (95% +0.069 to +0.165) | qualified, smaller than 9c; again on top of 9c |
+| 10a | Teleporter appetite 0.2 → 0.05 (fourth time) | batch 11: `--mode gauntlet --bots greedy,tele0,power++,route4,route8 --import cand/batch11.ts --seeds 120 --start 407000 --jobs 8` | 2.087 → 2.106; +0.019 (95% −0.029 to +0.066) | dropped (its gain was taken by 9c) |
+| 10b | Power Token value 1.6 → 2.0 | batch 11 | 2.087 → 2.117; +0.030 (95% −0.077 to +0.136) | dropped (inconclusive) |
+| **10c** | **Belt routes of at most 4 belts instead of 6** | batch 11 | 2.087 → **2.130**; **+0.043 (95% +0.005 to +0.080)** | **kept** (commit below) |
+| 10d | Belt routes of at most 8 belts | batch 11 | identical but for one game: +0.000 (95% −0.018 to +0.018) | dropped |
