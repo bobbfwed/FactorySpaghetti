@@ -196,6 +196,29 @@ describe('Escape (or the ✕) while a route\'s steps are being sent one by one',
   });
 });
 
+describe('a planned route belongs to the seat that planned it', () => {
+  const f = fixture(0);
+  it('a seat change on this device drops it: "Continue the route" is not offered afterwards', () => {
+    const { c, s } = twoRoutes(f);
+    c.choose('route:later');
+    const other = ((f.p + 1) % s.playerCount) as PlayerId;
+    // Another seat on this device, then a later turn of the first seat's.
+    c.update(s, other);
+    const next: GameState = { ...s, mineBeltPlacedThisTurn: false, beltsPlacedThisTurn: [] };
+    c.update(next, f.p);
+    c.choose('bank:placeBelt');
+    expect(ids(c)).not.toContain('route:continue');
+  });
+  it('without a seat change it is still offered (the same path, for comparison)', () => {
+    const { c, s } = twoRoutes(f);
+    c.choose('route:later');
+    const next: GameState = { ...s, mineBeltPlacedThisTurn: false, beltsPlacedThisTurn: [] };
+    c.update(next, f.p);
+    c.choose('bank:placeBelt');
+    expect(ids(c)).toContain('route:continue');
+  });
+});
+
 describe('a belt route stopped part-way by the Mine rule', () => {
   const f = fixture(1);
 

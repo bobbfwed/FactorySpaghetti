@@ -256,6 +256,8 @@ export class PlayController {
     this.hintText = null;
     if (seatChanged || !game || me === null || game.gameOver) {
       this.mode = IDLE; this.queue = []; this.queueSent = null; this.piActive = false;
+      // A planned route belongs to the seat (and game) that planned it: never offered to another.
+      this.dropPlan();
     } else {
       if (this.piActive && (game.productionIncreaseBudget <= 0 || !this.piActions(game, me).length)) {
         this.piActive = false;
