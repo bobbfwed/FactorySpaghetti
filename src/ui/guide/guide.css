@@ -126,6 +126,9 @@ html.guide-open, html.guide-open body { overflow: hidden; }
 .g-lineup { list-style: none; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px 8px; padding: 0; margin: 0; }
 .g-litem { flex: 0 1 112px; min-width: 0; display: flex; flex-direction: column; align-items: center; text-align: center; }
 .g-litem.wide { flex-basis: 232px; }
+/* Whole tiles and Mines, drawn larger: about 3 tiles per row (2 on a phone), 1-2 Mines per row. */
+.g-litem.big { flex: 0 1 calc((100% - 16px) / 3); max-width: 220px; }
+.g-litem.big.wide { flex: 0 1 calc((100% - 8px) / 2); max-width: 340px; }
 .g-litem.flat { flex: 0 0 auto; max-width: 100%; }
 /* As tall as a 3D picture, so signs between pictures line up with both. */
 .g-flat { display: flex; align-items: center; justify-content: center; min-height: 80px; max-width: 100%; }
@@ -162,6 +165,8 @@ html.guide-open, html.guide-open body { overflow: hidden; }
   .g-onpic { width: 20px; height: 20px; font-size: 11.5px; }
   .g-litem { flex-basis: 104px; }
   .g-litem.wide { flex-basis: 216px; }
+  .g-litem.big { flex: 0 1 calc((100% - 8px) / 2); max-width: none; }
+  .g-litem.big.wide { flex: 0 1 100%; max-width: none; }
 }
 
 /* ---- details ---- */

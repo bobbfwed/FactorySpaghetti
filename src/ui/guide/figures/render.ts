@@ -5,7 +5,7 @@
 import type { VChild, VNode } from '../vdom';
 import { v } from '../vdom';
 import type { FigureJob } from './jobs';
-import { ITEM_H, ITEM_W, SCENE_W, modelIcon } from './jobs';
+import { BIG_SCALE, ITEM_H, ITEM_W, SCENE_W, modelIcon } from './jobs';
 import type { Material } from '../../../engine/config';
 import type { Callout, FigIcon, FigureBlock, LineupItem, Pic, SceneSpec } from './types';
 
@@ -16,12 +16,15 @@ type Inline = (src: string) => VChild[];
 const sceneSize = (s: SceneSpec): { w: number; h: number } => ({ w: SCENE_W, h: Math.round(SCENE_W / (s.aspect ?? 16 / 9)) });
 
 /** The 3D job of a line-up picture (null for a flat picture). */
-export function picJob(pic: Pic, wide = false): FigureJob | null {
-  const w = wide ? ITEM_W * 2 : ITEM_W;
+export function picJob(pic: Pic, wide = false, big = false): FigureJob | null {
+  // A big picture (whole tiles and Mines, where details matter) is drawn 1.5 times larger.
+  const k = big ? BIG_SCALE : 1;
+  const w = Math.round((wide ? ITEM_W * 2 : ITEM_W) * k);
+  const h = Math.round(ITEM_H * k);
   if ('flat' in pic) return null;
-  if ('scene' in pic) return { t: 'scene', scene: pic.scene, w, h: ITEM_H };
+  if ('scene' in pic) return { t: 'scene', scene: pic.scene, w, h };
   return {
-    t: 'model', model: pic.model, w, h: ITEM_H,
+    t: 'model', model: pic.model, w, h,
     ...(pic.color ? { color: pic.color } : {}),
     ...(pic.numeral !== undefined ? { numeral: pic.numeral } : {}),
     ...(pic.orElse ? { orElse: pic.orElse } : {}),
@@ -51,12 +54,12 @@ function box(job: FigureJob, label: string, icon: FigIcon | undefined, color: st
 function item(it: LineupItem, inline: Inline): VNode {
   if ('sign' in it) return v('li', { class: 'g-sign', 'aria-hidden': 'true' }, it.sign);
   const pic = it.pic;
-  const job = picJob(pic, it.wide);
+  const job = picJob(pic, it.wide, it.big);
   const plain = it.label.replace(/\*\*/g, '');
   const picture = job
     ? box(job, plain, picIcon(pic), 'model' in pic ? pic.color : undefined)
     : v('div', { class: 'g-flat' }, v('flat', { data: JSON.stringify((pic as { flat: unknown }).flat), label: plain }));
-  return v('li', { class: `g-litem${it.wide ? ' wide' : ''}${job ? '' : ' flat'}` },
+  return v('li', { class: `g-litem${it.wide ? ' wide' : ''}${it.big ? ' big' : ''}${job ? '' : ' flat'}` },
     picture,
     it.label ? v('span', { class: 'g-plabel' }, inline(it.label)) : null,
     it.value ? v('span', { class: 'g-pval' }, inline(it.value)) : null);

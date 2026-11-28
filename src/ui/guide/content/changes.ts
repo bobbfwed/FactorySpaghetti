@@ -67,7 +67,7 @@ export const RELEASES: readonly Release[] = [
       },
       {
         title: 'Removing this turn\'s Mine belt lets you lay another',
-        before: 'Only **Undo belts** let you lay a belt at a Mine again; removing the one belt you had laid there this turn did not.',
+        before: 'Only **Take back this turn\'s belts** let you lay a belt at a Mine again; removing the one belt you had laid there this turn did not.',
         now: 'Removing it frees the limit too. Removing a Mine belt laid on an earlier turn gives no extra one.',
         see: 'belts#buying',
       },

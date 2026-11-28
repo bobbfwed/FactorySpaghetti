@@ -33,11 +33,11 @@ export const BOARD_PIECES_FIGURE: FigureBlock = {
   caption: 'The six-sided board pieces. Factories and Power Plants are buildings.',
   show: {
     kind: 'lineup', items: [
-      { pic: { model: 'tile-plate-factory' }, label: BUILDING_NAME.plateFact },
-      { pic: { model: 'tile-sphere-factory' }, label: BUILDING_NAME.sphereFact },
-      { pic: { model: 'tile-tesseract-factory' }, label: BUILDING_NAME.tesseractFact },
-      { pic: { model: 'tile-power-plant' }, label: BUILDING_NAME.powerPlant },
-      { pic: { model: 'tile-blank' }, label: 'Blank tile' },
+      { pic: { model: 'tile-plate-factory' }, big: true, label: BUILDING_NAME.plateFact },
+      { pic: { model: 'tile-sphere-factory' }, big: true, label: BUILDING_NAME.sphereFact },
+      { pic: { model: 'tile-tesseract-factory' }, big: true, label: BUILDING_NAME.tesseractFact },
+      { pic: { model: 'tile-power-plant' }, big: true, label: BUILDING_NAME.powerPlant },
+      { pic: { model: 'tile-blank' }, big: true, label: 'Blank tile' },
     ],
   },
 };
@@ -48,9 +48,9 @@ export const MINES_FIGURE: FigureBlock = {
   caption: 'The three Mines. The first starts on the table; the second and third lie on stacks 2 and 3 until they come into play.',
   show: {
     kind: 'lineup', items: [
-      { pic: { model: 'mine-1' }, label: 'First Mine', wide: true },
-      { pic: { model: 'mine-2' }, label: 'Second Mine', wide: true },
-      { pic: { model: 'mine-3' }, label: 'Third Mine', wide: true },
+      { pic: { model: 'mine-1' }, label: 'First Mine', wide: true, big: true },
+      { pic: { model: 'mine-2' }, label: 'Second Mine', wide: true, big: true },
+      { pic: { model: 'mine-3' }, label: 'Third Mine', wide: true, big: true },
     ],
   },
 };
@@ -62,7 +62,7 @@ export const MINE_REWARDS_FIGURE: FigureBlock = {
   caption: 'What each Mine\'s two meeple points give at the end of the round.',
   show: {
     kind: 'lineup', items: (['mine-1', 'mine-2', 'mine-3'] as const).map((model, i): LineupItem => ({
-      pic: { model }, wide: true,
+      pic: { model }, wide: true, big: true,
       label: ['First Mine', 'Second Mine', 'Third Mine'][i]!,
       value: `Resource point: ${amount(MINE_RESOURCE_REWARD[i]!.n, MINE_RESOURCE_REWARD[i]!.material)} · Upgrade point: ${MINE_UPGRADE_REWARD[i]} Mine credits`,
     })),

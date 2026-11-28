@@ -23,6 +23,8 @@ export interface FigureRenderer {
 /** Line-up pictures: 4:3, a Mine twice as wide. Scenes: up to the page width. */
 export const ITEM_W = 150;
 export const ITEM_H = 112;
+/** How much larger a 'big' line-up picture is drawn than a normal one. */
+export const BIG_SCALE = 1.5;
 export const SCENE_W = 680;
 
 export function jobKey(job: FigureJob): string {

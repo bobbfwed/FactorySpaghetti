@@ -126,7 +126,7 @@ export type Pic =
   | { readonly flat: Flat };
 
 export type LineupItem =
-  | { readonly pic: Pic; readonly label: string; readonly value?: string; readonly wide?: boolean }
+  | { readonly pic: Pic; readonly label: string; readonly value?: string; readonly wide?: boolean; readonly big?: boolean }
   /** A sign between pictures: "+", "→", "or". */
   | { readonly sign: string };
 

@@ -138,7 +138,7 @@ export const stepActions: Topic = {
     { k: 'h', t: 'Decisions on your buildings come first' },
     { k: 'p', t: 'If your roll activated one of your own buildings and the game asks you about it, decide how to run it (or **Skip**) before anything else. Factories of other players are decided by their owners on their own devices: you can carry on meanwhile, but **Done with actions** waits until they have answered.' },
     { k: 'h', t: 'Finishing' },
-    { k: 'p', t: 'Press **Done with actions**. Only then does material move along the belts you laid this turn, so until then you can lay, remove and re-lay belts as you like. **Undo belts** (take back this turn\'s belts) returns every belt you laid this turn to your supply.' },
+    { k: 'p', t: 'Press **Done with actions**. Only then does material move along the belts you laid this turn, so until then you can lay, remove and re-lay belts as you like. **Take back this turn\'s belts** returns every belt you laid this turn to your supply.' },
     { k: 'note', t: 'You cannot claim buildings in this step except with a Leverage card (Short Sale, Production Increase or Changing Priorities). Claims normally happen at the end of the round, with Mine credits. See [[claiming|Claiming and upgrading]].' },
     {
       k: 'details', blocks: [
