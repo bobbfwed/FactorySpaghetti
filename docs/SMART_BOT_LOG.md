@@ -80,3 +80,11 @@ Also from the note: the classic bot's `!claims.some(c => c.ownerId !== me)` (its
 | 3g | Plan the Mine credits: judge a claim together with the upgrade its leftover credits buy, against upgrades only | batch 2 | 0.988 → 0.867; **−0.121 (95% −0.218 to −0.024)**, 2p −10.8 points | dropped (worse) |
 | 3h | End-game points: in the last round value materials at their points only | batch 2 | 0.988 → 0.965; −0.023 (95% −0.050 to +0.004) | dropped |
 | 3i | Placement denial: keep a drawn building away from where it fits another player (weight 0.5) | batch 2 | 0.988 → 0.995; +0.007 (95% −0.072 to +0.087) | inconclusive; measured again on top of 3e |
+| 4a | End-game power value (3b) again, on top of 3e | batch 3: `--mode gauntlet --bots greedy,epower,deny,placedeny,closer,bonusplus --import cand/batch3.ts --seeds 120 --start 401000 --jobs 7` | 1.440 → 1.422; −0.018 (95% −0.048 to +0.012) | dropped (its earlier small gain did not survive 3e) |
+| 4b | Bonus denial (3d) again | batch 3 | 1.440 → 1.459; +0.019 (95% −0.001 to +0.040) | inconclusive; again on top of 4d |
+| 4c | Placement denial (3i) again | batch 3 | 1.440 → 1.470; +0.031 (95% −0.051 to +0.112); at 4 players 27.9% → 31.9% (+4.0, 95% +0.3 to +7.7) | inconclusive; again on top of 4d |
+| **4d** | **Closer**: holding 3 Tesseracts (real + bonus) and a Tesseract Factory, a Power Token is worth twice as much when short of the 3 the last run needs, and a missing Sphere / Plate for it is worth more | batch 3 | 1.440 → **1.501**; **+0.061 (95% +0.010 to +0.112)** | **kept** (commit 3703693) |
+| 4e | Stronger bonus weights (Investor 2.0, Factory Empire 1.7, a building 5) | batch 3 | 1.440 → 1.519; +0.080 (95% −0.007 to +0.167) | inconclusive; again on top of 4d |
+| 4f | Investor lock: extra 0.4 × the Investor's worth for reaching 18 while leading | batch 4 (same seeds, `--merge b3.json,b4.json`) | 1.440 → 1.488; +0.048 (95% −0.019 to +0.115) | inconclusive; again on top of 4d |
+| 4g | End-game thrift (3a) again | batch 4 | 1.440 → 1.424; −0.016 (95% −0.030 to −0.002) | dropped (worse) |
+| 4h | End-game points (3h) again | batch 4 | 1.440 → 1.348; **−0.092 (95% −0.127 to −0.056)** | dropped (worse: the bot needs its plan premium to the very end) |
