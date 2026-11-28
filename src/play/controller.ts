@@ -174,6 +174,11 @@ class Builder {
     this.taps.set(k, fn);
   }
 
+  /** A tap that does something without the target glowing (another choice beside the selected one). */
+  quiet(t: Target, fn: () => void): void {
+    this.taps.set(targetKey(t), fn);
+  }
+
   clearTargets(): void {
     this.view.targets = [];
     this.taps.clear();
@@ -1330,6 +1335,9 @@ export class PlayController {
     const refusal = (tryOwn?.placed ?? 0) === 0 && (tryBuy?.placed ?? 0) === 0
       ? tryOwn?.refusal ?? tryBuy?.refusal ?? null : null;
     if (refusal) {
+      // Nothing of it can be laid now: every belt is drawn and counted as one for a later turn,
+      // not as "from your supply" or "to buy now".
+      v.route = t.map(x => ({ pieceId: x.pieceId, from: x.from, to: x.to, tier: 'cant' as const }));
       v.instruction = `${totals} ${partly ? W.routeRestRefused : W.routeRefused} ${refusalText(refusal)}`;
       items.push(cancelItem);
       if (takeBackItem) items.push(takeBackItem);
@@ -1391,8 +1399,13 @@ export class PlayController {
     const v = b.view;
     b.clearTargets();
     const sel = m.beltId ? rms.find(a => a.beltId === m.beltId) ?? null : null;
+    // Once one is chosen only that belt glows, so it can be told apart from a belt beside or across
+    // it on the same tile; the others still answer a tap (choosing them instead).
     for (const a of rms) {
-      b.lit({ kind: 'belt', beltId: a.beltId }, () => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId }));
+      const t: Target = { kind: 'belt', beltId: a.beltId };
+      const fn = (): void => this.setMode({ k: 'removeBelt', beltId: a.beltId === m.beltId ? null : a.beltId });
+      if (sel && a.beltId !== sel.beltId) b.quiet(t, fn);
+      else b.lit(t, fn);
     }
     // Say before the confirm which way the belt goes (RULES_CHANGES.md #54): laid this turn, back
     // to the player's own belts; laid earlier, back to the bank, to be bought again.

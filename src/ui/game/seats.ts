@@ -108,7 +108,11 @@ export function seatChips(ctx: Ctx): HTMLElement {
     h('span', { class: 'stripe' }),
     h('span', { class: 'col' },
       h('span', { class: 'nm', text: name }),
-      h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of ${TESSERACTS_TO_WIN}`)),
+      h('span', { class: 'row2' },
+        h('span', { class: `st${st.warn ? ' is-warn' : ''}` }, st.text.length ? st.text : `${t} of ${TESSERACTS_TO_WIN}`),
+        // With three opponents the stars give way to a short count under the name (game.css), so
+        // the names keep the chip's whole width.
+        remove ? null : h('span', { class: 'tg-tcount', attrs: { 'aria-hidden': 'true' } }, icon(t > 0 ? 'pipOn' : 'pipOff', undefined, 'tg-pip'), String(t)))),
     remove ? h('span', { class: 'tg-rmtag', attrs: { 'aria-hidden': 'true' } }, icon('cross')) : pips(t)));
   }));
 }

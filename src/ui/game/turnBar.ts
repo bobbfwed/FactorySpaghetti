@@ -154,7 +154,8 @@ export function primaryButton(ctx: Ctx, cls = ''): HTMLElement | null {
 export function undoBeltsButton(ctx: Ctx): HTMLElement | null {
   const it = ctx.view.bank.find(b => b.id === 'bank:undoBelts');
   if (!it || !it.enabled) return null;
-  return h('button', { class: 'btn btn-dark tg-undo', title: it.detail ?? it.label, attrs: { 'data-act': it.id }, onclick: () => ctx.play.choose(it.id) }, icon('undo'), 'Undo belts');
+  // The bank entry's own words (W.bankUndoBelts), the same as the guide's, everywhere.
+  return h('button', { class: 'btn btn-dark tg-undo', title: it.detail ?? it.label, attrs: { 'data-act': it.id }, onclick: () => ctx.play.choose(it.id) }, icon('undo'), it.label);
 }
 
 /** ✕ ⟳ ✓ beside the ghost (or the last touched piece); docked when there is nothing to point at. */

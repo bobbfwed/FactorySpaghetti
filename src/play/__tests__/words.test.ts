@@ -6,6 +6,7 @@ import type { GameState, PlayerId } from '../../engine/state';
 import { applyAction, createGame } from '../../engine';
 import { CARD_COUNTS, PIECE_COUNTS } from '../../engine/config';
 import { PlayController } from '../controller';
+import { W } from '../words';
 import type { PlayView } from '../types';
 import { ALL_ACTION_TYPES, Rand, actors, allItems, randomMove, roll } from './helpers';
 
@@ -31,6 +32,17 @@ function strings(v: PlayView): string[] {
   for (const t of v.tray) out.push(t.cost ?? '', t.label ?? '');
   return out.filter(s => s.length > 0);
 }
+
+describe('belt words', () => {
+  it('belts not on the board are "in your supply" everywhere (never "inventory")', () => {
+    expect(W.routePlaceOwn(3)).toBe('Place 3 from your supply');
+    const beltWords = [W.routePlaceOwn(1), W.routeOwnDetail, W.routeTakeBackDetail(2), W.routeNoSupply(2, 1)];
+    for (const s of beltWords) expect(s).not.toMatch(/inventory/i);
+  });
+  it('taking back this turn\'s belts has one name (the bank entry, the button and the guide)', () => {
+    expect(W.bankUndoBelts).toBe('Take back this turn\'s belts');
+  });
+});
 
 describe('words', () => {
   it('views use rulebook words only', () => {

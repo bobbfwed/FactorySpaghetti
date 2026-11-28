@@ -225,7 +225,7 @@ export const belts: Topic = {
         'Press **Lay a belt** (the Belts tile in your area).',
         'Tap a glowing connection point where the belts should start.',
         'Tap where they should end. The game shows the shortest route between the two points, even if you cannot lay all of it yet, and says how many belts it needs.',
-        'Lay it: **Place 3 belts** when your supply has enough, **Place 2 from inventory** to lay what your supply holds, **Buy 1 and place 3** to buy the missing belts first — or **Keep the plan for a later turn**.',
+        'Lay it: **Place 3 belts** when your supply has enough, **Place 2 from your supply** to lay what your supply holds, **Buy 1 and place 3** to buy the missing belts first — or **Keep the plan for a later turn**.',
       ],
     },
     { k: 'p', t: 'A plan you keep is offered again the next time you press **Lay a belt**: **Continue your planned route**.' },

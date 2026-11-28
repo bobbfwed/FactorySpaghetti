@@ -213,6 +213,31 @@ function strip(ctx: Ctx): HTMLElement {
     count('belt', p.beltsRemaining, 'Belts', color));
 }
 
+/**
+ * Phone, collapsed sheet, my actions step: the two ways in that otherwise hide in the pulled-up
+ * sheet, one tap away: "Lay a belt" (the bank's own item, greyed with its reason when it cannot be
+ * used) and "Tray & bank", which pulls the sheet up on the Tray tab.
+ */
+function quickRow(ctx: Ctx): HTMLElement | null {
+  const v = ctx.view;
+  if (ctx.me === null || ctx.landscape || !v.myTurn || v.step !== 'actions' || v.selection || v.choices || v.menu) return null;
+  const p = ctx.game.players[ctx.me];
+  const it = v.bank.find(b => b.id === 'bank:placeBelt');
+  if (!p || !it) return null;
+  const color = seatColor(ctx.room, ctx.me);
+  return h('div', { class: 'tg-quick' },
+    h('button', {
+      class: `btn btn-dark tg-quickbelt${it.enabled ? ' lit' : ' off'}`,
+      title: it.enabled ? `${it.label}: tap, then tap a glowing connection point` : it.reason ?? it.label,
+      attrs: { 'aria-disabled': String(!it.enabled), 'data-item': 'bank:placeBelt', 'aria-label': `Lay a belt. Belts: ${p.beltsRemaining}.${it.enabled ? '' : ` ${it.reason ?? ''}`}` },
+      onclick: () => ctx.play.choose('bank:placeBelt'),
+    }, icon('belt', color), h('span', { text: 'Lay a belt' }), h('span', { class: 'num', text: String(p.beltsRemaining) })),
+    h('button', {
+      class: 'btn btn-dark tg-quicktray', attrs: { 'aria-label': 'Open your tray and the bank', 'data-quicktray': '1' },
+      onclick: () => { ctx.ui.sheetOpen = true; ctx.ui.sheetTab = 'tray'; ctx.ui.menuOpen = false; ctx.ui.seat = null; ctx.redraw(); },
+    }, h('span', { text: 'Tray & bank' }), icon('chevron', undefined, 'ic chev up')));
+}
+
 const TABS: { id: SheetTab; label: string }[] = [
   { id: 'tray', label: 'Tray' }, { id: 'cards', label: 'Cards' }, { id: 'log', label: 'Log' }, { id: 'rules', label: 'Rules' },
 ];
@@ -228,14 +253,16 @@ function tabContent(ctx: Ctx): Child {
           h('div', null, sectionHead('Control Modules'), moduleTray(ctx.view.tray, color, id => ctx.play.choose(id), 'phone', ctx.view.instruction)),
           h('div', { class: 'side' }, sectionHead('Components'), components(ctx, 'tg-comp'),
             h('div', { class: 'tg-mats' }, materialWells(ctx, 'tg-mat small')), totalValue(ctx.view.totalValue ?? 0))),
+        // The bank right under your components (it is what the actions step uses), before the
+        // read-only lines, so it is in view without scrolling on most phones.
+        g.gameOver ? null : h('div', null, sectionHead('Bank', h('span', { class: 'muted', text: 'prices in material value' })), bankRows(ctx)),
         h('div', { class: 'tg-kvs' },
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Tesseracts' }), h('span', { class: 'v' }, pips(tesseractCount(g, ctx.me as PlayerId)))),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Meeple' }), h('span', { class: 'v', text: meepleWords(ctx) })),
           h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Upgrades' }), h('span', { class: 'v', text: upgrades(ctx) })),
           piButton(ctx),
           ctx.view.myTurn ? h('div', { class: 'tg-kv' }, h('span', { class: 'k', text: 'Leverage cards played this turn' }), h('span', { class: 'v', text: `${g.cardsPlayedThisTurn} / ${MAX_CARDS_PLAYED_PER_TURN}` })) : null),
-        bonusChips(ctx),
-        g.gameOver ? null : h('div', null, sectionHead('Bank', h('span', { class: 'muted', text: 'prices in material value' })), bankRows(ctx)));
+        bonusChips(ctx));
     }
     case 'cards':
       return h('div', null, sectionHead(handTitle(ctx),
@@ -281,6 +308,6 @@ export function phoneSheet(ctx: Ctx): HTMLElement {
         }, t.label, t.id === 'cards' && cards > 0 ? h('span', { class: 'badge', text: String(ctx.game.players[ctx.me ?? 0]?.hand.length ?? cards) }) : null))),
         h('div', { class: 'tg-sheetbody', attrs: { role: 'tabpanel' } }, tabContent(ctx)),
       ]
-      : [stepLine(ctx), ctx.me !== null ? strip(ctx) : null],
+      : [stepLine(ctx), ctx.me !== null ? strip(ctx) : null, quickRow(ctx)],
     ctx.me !== null ? h('div', { class: 'tg-sheetact' }, autoplayNote(ctx), undoBeltsButton(ctx), primaryButton(ctx)) : null);
 }

@@ -57,6 +57,26 @@ describe('Remove a belt tells where the belt goes (#54)', () => {
     expect(apply(older, sent[0]!).players[player]!.beltsRemaining).toBe(older.players[player]!.beltsRemaining);
   });
 
+  it('once a belt is chosen only that belt glows; another of mine still answers a tap', () => {
+    const second = legalActions(laid, player).find(x => x.type === 'PLACE_BELT');
+    expect(second).toBeDefined();
+    const two = apply(laid, second!);
+    const other = two.belts[two.belts.length - 1]!;
+    const { c } = harness(two, player);
+    c.choose('bank:removeBelt');
+    const beltTargets = (): string[] => c.view.targets.flatMap(t => (t.kind === 'belt' ? [t.beltId] : []));
+    expect(beltTargets()).toEqual(expect.arrayContaining([belt.id, other.id]));
+    c.tap({ kind: 'belt', beltId: belt.id });
+    expect(beltTargets()).toEqual([belt.id]);
+    // A tap on the other belt chooses it instead.
+    c.tap({ kind: 'belt', beltId: other.id });
+    expect(beltTargets()).toEqual([other.id]);
+    expect(c.view.confirmBar).toMatchObject({ confirm: true });
+    // A second tap on the chosen belt lets it go: both glow again.
+    c.tap({ kind: 'belt', beltId: other.id });
+    expect(beltTargets()).toEqual(expect.arrayContaining([belt.id, other.id]));
+  });
+
   it('the text view\'s move list says the same', () => {
     const room = (game: GameState): Room => {
       const base = newLobbyRoom('ABCDE', 'Ann');
