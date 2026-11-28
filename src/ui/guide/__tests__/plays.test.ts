@@ -466,6 +466,140 @@ describe('the example player', () => {
     expect(stage.calls.filter(c => c.startsWith('begin'))).toEqual(['begin 0']);
   });
 
+  describe('lets go once the reader takes over (the coordinator, the stage and the renderer)', () => {
+    /** Example a, run by the reader; example b in view waiting; a's stage holds a real FigureCache. */
+    async function setup(): Promise<{ a: ReturnType<typeof makePlayer>; b: ReturnType<typeof makePlayer>; coord: Coordinator; clock: FakeClock; cache: FigureCache; idle: (() => void)[] }> {
+      const coord = new Coordinator();
+      const clock = new FakeClock();
+      const idle: (() => void)[] = [];
+      const cache = new FigureCache(async () => null, { setTimer: (fn): number => { idle.push(fn); return idle.length; }, clearTimer: (): void => { idle.length = 0; } });
+      const stage = fakeStage();
+      const run = stage.running;
+      stage.running = (on: boolean): void => { run(on); if (on) cache.hold(); else cache.unhold(); };
+      const a = makePlayer({ coord, clock, stage });
+      // b has been in view while a played, so it never started; a is the reader's.
+      const b = makePlayer({ coord, clock });
+      a.p.setVisible(1);
+      await flush();
+      b.p.setVisible(1);
+      await flush();
+      expect(b.p.state.playing).toBe(false);
+      return { a, b, coord, clock, cache, idle };
+    }
+    function expectLetGo(s: Awaited<ReturnType<typeof setup>>): void {
+      expect(s.coord.playing).not.toBe(s.a.p);
+      expect(s.a.stage.held).toBe(false);
+      expect(s.a.stage.calls.lastIndexOf('unhold')).toBeGreaterThan(s.a.stage.calls.lastIndexOf('hold'));
+      // The renderer's quiet-spell countdown runs again (nothing holds it).
+      expect(s.idle.length).toBeGreaterThan(0);
+    }
+
+    it('after one step played by Next', async () => {
+      const s = await setup();
+      s.a.p.previous(); // the reader takes over: back to the start, a lets go
+      await flush();
+      await s.clock.advance(100);
+      s.b.p.yieldTo(); // b may have started: stop it so a's Next is alone
+      await flush();
+      s.a.p.next();
+      await flush();
+      expect(s.coord.playing).toBe(s.a.p);
+      expect(s.a.stage.held).toBe(true);
+      await s.clock.advance(STEP_MS + 50);
+      await flush();
+      expect(s.a.p.state).toMatchObject({ index: 0, moving: false, playing: false });
+      expectLetGo(s);
+    });
+
+    it('a second example in view then starts by itself', async () => {
+      const coord = new Coordinator();
+      const clock = new FakeClock();
+      const a = makePlayer({ coord, clock });
+      a.p.next();
+      await flush();
+      const b = makePlayer({ coord, clock });
+      b.p.setVisible(1);
+      await flush();
+      expect(b.p.state.playing).toBe(false); // a's step is playing
+      await clock.advance(STEP_MS + 50);
+      await flush();
+      expect(a.p.state.moving).toBe(false);
+      expect(coord.playing).toBe(b.p);
+      expect(b.p.state.playing).toBe(true);
+    });
+
+    it('after Previous', async () => {
+      const s = await setup();
+      await s.clock.advance(800); // a's first step is playing
+      s.a.p.previous();
+      await flush();
+      expectLetGo(s);
+      await flush();
+      expect(s.b.p.state.playing).toBe(true);
+    });
+
+    it('after Pause, and takes over again with Play', async () => {
+      const s = await setup();
+      await s.clock.advance(800);
+      s.a.p.primary(); // Pause
+      expect(s.a.p.state.paused).toBe(true);
+      expectLetGo(s);
+      await flush();
+      expect(s.b.p.state.playing).toBe(true);
+      s.a.p.primary(); // Play: a takes the view back, b stops at its rest
+      await flush();
+      expect(s.coord.playing).toBe(s.a.p);
+      expect(s.a.stage.held).toBe(true);
+      expect(s.b.p.state.playing).toBe(false);
+      await s.clock.advance(10000);
+      expect(s.a.p.state).toMatchObject({ index: 2, finished: true });
+      expectLetGo(s);
+    });
+
+    it('after stepping with Next to the last step', async () => {
+      const s = await setup();
+      s.a.p.previous();
+      await flush();
+      s.b.p.yieldTo();
+      for (let i = 0; i < 3; i++) {
+        s.a.p.next();
+        await flush();
+        await s.clock.advance(STEP_MS + 50);
+        await flush();
+      }
+      expect(s.a.p.state).toMatchObject({ index: 2, moving: false });
+      expectLetGo(s);
+      expect(s.clock.pending).toBe(0);
+    });
+
+    it('out of view while playing, and holds again when it carries on', async () => {
+      const s = await setup();
+      await s.clock.advance(800);
+      s.a.p.setVisible(0);
+      expectLetGo(s);
+      s.b.p.yieldTo();
+      s.a.p.setVisible(1);
+      await flush();
+      expect(s.a.stage.held).toBe(true);
+      expect(s.coord.playing).toBe(s.a.p);
+    });
+
+    it('Play pressed while a step played by Next is moving plays through from it (one frame loop only)', async () => {
+      const { p, clock, stage } = makePlayer();
+      p.next();
+      await flush();
+      await clock.advance(400);
+      p.primary();
+      await flush();
+      expect(p.state).toMatchObject({ index: 0, moving: true, playing: true });
+      expect(clock.framesPending).toBe(1);
+      await clock.advance(10000);
+      expect(stage.calls.filter(c => c.startsWith('begin'))).toEqual(['begin 0', 'begin 1', 'begin 2']);
+      expect(p.state.finished).toBe(true);
+      expect(stage.held).toBe(false);
+    });
+  });
+
   it('announces a step only when the reader pressed a button', async () => {
     const { p, clock, uis } = makePlayer();
     p.setVisible(1);

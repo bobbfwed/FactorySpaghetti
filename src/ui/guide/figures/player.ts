@@ -112,6 +112,8 @@ export class Player {
   /** Paused because it left the view (resumes when it comes back, if it never finished). */
   private hiddenPause = false;
   private visible = false;
+  /** Holds the coordinator and the stage (the shared renderer): set by hold(), cleared by letGo(). */
+  private held = false;
   private ready: Promise<boolean> | null = null;
   private disposed = false;
   /** Time into the step playing, or into the pause between steps. */
@@ -139,8 +141,8 @@ export class Player {
     if (!this.visible && this.playing && !this.paused) {
       this.hiddenPause = true;
       this.freeze();
-      // Out of sight it does not hold up another example in view; coming back, it takes over again.
-      this.o.coordinator.release(this);
+      // Out of sight it does not hold up another example in view, nor the renderer; coming back, it takes over again.
+      this.letGo();
       this.ui(false);
     } else if (this.visible && this.playing && this.paused && this.hiddenPause) {
       this.hiddenPause = false;
@@ -160,8 +162,14 @@ export class Player {
     if (this.disposed || this.o.motion === 'stills' || this.noPicture) return;
     this.taken = true;
     this.hiddenPause = false;
-    if (this.playing && !this.paused) { this.freeze(); this.ui(true); return; }
+    // Paused by the reader: another example in view may start, and the renderer may be let go.
+    if (this.playing && !this.paused) { this.freeze(); this.letGo(); this.ui(true); return; }
     if (this.playing && this.paused) { this.resumeRun(true); return; }
+    if (this.moving && !this.playing) {
+      // A step played by Next is moving: Play carries on through from it (in the same frame loop).
+      if (this.index < this.o.count - 1) { this.playing = true; this.ui(true); return; }
+      if (this.frameH !== null) { this.o.clock.cancelFrame(this.frameH); this.frameH = null; }
+    }
     if (this.index >= this.o.count - 1) this.goRest(-1, false);
     this.run(true);
   }
@@ -182,8 +190,7 @@ export class Player {
     void this.prepare().then(ok => {
       if (this.disposed) return;
       if (!ok) { this.goRest(this.index + 1, true); return; }
-      this.o.coordinator.claim(this);
-      this.o.stage.running(true);
+      this.hold();
       this.playing = false;
       this.beginStep(this.index + 1, true);
     });
@@ -247,8 +254,7 @@ export class Player {
       // Starting by itself: only while no other example plays (that one may have started meanwhile).
       const other = this.o.coordinator.playing;
       if (!fromReader && (!this.wantsAuto() || (other && other !== this))) return;
-      this.o.coordinator.claim(this);
-      this.o.stage.running(true);
+      this.hold();
       this.playing = true;
       this.paused = false;
       if (this.index < 0) this.gap(this.o.firstMs ?? 700, fromReader);
@@ -322,7 +328,7 @@ export class Player {
 
   private resumeRun(fromReader = false): void {
     if (!this.paused) return;
-    this.o.coordinator.claim(this);
+    this.hold();
     this.paused = false;
     this.ui(fromReader);
     if (this.moving) {
@@ -343,15 +349,29 @@ export class Player {
   private halt(): void {
     if (this.frameH !== null) { this.o.clock.cancelFrame(this.frameH); this.frameH = null; }
     if (this.timerH !== null) { this.o.clock.cancel(this.timerH); this.timerH = null; }
-    const wasRunning = this.playing || this.moving;
     this.playing = false;
     this.paused = false;
     this.moving = false;
     this.hiddenPause = false;
-    if (wasRunning) {
-      this.o.stage.running(false);
-      this.o.coordinator.release(this);
-    }
+    // Decided by what is held, not by what still moves: a step played by Next has already stopped
+    // moving when it ends here (the cause of the renderer never being let go).
+    this.letGo();
+  }
+
+  /** Take the view: other examples stop, the stage keeps the renderer. */
+  private hold(): void {
+    this.o.coordinator.claim(this);
+    if (this.held) return;
+    this.held = true;
+    this.o.stage.running(true);
+  }
+
+  /** Give the view back: the stage lets the renderer go, another example in view may start by itself. */
+  private letGo(): void {
+    if (!this.held) return;
+    this.held = false;
+    this.o.stage.running(false);
+    this.o.coordinator.release(this);
   }
 
   private goRest(i: number, fromReader: boolean): void {
