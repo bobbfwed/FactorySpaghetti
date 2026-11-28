@@ -87,6 +87,11 @@ export interface SceneSpec {
   /** Width / height of the picture. Default 16 / 9. */
   readonly aspect?: number;
   /**
+   * Frame these pieces (plus `pad` millimetres all round) instead of the whole board: a close-up.
+   * Pieces outside run off the edge of the picture, as on the table when zoomed in.
+   */
+  readonly frame?: { readonly pieces: readonly string[]; readonly pad?: number };
+  /**
    * The scene shows a moment when material has finished moving (the default): moving material
    * again changes nothing. Checked by the guide's tests with the engine. False for scenes that
    * show a moment just before material moves.
@@ -124,8 +129,12 @@ export type Flat =
 
 /** One picture in a line-up. */
 export type Pic =
-  /** A single piece model. `numeral`: the number printed on a Control Module. */
-  | { readonly model: FigModel; readonly color?: FigColor; readonly numeral?: number; readonly icon?: FigIcon; readonly orElse?: SceneSpec }
+  /**
+   * A single piece model. `numeral`: the number printed on a Control Module. `yaw`: turn the model
+   * (radians, as Three.js turns about the vertical) so its telling side faces the viewer, e.g. the
+   * Teleporter's portal end.
+   */
+  | { readonly model: FigModel; readonly color?: FigColor; readonly numeral?: number; readonly yaw?: number; readonly icon?: FigIcon; readonly orElse?: SceneSpec }
   | { readonly scene: SceneSpec; readonly icon?: FigIcon }
   | { readonly flat: Flat };
 

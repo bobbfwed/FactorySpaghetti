@@ -27,6 +27,7 @@ export function picJob(pic: Pic, wide = false, big = false): FigureJob | null {
     t: 'model', model: pic.model, w, h,
     ...(pic.color ? { color: pic.color } : {}),
     ...(pic.numeral !== undefined ? { numeral: pic.numeral } : {}),
+    ...(pic.yaw !== undefined ? { yaw: pic.yaw } : {}),
     ...(pic.orElse ? { orElse: pic.orElse } : {}),
   };
 }

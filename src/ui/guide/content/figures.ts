@@ -13,6 +13,12 @@ import { BUILDING_NAME, CARD_NAME, MATERIAL_NAME, MINE_RESOURCE_REWARD, MINE_UPG
 
 const MATERIALS: readonly Material[] = ['ore', 'plate', 'sphere', 'tesseract'];
 
+/**
+ * The Teleporter's round swirl portal is on its +X end: turned 60 degrees so the portal faces the
+ * viewer at an angle that also shows the arched top (as tools/gallery does).
+ */
+const TELEPORTER_YAW = -Math.PI / 3;
+
 // ── Line-ups ───────────────────────────────────────────────────────────────────────────────────
 
 export const MATERIALS_FIGURE: FigureBlock = {
@@ -85,7 +91,7 @@ export const PLAYER_PIECES_FIGURE: FigureBlock = {
       { pic: { model: 'control-module', color: 'blue', numeral: 7 }, label: 'Control Module', value: 'Numbered 1 to 18' },
       { pic: { model: 'control-module-tray' }, label: 'Control Module tray' },
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: 'On a blank tile' },
-      { pic: { model: 'teleporter', color: 'blue' }, label: 'Teleporter' },
+      { pic: { model: 'teleporter', color: 'blue', yaw: TELEPORTER_YAW }, label: 'Teleporter', big: true },
       { pic: { model: 'power-token' }, label: 'Power Token' },
       { pic: { model: 'starting-player' }, label: 'Starting player marker' },
     ],
@@ -206,7 +212,7 @@ export const BANK_FIGURE: FigureBlock = {
       { pic: { scene: BELT_ON_TILE, icon: 'belt' }, label: 'Belt', value: String(BELT_COST) },
       { pic: { flat: { k: 'card', card: 'productionIncrease' } }, label: 'Leverage card', value: 'Mines + 1' },
       { pic: { model: 'mine-2' }, label: 'Mine', value: `${MINE_COSTS[0]}, then ${MINE_COSTS[1]}`, wide: true },
-      { pic: { model: 'teleporter', color: 'blue' }, label: 'Teleporter', value: 'On the board + 1' },
+      { pic: { model: 'teleporter', color: 'blue', yaw: TELEPORTER_YAW }, label: 'Teleporter', value: 'On the board + 1', big: true },
     ],
   },
 };
@@ -423,12 +429,15 @@ export const TELEPORTER_FIGURE: FigureBlock = {
         { id: 'sf', type: 'sphereFact', q: 2, r: 0, rot: 5, claims: [[0, 5]], input: [null, 'plate'], tpIn: [0, null], tpOut: 0 },
       ],
       belts: [{ piece: 'bl', a: 0, b: 7 }],
-      aspect: 16 / 9,
+      aspect: 1.25,
+      // A close-up of the Sphere Factory, with the end of the belt beside it: big enough for the
+      // teleporters to read as the model; the one on input 1 shows its portal.
+      frame: { pieces: ['sf'], pad: 6 },
     },
     callouts: [
       { mark: '1', at: { piece: 'sf', teleporter: 'output' }, text: 'On the output: whatever the Sphere Factory makes goes straight into your materials.' },
       { mark: '2', at: { piece: 'sf', teleporter: 'input', slot: 0 }, text: 'On input 1: when the Sphere Factory runs, you may hand over a material of yours for this input. Belts, touching pieces and Mines no longer fill it.' },
-      { mark: '3', at: { piece: 'bl', belt: 0 }, text: 'Input 2 has no teleporter: the belt still brings it Plates from the Plate Factory.' },
+      { mark: '3', at: { piece: 'bl', point: 7 }, text: 'Input 2 has no teleporter: the belt still brings it Plates from the Plate Factory.' },
     ],
     icon: 'teleporter',
   },

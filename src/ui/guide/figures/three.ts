@@ -200,6 +200,7 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
       group.add(n);
       made.push(g, m);
     }
+    if (job.yaw !== undefined) group.rotation.y = job.yaw;
     woodGround.visible = false;
     shadowGround.visible = true;
     if (table) table.root.visible = false;
@@ -276,13 +277,20 @@ export async function createFigureRenderer(): Promise<FigureRenderer | null> {
     overlay.setGhost(ghost ? { pieceType: ghost.type, q: ghost.q, r: ghost.r, rotation: ghost.rot ?? 0, valid: true } : null, shown);
     woodGround.visible = true;
     shadowGround.visible = false;
-    let b = boardBounds(game.board);
+    const framed = spec.frame ? game.board.filter(p => spec.frame!.pieces.includes(p.id)) : [];
+    let b = boardBounds(framed.length ? framed : game.board);
+    if (framed.length) {
+      const pad = spec.frame?.pad ?? 0;
+      b = { minX: b.minX - pad, maxX: b.maxX + pad, minZ: b.minZ - pad, maxZ: b.maxZ + pad };
+    }
     for (const g of spec.glow?.at ?? []) if ('q' in g) b = unite(b, boardBounds([{ type: 'blank', coord: { q: g.q, r: g.r } }]));
     if (ghost) b = unite(b, boardBounds([{ type: ghost.type, coord: { q: ghost.q, r: ghost.r }, rotation: ghost.rot ?? 0 }]));
     light(b, 20);
     const points = marks.map(m => markAt(game, m));
-    // Frame the markers too (they stand above the pieces), so none falls off the picture.
-    const rig = camera(w, h, b, Math.max(10, ...points.map(p => p.y + 6)), spec.turn ?? 0, 1.04);
+    // Frame the markers too (they stand above the pieces), so none falls off the picture; a
+    // close-up (spec.frame) is cropped tight to its pieces instead.
+    const top = spec.frame ? 12 : Math.max(10, ...points.map(p => p.y + 6));
+    const rig = camera(w, h, b, top, spec.turn ?? 0, 1.04);
     return snap(rig, w, h, points);
   }
 

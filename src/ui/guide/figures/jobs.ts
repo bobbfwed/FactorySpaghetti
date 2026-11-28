@@ -5,7 +5,7 @@ import type { CalloutAt, FigColor, FigIcon, FigModel, SceneSpec } from './types'
 
 /** A 3D picture to draw: one model, or a staged scene. Sizes are CSS pixels. */
 export type FigureJob =
-  | { readonly t: 'model'; readonly model: FigModel; readonly color?: FigColor; readonly numeral?: number; readonly orElse?: SceneSpec; readonly w: number; readonly h: number }
+  | { readonly t: 'model'; readonly model: FigModel; readonly color?: FigColor; readonly numeral?: number; readonly yaw?: number; readonly orElse?: SceneSpec; readonly w: number; readonly h: number }
   | { readonly t: 'scene'; readonly scene: SceneSpec; readonly marks?: readonly CalloutAt[]; readonly w: number; readonly h: number };
 
 /** A drawn picture: an image address and where each marker sits (fractions of width and height). */
