@@ -21,7 +21,7 @@ import {
   cardCost, pieceTemplate, teleporterCost,
 } from '../../engine/config';
 import { payMaterials } from '../../engine/rules/flow';
-import { freeTeleporterSlots, withTeleporter } from '../../engine/rules/teleporters';
+import { freeTeleporterSlots, teleporterOn, withTeleporter } from '../../engine/rules/teleporters';
 import { lossIfModuleLeaves, mayAddClaim } from '../../engine/rules/ownership';
 import { adjAt, getRole } from '../../engine/rules/flow';
 import { canLoadMaterial, factoryProduct } from '../../engine/rules/recipes';
@@ -72,8 +72,14 @@ function makeCtx(state: GameState, me: PlayerId, style: Style): Ctx {
   const ownsSphere = mine.some(b => b.type === 'sphereFact');
   const wantPower = ownsTess ? 3 : ownsSphere ? 2 : 1;
   let pv = style.powerValue;
-  if (p.powerTokens < wantPower) pv *= 1.8;
+  // Power balance: a token is worth more when short of what my buildings burn, less near the cap.
+  if (style.ablate?.power) { /* ablation: a flat token value */ } else if (p.powerTokens < wantPower) pv *= 1.8;
   else if (p.powerTokens >= 8) pv *= 0.5;
+  let piecesLeft = 0;
+  for (const s of state.stacks) piecesLeft += s.pieces.length;
+  const roundsLeft = piecesLeft / state.playerCount;
+  // Power Tokens score no points: as the board runs out they are only worth the runs left.
+  if (style.endgamePower && state.pendingMineIds.length === 0) pv *= Math.max(0.15, Math.min(1, roundsLeft / 2.5));
 
   const inv = p.inventory;
   const need: Record<Material, number> = { ore: 0, plate: 0, sphere: 0, tesseract: 0 };
@@ -93,15 +99,40 @@ function makeCtx(state: GameState, me: PlayerId, style: Style): Ctx {
   // Materials beyond the 6-per-material limit are worth nothing more.
   for (const m of MATS) if (inv[m] >= INVENTORY_CAP) need[m] = -MATERIAL_VALUES[m];
 
-  let piecesLeft = 0;
-  for (const s of state.stacks) piecesLeft += s.pieces.length;
   const horizon = Math.max(1, Math.min(10, piecesLeft / state.playerCount));
   const fw = state.mineCount >= 3 ? 0 : Math.max(nextMineWeight(state), style.lookAheadDice * (state.mineCount === 1 ? 0.6 : 0.4));
   const mePts = resourcePoints(p);
   let best = 0;
   for (const o of state.players) if (o.id !== me) best = Math.max(best, resourcePoints(o));
-  const thrifty = style.endgameThrift && piecesLeft / state.playerCount <= 1.5 && state.pendingMineIds.length === 0;
+  const thrifty = style.endgameThrift && roundsLeft <= 1.5 && state.pendingMineIds.length === 0;
   return { state, me, style, p, pv, need, horizon, fw, ownsTess, reserve, lead: mePts - best, thrifty };
+}
+
+// ── Features (with the switches that turn one off, to measure what it is worth) ──
+
+/** How much of a building's recipe arrives by itself (supply connectivity), 0–1. */
+function fedOf(ctx: Ctx, state: GameState, b: BoardPiece): number {
+  return ctx.style.ablate?.supply ? 0.5 : fedFraction(state, b, ctx.me);
+}
+
+/** Expected runs per round of a building with these modules (expected production, from the dice odds). */
+function runsOf(ctx: Ctx, state: GameState, mods: readonly number[]): number {
+  if (ctx.style.ablate?.dice) {
+    // Ablation: every reachable sum equally likely (ignores the bell shape of several dice).
+    const lo = state.mineCount;
+    const hi = 6 * state.mineCount;
+    return mods.filter(m => m >= lo && m <= hi).length / (hi - lo + 1) * state.playerCount;
+  }
+  return runsPerRound(state, mods, ctx.fw);
+}
+
+/** A building's worth per round to me (as analysis.buildingValue, through the switches above). */
+function valueOf(ctx: Ctx, state: GameState, b: BoardPiece, mods: readonly number[]): number {
+  if (!ctx.style.ablate) return buildingValue(state, b, ctx.me, ctx.pv, mods, ctx.fw);
+  if (mods.length === 0) return 0;
+  const fed = fedOf(ctx, state, b);
+  const carriesAway = teleporterOn(b.output) === ctx.me || b.type === 'powerPlant' || outputFeedsMine(state, b, ctx.me);
+  return runsOf(ctx, state, mods) * runWorth(b.type, ctx.pv) * (0.35 + 0.65 * fed) * (carriesAway ? 1 : 0.25);
 }
 
 function worth(ctx: Ctx, m: Material): number {
@@ -248,7 +279,7 @@ function decideSetup(ctx: Ctx): Action | null {
     if (!piece) return -Infinity;
     // A building whose input faces a Mine ore exit runs by itself; one whose output faces
     // another building's input can start a chain.
-    let s = 10 * fedFraction(ctx.state, piece, ctx.me);
+    let s = 10 * fedOf(ctx, ctx.state, piece);
     for (const pos of pointsWithRole(piece, 'output_buffer')) {
       const n = across(ctx.state.board, piece.coord, piece.rotation ?? 0, pos);
       if (n && n.role === 'input_buffer') s += 1;
@@ -276,6 +307,7 @@ function typeWants(ctx: Ctx): Record<PieceType, number> {
 
 /** Would the bot like the game to end soon? (Ahead on points, hoarding style.) */
 function wantsEnd(ctx: Ctx): boolean {
+  if (ctx.style.hurryWhenAhead && ctx.lead >= 4) return true; // the board-exhaustion ending would go my way
   return ctx.style.hoard && ctx.lead > 0;
 }
 
@@ -354,6 +386,26 @@ function placementScore(ctx: Ctx, type: PieceType, coord: { q: number; r: number
   return s;
 }
 
+/**
+ * Scores spots for a piece of `type`: how well it fits my buildings, less (when placeDeny is on)
+ * how well it would fit the best-placed opponent's — a building put where another player's
+ * outputs already reach it is one they claim next.
+ */
+function spotScorer(ctx: Ctx, type: PieceType): (coord: { q: number; r: number }, rot: number) => number {
+  const unfed = myUnfedPoints(ctx);
+  const deny = ctx.style.placeDeny;
+  if (deny <= 0 || !isBuilding({ type } as BoardPiece)) return (c, r) => placementScore(ctx, type, c, r, unfed);
+  const others = ctx.state.players.filter(o => o.id !== ctx.me).map(o => {
+    const oc = makeCtx(ctx.state, o.id, ctx.style);
+    return { oc, unfed: myUnfedPoints(oc) };
+  });
+  return (c, r) => {
+    let worst = 0;
+    for (const o of others) worst = Math.max(worst, placementScore(o.oc, type, c, r, o.unfed));
+    return placementScore(ctx, type, c, r, unfed) - deny * worst;
+  };
+}
+
 function mineSpotScore(ctx: Ctx, mineId: string, coord: { q: number; r: number }, rot: number): number {
   const state = ctx.state;
   const mine: BoardPiece = {
@@ -390,8 +442,8 @@ function decidePlacePiece(ctx: Ctx): Action | null {
   if (first.type !== 'PLACE_PIECE') return null;
   const top = state.stacks[first.stackIndex].pieces[0]; // the drawn piece, face-up now
   if (!top) return null;
-  const unfed = myUnfedPoints(ctx);
-  return pickBest(acts, a => a.type === 'PLACE_PIECE' ? placementScore(ctx, top.type, a.coord, a.rotation ?? 0, unfed) : -Infinity)?.item ?? null;
+  const score = spotScorer(ctx, top.type);
+  return pickBest(acts, a => a.type === 'PLACE_PIECE' ? score(a.coord, a.rotation ?? 0) : -Infinity)?.item ?? null;
 }
 
 // ── Claims and upgrades ───────────────────────────────────────────────────────
@@ -432,7 +484,7 @@ function claimSetWorth(ctx: Ctx, changes: Map<string, number[]>): number {
     distinct++;
     if (b.type === 'tesseractFact') tessFactories++;
     for (const m of mods) myMax = Math.max(myMax, m);
-    v += buildingValue(state, b, me, ctx.pv, mods, ctx.fw) * ctx.horizon * 0.6;
+    v += valueOf(ctx, state, b, mods) * ctx.horizon * 0.6;
   }
   // A Tesseract Factory is the gateway to real Tesseracts: the first one is worth a lot.
   if (tessFactories > 0 && !ctx.style.hoard) v += 14;
@@ -609,7 +661,13 @@ function decideRoundEnd(ctx: Ctx): Action | null {
   const base = claimSetWorth(ctx, new Map());
 
   // 1. Claims (the Mine's free claim), then upgrades (Mine credits, then the free upgrades).
-  for (const kind of ['claim', 'mineUpgrade', 'freeUpgrade'] as const) {
+  let kinds: ReadonlyArray<'claim' | 'mineUpgrade' | 'freeUpgrade'> = ['claim', 'mineUpgrade', 'freeUpgrade'];
+  if (ctx.style.planCredits) {
+    const planned = planCreditSpend(ctx, acts, base);
+    if (planned) return planned;
+    if (planned === null) kinds = ['freeUpgrade']; // the plan is to spend no Mine credit
+  }
+  for (const kind of kinds) {
     const cands = acts.filter(a =>
       kind === 'claim' ? a.type === 'CLAIM_BUILDING'
         : kind === 'mineUpgrade' ? a.type === 'UPGRADE_BUILDING' && a.fromMineCredit === true
@@ -622,6 +680,45 @@ function decideRoundEnd(ctx: Ctx): Action | null {
   const conv = roundEndRun(ctx, acts);
   if (conv) return conv;
   return acts.find(a => a.type === 'END_ACTIONS') ?? null;
+}
+
+/**
+ * The Mine credits as one plan: a claim is judged together with the best upgrade its leftover
+ * credits still buy, and against spending all the credits on upgrades instead. Returns the first
+ * step of the best plan, null to spend nothing, or undefined when there is no claim to weigh
+ * (the ordinary order then applies).
+ */
+function planCreditSpend(ctx: Ctx, acts: readonly Action[], base: number): Action | null | undefined {
+  const claims = acts.filter(a => a.type === 'CLAIM_BUILDING');
+  if (claims.length === 0) return undefined;
+  const followUp = (s: GameState): number => {
+    const c2 = makeCtx(s, ctx.me, ctx.style);
+    const b2 = claimSetWorth(c2, new Map());
+    let best = 0;
+    for (const u of legalActions(s, ctx.me)) {
+      if (u.type !== 'UPGRADE_BUILDING' || u.fromMineCredit !== true) continue;
+      best = Math.max(best, claimChangeGain(c2, u, b2));
+    }
+    return best;
+  };
+  const scored = claims.map(a => ({ a, g: claimChangeGain(ctx, a, base) })).sort((x, y) => y.g - x.g).slice(0, 6);
+  let best: { a: Action | null; v: number } = { a: null, v: 0.05 };
+  for (const { a, g } of scored) {
+    const s = after(ctx.state, a);
+    if (!s) continue;
+    const v = g + followUp(s);
+    if (v > best.v) best = { a, v };
+  }
+  // Upgrades only (no claim): the best Mine-credit upgrade, then what is left.
+  for (const u of acts) {
+    if (u.type !== 'UPGRADE_BUILDING' || u.fromMineCredit !== true) continue;
+    const g = claimChangeGain(ctx, u, base);
+    if (g <= best.v) continue;
+    const s = after(ctx.state, u);
+    const v = g + (s ? followUp(s) : 0);
+    if (v > best.v) best = { a: u, v };
+  }
+  return best.a;
 }
 
 function roundEndRun(ctx: Ctx, acts: readonly Action[]): Action | null {
@@ -667,9 +764,9 @@ function decideActions(ctx: Ctx): Action | null {
   const { state, me } = ctx;
   if (state.overstockPieces.length > 0) {
     const piece = state.overstockPieces[0]!;
-    const unfed = myUnfedPoints(ctx);
+    const score = spotScorer(ctx, piece.type);
     const acts = legalActions(state, me).filter(a => a.type === 'PLACE_OVERSTOCK_PIECE');
-    return pickBest(acts, a => a.type === 'PLACE_OVERSTOCK_PIECE' ? placementScore(ctx, piece.type, a.coord, a.rotation ?? 0, unfed) : -Infinity)?.item ?? null;
+    return pickBest(acts, a => a.type === 'PLACE_OVERSTOCK_PIECE' ? score(a.coord, a.rotation ?? 0) : -Infinity)?.item ?? null;
   }
   return playCard(ctx)
     ?? spendProductionIncrease(ctx)
@@ -733,18 +830,18 @@ function buyMine(ctx: Ctx): Action | null {
 function teleporterWorth(ctx: Ctx, b: BoardPiece, buffer: 'input' | 'output', inputIndex = 0): number {
   const { state, me } = ctx;
   const mods = myModules(b, me);
-  const runs = runsPerRound(state, mods, ctx.fw);
+  const runs = runsOf(ctx, state, mods);
   const product = PRODUCT[b.type];
   if (buffer === 'output') {
     if (!product || !b.output) return 0;
     if (outputFeedsMine(state, b, me)) return 0.1;
     // Without it the output buffer holds one piece until the meeple comes: most runs are lost.
-    const fed = 0.3 + 0.7 * fedFraction(state, b, me);
+    const fed = 0.3 + 0.7 * fedOf(ctx, state, b);
     return runs * worth(ctx, product) * fed * ctx.horizon * 0.45;
   }
   if (!b.input || b.type === 'powerPlant') return 0;
   const withMine: BoardPiece = { ...b, input: withTeleporter(b.input, inputIndex, me) };
-  const gain = fedFraction(state, withMine, me) - fedFraction(state, b, me);
+  const gain = ctx.style.ablate?.supply ? 0.25 : fedFraction(state, withMine, me) - fedFraction(state, b, me);
   if (gain <= 0) return 0;
   return runs * runWorth(b.type, ctx.pv) * gain * ctx.horizon * (b.type === 'tesseractFact' ? 0.6 : 0.3);
 }
@@ -796,7 +893,7 @@ function layBelts(ctx: Ctx): Action | null {
   }
 
   const buildings = myBuildings(state, me)
-    .map(b => ({ b, v: buildingValue(state, b, me, ctx.pv, myModules(b, me), ctx.fw) }))
+    .map(b => ({ b, v: valueOf(ctx, state, b, myModules(b, me)) }))
     .sort((x, y) => y.v - x.v);
   for (const { b, v } of buildings) {
     if (v <= 0.05) continue;
